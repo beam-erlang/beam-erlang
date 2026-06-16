@@ -124,6 +124,7 @@
 #cmakedefine HAVE_ARPA_INET_H 1
 #cmakedefine HAVE_NETINET_IN_H 1
 #cmakedefine HAVE_NETINET_TCP_H 1
+#cmakedefine HAVE_MULTICAST_SUPPORT 1
 #cmakedefine HAVE_NETDB_H 1
 #cmakedefine HAVE_NETPACKET_PACKET_H 1
 #cmakedefine HAVE_LINUX_FALLOC_H 1

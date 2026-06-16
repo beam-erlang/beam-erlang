@@ -12,6 +12,7 @@
       "description": "Native Linux, interpreter flavor, Release.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/install/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "ERTS_BUILD_FLAVOR": "emu"
@@ -23,6 +24,7 @@
       "description": "Native Linux, JIT flavor, Release.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/install/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "ERTS_BUILD_FLAVOR": "jit"
@@ -37,6 +39,22 @@
     {
       "name": "linux-jit",
       "configurePreset": "linux-jit"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-emu",
+      "configurePreset": "linux-emu",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-jit",
+      "configurePreset": "linux-jit",
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }

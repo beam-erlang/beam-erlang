@@ -1,0 +1,28 @@
+cmake_minimum_required(VERSION 3.25)
+project(beam_deployment_client LANGUAGES C CXX)
+find_package(BEAM CONFIG REQUIRED)
+set(PROFILE bare CACHE STRING "Deployment profile")
+set(COMPONENTS "" CACHE STRING "Packaged components")
+add_executable(deployment_host main.c)
+target_link_libraries(deployment_host PRIVATE BEAM::Runtime)
+set(_options)
+if(COMPONENTS)
+    list(APPEND _options COMPONENTS ${COMPONENTS})
+endif()
+beam_target_deployment(deployment_host PROFILE ${PROFILE} ${_options})
+beam_install_deployment(deployment_host)
+set(_module "${CMAKE_CURRENT_BINARY_DIR}/entry.beam")
+set(_header "${CMAKE_CURRENT_BINARY_DIR}/entry.h")
+add_custom_command(OUTPUT "${_module}"
+    COMMAND $<TARGET_FILE:BEAM::CLI> compile -o "${CMAKE_CURRENT_BINARY_DIR}" -- "${CMAKE_CURRENT_SOURCE_DIR}/entry.erl"
+    DEPENDS BEAM::CLI "${CMAKE_CURRENT_SOURCE_DIR}/entry.erl" VERBATIM)
+add_custom_command(OUTPUT "${_header}"
+    COMMAND ${CMAKE_COMMAND} "-DINPUT=${_module}" "-DOUTPUT=${_header}" -P "${CMAKE_CURRENT_SOURCE_DIR}/Embed.cmake"
+    DEPENDS "${_module}" "${CMAKE_CURRENT_SOURCE_DIR}/Embed.cmake" VERBATIM)
+target_sources(deployment_host PRIVATE "${_header}")
+target_include_directories(deployment_host PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+if(PROFILE STREQUAL "beam-returning")
+    target_compile_definitions(deployment_host PRIVATE DEPLOY_RETURNING)
+    target_include_directories(deployment_host PRIVATE "${TEST_SUPPORT_DIR}")
+    beam_target_bytecode_verifier(deployment_host INVENTORIES base boot services)
+endif()

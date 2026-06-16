@@ -1,4 +1,7 @@
 # Linux build of the beam executable (interpreter and JIT).
+# Requires BEAM_PACKAGE_SOURCE_DIR. The companion package repository is currently
+# local-only; add a selected source checkout after publication. Missing sources
+# intentionally fail configuration; do not skip acceptance or fetch a floating ref.
 
 name: Linux
 
@@ -36,6 +39,8 @@ jobs:
             ninja-build \
             perl \
             pkg-config \
+            python3 \
+            libpcre2-dev \
             libncurses-dev
 
       - name: Configure
@@ -43,3 +48,6 @@ jobs:
 
       - name: Build
         run: cmake --build --preset linux-${{ matrix.flavor }}
+
+      - name: Test installed runtime and SDK
+        run: ctest --test-dir build/linux-${{ matrix.flavor }} --output-on-failure

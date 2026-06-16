@@ -1,121 +1,146 @@
-# [Erlang/OTP](https://www.erlang.org)
+# Erlangsters - BEAM/Erlang
 
-**Erlang** is a programming language and runtime system for building massively scalable soft real-time systems with requirements on high availability. 
+BEAM/Erlang is an experimental modern distribution of the BEAM virtual machine
+and Erlang language. It provides the `beam` command, modern libraries and
+services, and `libbeam` with a public C embedding SDK.
 
-**OTP** is a set of Erlang libraries, which consists of the Erlang runtime system, a number of ready-to-use components mainly written in Erlang, and a set of design principles for Erlang programs. [Learn more about Erlang and OTP](https://www.erlang.org/doc/system/getting_started.html).
+[Erlangsters - Erlang/OTP](https://github.com/beam-erlang/erlang-otp) is a
+separately assembled distribution that uses the installed BEAM/Erlang SDK and
+`libbeam` as its sole virtual machine. It owns its OTP applications, startup,
+native services and commands.
 
-[Learn how to program in Erlang](http://learnyousomeerlang.com/).
+## Status
 
-## Examples
+The VM and distribution ownership migration is complete. The modern BEAM
+command, compiler, shell and embedding SDK have installed acceptance on the
+Linux interpreter and JIT configurations. Full compatibility with the initial
+OTP 29.0 target remains incomplete. Public interfaces and package tooling are
+experimental.
 
-There are several examples [on the website](http://erlang.org/faq/getting_started.html) to help you get started. The below example defines a function `world/0` that prints "Hello, world" in the Erlang shell:
+The source baseline is recorded in [UPSTREAM_COMMIT](UPSTREAM_COMMIT).
+See the [documentation index](docs/README.md) and
+[test guide](tests/README.md) for the current repository and acceptance coverage.
 
-```erlang
--module(hello).
--export([world/0]).
+## Building
 
-world() -> io:format("Hello, world\n").
-```
+The supported targets are 64-bit Linux on x86_64 and aarch64. Builds require
+CMake 3.25 or newer, Ninja, a GNU C11-compatible C compiler, a C++17 compiler and
+Perl. The build supplies its own Erlang compiler bootstrap.
 
-Save the file as `hello.erl` and run `erl` to enter the Erlang shell to compile the module.
-
-```sh
-Erlang/OTP 24 [erts-12.2] [source] [64-bit] [smp:8:8] [ds:8:8:10] [async-threads:1] [jit]
-
-Eshell V12.2  (abort with ^G)
-1> c(hello).
-{ok,hello}
-2> hello:world().
-Hello, world
-ok
-```
-
-Learn more about the Erlang syntax of [modules](http://erlang.org/doc/reference_manual/modules.html), [functions](http://erlang.org/doc/reference_manual/functions.html) and [expressions](http://erlang.org/doc/reference_manual/expressions.html) on [Erlang.org](https://www.erlang.org).
-
-## Installation
-
-### Binary Distributions
-
-Erlang/OTP is available as pre-built binary packages by most OS package managers.
+The default test suite also requires Python 3.9 or newer, Make, binutils,
+pkg-config, system PCRE2 and zlib development files, POSIX terminals and loopback
+networking. The system libraries exercise coexistence with the VM's bundled
+copies. Install terminal development files for terminal support. On Ubuntu 24.04:
 
 ```sh
-apt-get install erlang
+sudo apt-get install build-essential binutils cmake ninja-build perl python3 \
+    pkg-config libncurses-dev libpcre2-dev zlib1g-dev
 ```
 
-### Compiling from source
+Distribution builds require a complete local `beam-erlang-package` checkout.
+CMake looks beside this repository by default. To select another location, pass
+`-DBEAM_PACKAGE_SOURCE_DIR=/path/to/beam-erlang-package` when configuring.
+The companion repository is currently local-only; full builds require access to
+those sources. They are not downloaded automatically, and hosted source
+acquisition is not configured.
 
-To compile Erlang from source, run the following commands. The complete building and installation instructions [can be found here](HOWTO/INSTALL.md).
+From the repository root, build, test and install the interpreter flavor:
 
 ```sh
-git clone https://github.com/erlang/otp.git
-cd otp
+cmake --preset linux-emu
+cmake --build --preset linux-emu
+ctest --preset linux-emu
+cmake --install build/linux-emu
 ```
 
-Checkout the branch or tag of your choice
+The JIT flavor uses a separate build and installation:
 
 ```sh
-git checkout maint-27    # current latest stable version
+cmake --preset linux-jit
+cmake --build --preset linux-jit
+ctest --preset linux-jit
+cmake --install build/linux-jit
 ```
 
-Configure, build and install
+Presets use `build/<preset>/` and install into `install/<preset>/`; both are
+gitignored. Installed acceptance suites use separate test prefixes. The
+[test guide](tests/README.md) describes coverage and test selection.
+
+## Using BEAM
+
+After installation, these commands run from the repository root:
 
 ```sh
-./configure
-make
-make install
+install/linux-emu/bin/beam run tests/fixtures/hello_world.erl
+install/linux-emu/bin/beam compile -o build/example -- tests/fixtures/hello_world.erl
+install/linux-emu/bin/beam shell
+install/linux-emu/bin/beam help
 ```
 
-Alternatively, you can use [Kerl](https://github.com/kerl/kerl), a script that lets you easily build Erlang with a few commands.
+Bare `beam` also opens the Erlang shell. Bindings persist between expressions;
+`q().` shuts down the runtime. The separate Erlang/OTP distribution supplies
+`erl`, `erlc` and `escript` for OTP workflows.
 
-## Bug Reports
+With the installed `bin` directory on `PATH`, a project containing a
+`beam.toml` manifest uses the experimental package workflow:
 
-Please visit our [GitHub Issues](https://github.com/erlang/otp/issues) page for reporting bugs. The instructions for submitting bugs reports [can be found here](https://github.com/erlang/otp/wiki/Bug-reports).
+```sh
+beam build .
+beam-pkg install .
+beam run --project .
+```
 
-### Security Disclosure
+## Embedding
 
-Please do not report security vulnerabilities through public channels, like
-GitHub issues, discussions, or pull requests.
+An installed prefix provides `beam.h`, `libbeam.so`, `libbeam.a` and a CMake package under
+`lib/cmake/BEAM`. A C host links the public runtime target:
 
-Please disclose the security issues following our [SECURITY](SECURITY.md) guidelines.
+```cmake
+find_package(BEAM CONFIG REQUIRED COMPONENTS Runtime)
+add_executable(my_host main.c)
+target_link_libraries(my_host PRIVATE BEAM::Runtime)
+```
 
-## Contributing
+Configure the client with `-DCMAKE_PREFIX_PATH=/path/to/install`.
+The [first-call example](tests/installed/sdk/consumer/first-call/) is a complete
+client built and exercised by installed-SDK acceptance. It compiles an Erlang
+module using the installed compiler, embeds its bytecode and calls it from C.
 
-We are grateful to the community for contributing bug fixes and improvements. Read below to learn how you can take part in improving Erlang/OTP. We appreciate your help!
+Runtime-only SDK discovery does not require the command-line tools.
+`find_package(BEAM CONFIG REQUIRED COMPONENTS CLI)` explicitly requires
+`BEAM::CLI` for build-time Erlang compilation. Native extensions use
+`BEAM::NIF` or `BEAM::Driver`. Clients use the installed public headers and
+targets.
 
-### Contribution Guide
+For a statically linked C host, require the `RuntimeStatic` component and link
+`BEAM::RuntimeStatic`. This target retains the complete archive, exports the
+native entry points and supplies the platform libraries, including the JIT's
+C++ dependencies. Discovery works without `libbeam.so` or the CLI. A target
+graph cannot select both linkage forms. Native extensions continue to resolve
+against their host; they must not link another runtime copy.
 
-Read our [contribution guide](CONTRIBUTING.md) to learn about our development process, how to propose fixes and improvements, and how to test your changes to Erlang/OTP before submitting a pull request.
+The static SDK supports generic embedding and the public NIF/driver interfaces.
+Modern commands and components use shared linkage; static hosts reject modern
+component acquisition. `beam_library_path()` returns the absolute path of the
+containing runtime image, which is the executable for static hosts.
+`beam_build_id()` identifies the source build for either linkage form. SDK
+artifact metadata records separate shared/archive hashes and the hashed static
+link-support files.
 
-### Help Wanted
+Hosts may explicitly compose already-linked native implementations using
+`beam_builtin_nif` and `beam_builtin_driver`. Preparation copies and validates
+the descriptors without invoking their initializers. The VM registers them at
+normal native initialization time and removes the selection at termination.
+The implementation code and native entry tables must remain resident for the
+VM lifetime. This is an initial composition mechanism, not hot registration.
 
-We have a list of [Help Wanted](https://github.com/erlang/otp/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) bugs that we would appreciate external help from the community. This is a great place to get involved.
+Hosts select their runtime composition explicitly. The API supports sequential
+VM lifetimes within one initialized system; one VM may exist at a time.
+The interface remains experimental.
 
-## Awesome-Erlang
+## License and credits
 
-You can find more projects, tools and articles related to Erlang/OTP on the [awesome-erlang list](https://github.com/erlang-punch/awesome-erlang). Add your project there.
-
-## License
-
-Erlang/OTP is released under the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0).
-
-For any license inquiry, please send an email to opensource@ericsson.com
-
-> %CopyrightBegin%
->
-> SPDX-License-Identifier: Apache-2.0
->
-> Copyright Ericsson AB 2010-2025. All Rights Reserved.
->
-> Licensed under the Apache License, Version 2.0 (the "License");
-> you may not use this file except in compliance with the License.
-> You may obtain a copy of the License at
->
->     http://www.apache.org/licenses/LICENSE-2.0
->
-> Unless required by applicable law or agreed to in writing, software
-> distributed under the License is distributed on an "AS IS" BASIS,
-> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-> See the License for the specific language governing permissions and
-> limitations under the License.
->
-> %CopyrightEnd%
+The project primarily uses the [Apache License 2.0](LICENSE.txt).
+Bundled sources retain their own license and copyright notices; additional
+license texts are in [LICENSES/](LICENSES/).
+See [upstream acknowledgments and runtime credits](AUTHORS).

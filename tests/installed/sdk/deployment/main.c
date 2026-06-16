@@ -1,0 +1,108 @@
+#define _GNU_SOURCE
+#include <beam.h>
+#ifdef DEPLOY_RETURNING
+#include "bytecode_input.h"
+#endif
+#include "deployment_host_deployment.h"
+#include "entry.h"
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "deployment check %d: %s (%s)\n", __LINE__, #x, error.message); goto cleanup; } } while (0)
+static unsigned char *read_bytes(const char *path, size_t *size)
+{
+    FILE *f = fopen(path, "rb"); long length; unsigned char *bytes = NULL;
+    if (!f) return NULL;
+    if (!fseek(f, 0, SEEK_END) && (length = ftell(f)) > 0 && !fseek(f, 0, SEEK_SET)) {
+        bytes = malloc((size_t)length);
+        if (bytes && fread(bytes, 1, (size_t)length, f) != (size_t)length) { free(bytes); bytes = NULL; }
+        if (bytes) *size = (size_t)length;
+    }
+    fclose(f); return bytes;
+}
+static beam_output_status output(void *context, beam_bytes destination, beam_bytes bytes)
+{
+    (void)context; (void)destination;
+    return fwrite(bytes.data, 1, bytes.size, stdout) == bytes.size && !fflush(stdout)
+        ? BEAM_OUTPUT_OK : BEAM_OUTPUT_FAILED;
+}
+int main(int argc, char **argv)
+{
+    beam_error error = {0}; beam_status status;
+    char root[PATH_MAX], paths[4][PATH_MAX], native[PATH_MAX], helper[PATH_MAX], origin[PATH_MAX];
+    size_t required; int result = 1;
+    beam_system *system = NULL; beam_vm *vm = NULL; beam_vm_options vm_options;
+    beam_return_boot *returning = NULL;
+    beam_outcome outcome = {0}; beam_result bare_result = {0};
+    unsigned char *provider = NULL;
+#ifdef DEPLOY_RETURNING
+    bytecode_input base = {0};
+#endif
+    CHECK(argc == 2);
+    CHECK(beam_library_path(root, sizeof root, &required, &error) == BEAM_OK);
+    char *slash = strrchr(root, '/'); CHECK(slash); *slash = 0;
+    slash = strrchr(root, '/'); CHECK(slash); *slash = 0;
+    CHECK(getenv("DEPLOY_EXPECT_ROOT") && !strcmp(root, getenv("DEPLOY_EXPECT_ROOT")));
+    CHECK(beam_init(&system, &error) == BEAM_OK);
+#ifdef DEPLOY_RETURNING
+    beam_return_options options = {0};
+    beam_component_spec components[4] = {{0}};
+    beam_return_module modules[14] = {{0}};
+    options.struct_size = sizeof options;
+    options.entry_module = "entry"; options.entry_function = argv[1];
+    CHECK(bytecode_input_read(&base, root, INPUT_RETURNING, &error) == BEAM_OK);
+    for (size_t i = 0; i < base.count; ++i) {
+        modules[i+1].name = base.modules[i].name; modules[i+1].bytes = base.modules[i].bytes;
+        modules[i+1].origin = base.modules[i].origin;
+    }
+    options.modules = modules; options.module_count = 14;
+    modules[0].name = "entry"; modules[0].bytes = (beam_bytes){entry_bytes, sizeof entry_bytes};
+    options.components = components;
+    if (!strcmp(argv[1], "file") || !strcmp(argv[1], "network") || !strcmp(argv[1], "zlib")) {
+        int file = !strcmp(argv[1], "file"), zlib = !strcmp(argv[1], "zlib");
+        options.services = file ? BEAM_SERVICE_FILE : zlib ? BEAM_SERVICE_ZLIB : BEAM_SERVICE_SOCKET;
+        CHECK(snprintf(paths[3], sizeof paths[3], "%s/lib/libbeam-%s.so", root, argv[1]) < (int)sizeof paths[3]);
+        components[0] = (beam_component_spec){sizeof components[0], file ? BEAM_COMPONENT_FILE : zlib ? BEAM_COMPONENT_ZLIB : BEAM_COMPONENT_NETWORK, paths[3]};
+        options.component_count = 1;
+    }
+    if (!strcmp(argv[1], "program")) {
+        options.services = BEAM_SERVICE_PROGRAM;
+        CHECK(snprintf(helper, sizeof helper, "%s/libexec/beam", root) < (int)sizeof helper);
+        options.bindir = helper;
+    }
+    options.services |= BEAM_SERVICE_OUTPUT; options.output = output;
+    for (int pass = 0; pass < 2; ++pass) {
+        CHECK(beam_return_prepare(&options, &returning, &error) == BEAM_OK);
+        outcome.struct_size = sizeof outcome;
+        CHECK(beam_return_run(system, &returning, &outcome, &error) == BEAM_OK);
+        if (outcome.kind != BEAM_OUTCOME_RETURN && outcome.term.data)
+            fwrite(outcome.term.data, 1, outcome.term.size, stderr);
+        CHECK(outcome.kind == BEAM_OUTCOME_RETURN && !outcome.has_cleanup_error);
+        CHECK(outcome.term.size == 3 && !memcmp(outcome.term.data, "\203\141\052", 3));
+        beam_outcome_release(&outcome);
+        CHECK(!beam_file_descriptor_count() && !beam_socket_count() && !beam_zlib_stream_count());
+    }
+#else
+    beam_vm_options_init(&vm_options);
+    CHECK(beam_vm_init(system, &vm_options, &vm, &error) == BEAM_OK);
+    CHECK(beam_vm_load(vm, (beam_bytes){entry_bytes, sizeof entry_bytes}) == BEAM_OK);
+    CHECK(beam_vm_start(vm, &error) == BEAM_OK);
+    CHECK(beam_vm_call(vm, "entry", "bare", (beam_bytes){(const unsigned char *)"\203\152", 2}, &bare_result) == BEAM_OK);
+    CHECK(bare_result.kind == BEAM_RETURN && bare_result.value.size == 3 && !memcmp(bare_result.value.data, "\203\141\052", 3));
+    CHECK(beam_vm_stop(vm, NULL) == BEAM_OK);
+    CHECK(beam_vm_terminate(&vm, NULL) == BEAM_OK);
+#endif
+    CHECK(beam_terminate(&system) == BEAM_OK);
+    puts("DEPLOY_OK"); result = 0;
+cleanup:
+#ifdef DEPLOY_RETURNING
+    bytecode_input_release(&base);
+#endif
+    beam_return_discard(&returning);
+    if (vm) beam_vm_terminate(&vm, NULL);
+    if (system) beam_terminate(&system);
+    beam_result_release(&bare_result); beam_outcome_release(&outcome); free(provider);
+    return result;
+}

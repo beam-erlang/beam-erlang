@@ -8,6 +8,7 @@ include(CheckTypeSize)
 include(CheckIncludeFile)
 include(CheckSymbolExists)
 include(CheckLibraryExists)
+include(CheckCSourceCompiles)
 
 find_package(Threads REQUIRED)
 if(NOT CMAKE_USE_PTHREADS_INIT)
@@ -98,10 +99,26 @@ if(HAVE_CLOCK_GETRES)
     set(HAVE_CLOCK_GETRES 1)
 endif()
 
+# Open-file metadata is used by both native file components, including the
+# preprocessor's external documentation reader.
+check_symbol_exists(fstat "sys/types.h;sys/stat.h;unistd.h" HAVE_FSTAT)
+
 check_symbol_exists(pthread_spin_lock "pthread.h" ETHR_HAVE_PTHREAD_SPIN_LOCK)
 if(ETHR_HAVE_PTHREAD_SPIN_LOCK)
     set(ETHR_HAVE_PTHREAD_SPIN_LOCK 1)
 endif()
+
+# Match the inet driver's multicast capability contract. Its inherited socket
+# option handling (including SO_LINGER during TCP accept) uses this definition.
+check_c_source_compiles([=[
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #if !defined(IP_MULTICAST_TTL) || !defined(IP_MULTICAST_LOOP) || !defined(IP_MULTICAST_IF) || !defined(IP_ADD_MEMBERSHIP) || !defined(IP_DROP_MEMBERSHIP)
+    #error Missing IPv4 multicast options
+    #endif
+    int main(void) { return 0; }
+]=] HAVE_MULTICAST_SUPPORT)
 
 # Linux glibc seed for a vanilla build.
 set(ETHR_HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP 1)

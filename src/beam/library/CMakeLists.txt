@@ -1,0 +1,11 @@
+# Ordinary modern library code is supplied explicitly, outside the VM.
+set(BEAM_BASE_MODULES beam beam_list beam_map beam_bytes beam_text beam_format beam_time)
+set(BEAM_BASE_SOURCES)
+set(BEAM_BASE_SEED_FILES)
+foreach(_module IN LISTS BEAM_BASE_MODULES)
+    list(APPEND BEAM_BASE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/${_module}.erl")
+    list(APPEND BEAM_BASE_SEED_FILES "${CMAKE_CURRENT_SOURCE_DIR}/ebin/${_module}.beam")
+endforeach()
+foreach(_value IN ITEMS MODULES SOURCES SEED_FILES)
+    set(BEAM_BASE_${_value} "${BEAM_BASE_${_value}}" PARENT_SCOPE)
+endforeach()

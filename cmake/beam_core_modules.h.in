@@ -1,0 +1,6 @@
+/* Generated from the private runtime module manifest. */
+#ifndef BEAM_CORE_MODULES_H
+#define BEAM_CORE_MODULES_H
+static const char *const beam_core_module_names[] = {
+@BEAM_CORE_MODULE_INITIALIZERS@};
+#endif
