@@ -5530,46 +5530,6 @@ erts_get_ethread_info(Process *c_p)
 	res = erts_bld_cons(hpp, szp, tup, res);
 #endif
 
-#ifdef ETHR_SPARC_V9_MEMBAR_H__
-
-	tup = erts_bld_tuple(hpp, szp, 2,
-			     erts_bld_string(hpp, szp, "Sparc V9"),
-			     erts_bld_string(hpp, szp,
-#if defined(ETHR_SPARC_TSO)
-					     "TSO"
-#elif defined(ETHR_SPARC_PSO)
-					     "PSO"
-#elif defined(ETHR_SPARC_RMO)
-					     "RMO"
-#else
-					     "undefined"
-#endif
-				 ));
-
-	res = erts_bld_cons(hpp, szp, tup, res);
-
-#endif
-
-#ifdef ETHR_PPC_MEMBAR_H__
-
-	tup = erts_bld_tuple(hpp, szp, 2,
-			     erts_bld_string(hpp, szp, "lwsync"),
-			     erts_bld_string(hpp, szp,
-#if defined(ETHR_PPC_HAVE_LWSYNC)
-					     "yes"
-#elif defined(ETHR_PPC_HAVE_NO_LWSYNC)
-					     "no"
-#elif defined(ETHR_PPC_RUNTIME_CONF_HAVE_LWSYNC__)
-					     ETHR_PPC_RUNTIME_CONF_HAVE_LWSYNC__ ? "yes" : "no"
-#else
-					     "undefined"
-#endif
-				 ));
-
-	res = erts_bld_cons(hpp, szp, tup, res);
-
-#endif
-
 	tup = erts_bld_tuple(hpp, szp, 2,
 			     erts_bld_string(hpp, szp, "Native rw-spinlocks"),
 #ifdef ETHR_NATIVE_RWSPINLOCK_IMPL

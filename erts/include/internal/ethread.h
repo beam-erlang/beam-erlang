@@ -332,18 +332,6 @@ ETHR_PROTO_NORETURN__ ethr_fatal_error__(const char *file,
 
 #endif
 
-#if (defined(__GNUC__) \
-     && !defined(ETHR_PPC_HAVE_LWSYNC) \
-     && !defined(ETHR_PPC_HAVE_NO_LWSYNC) \
-     && (defined(__powerpc__) || defined(__ppc__) || defined(__powerpc64__)))
-#  define ETHR_PPC_RUNTIME_CONF__
-
-#  define ETHR_PPC_RUNTIME_CONF_HAVE_LWSYNC__ \
-  (__builtin_expect(ethr_runtime__.conf.have_lwsync != 0, 1))  
-#  define ETHR_PPC_RUNTIME_CONF_HAVE_NO_LWSYNC__ \
-  (__builtin_expect(ethr_runtime__.conf.have_lwsync == 0, 0))
-#endif
-
 typedef struct {
 #if defined(ETHR_X86_RUNTIME_CONF__)
     int have_dw_cmpxchg;
@@ -354,9 +342,6 @@ typedef struct {
     int have_nonstop_tsc;
     int have_nonstop_tsc_s3;
     int have_cpuid;
-#endif
-#if defined(ETHR_PPC_RUNTIME_CONF__)
-    int have_lwsync;
 #endif
     int dummy;
 } ethr_runtime_conf_t;
@@ -382,18 +367,10 @@ extern ethr_runtime_t ethr_runtime__;
 #      if ETHR_SIZEOF_PTR == 4
 #        if defined(__i386__)
 #          include "i386/ethread.h"
-#        elif (defined(__powerpc__)||defined(__ppc__))&&!defined(__powerpc64__)
-#          include "ppc32/ethread.h"
-#        elif defined(__sparc__)
-#          include "sparc32/ethread.h"
-#        elif defined(__tile__)
-#          include "tile/ethread.h"
 #        endif
 #      elif ETHR_SIZEOF_PTR == 8
 #        if defined(__x86_64__)
 #          include "x86_64/ethread.h"
-#        elif defined(__sparc__) && defined(__arch64__)
-#          include "sparc64/ethread.h"
 #        endif
 #      endif
 #      if ETHR_HAVE_GCC___ATOMIC_BUILTINS
@@ -421,8 +398,6 @@ extern ethr_runtime_t ethr_runtime__;
 #      define ETHR_SPIN_BODY __asm__ __volatile__("rep;nop" : : : "memory")
 #    elif defined(__ia64__)
 #      define ETHR_SPIN_BODY __asm__ __volatile__("hint @pause" : : : "memory")
-#    elif defined(__sparc__)
-#      define ETHR_SPIN_BODY __asm__ __volatile__("membar #LoadLoad")
 #    else
 #      define ETHR_SPIN_BODY ETHR_COMPILER_BARRIER
 #    endif

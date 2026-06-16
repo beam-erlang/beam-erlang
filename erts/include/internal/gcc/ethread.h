@@ -90,14 +90,6 @@
 /* Also trust builtin barriers */
 #    undef ETHR_TRUST_GCC_ATOMIC_BUILTINS_MEMORY_BARRIERS__
 #    define ETHR_TRUST_GCC_ATOMIC_BUILTINS_MEMORY_BARRIERS__ 1
-#elif ETHR_AT_LEAST_GCC_VSN__(9, 3, 0) \
-    && (defined(__powerpc__) || defined(__ppc__) || defined(__powerpc64__)) \
-    && ETHR_SIZEOF_PTR == 8
-/* Verified not to have this bug */
-#    define ETHR___atomic_load_ACQUIRE_barrier_bug 0
-/* Also trust builtin barriers */
-#    undef ETHR_TRUST_GCC_ATOMIC_BUILTINS_MEMORY_BARRIERS__
-#    define ETHR_TRUST_GCC_ATOMIC_BUILTINS_MEMORY_BARRIERS__ 1
 #else /* True gcc of version >= 4.8 */
 /*
  * Sizes less than or equal to word size have been fixed,
@@ -152,8 +144,7 @@
 #  define ETHR_GCC_VOLATILE_BIT_MASK__ 4
 #endif
 
-#if defined(__i386__) || defined(__x86_64__) || defined(__sparc__)	\
-    || defined(__powerpc__) || defined(__ppc__) || defined(__mips__)	\
+#if defined(__i386__) || defined(__x86_64__) || defined(__mips__)	\
     || defined(__alpha__) || defined(__ia64__)
 
 /*
@@ -296,33 +287,7 @@
 
 #  endif /* !ETHR_X86_OUT_OF_ORDER */
 
-/* #endif defined(__i386__) || defined(__x86_64__) */
-#elif defined(__powerpc__) || defined(__ppc__)
-
-#  if !defined(ETHR_PPC_HAVE_LWSYNC)
-/*
- * Release barriers are typically implemented using
- * the lwsync instruction. We want our runtime
- * configure test to determine if the lwsync
- * instruction is available on the system or not
- * before we use it. Therefore, do not implement any
- * native ops using the __ATOMIC_RELEASE model.
- */
-#    undef ETHR_GCC_RELB_VERSIONS__
-#    define ETHR_GCC_RELB_VERSIONS__ 0
-#    if defined(ETHR_GCC_IMPLEMENT_ACQB_USING_LWSYNC)
-/*
- * Acquire barriers are usually implemented by other means
- * than lwsync, but can be implemented using lwsync. Define
- * ETHR_GCC_IMPLEMENT_ACQB_USING_LWSYNC if acquire barriers
- * are implemented using lwsync.
- */
-#      undef ETHR_GCC_ACQB_VERSIONS__
-#      define ETHR_GCC_ACQB_VERSIONS__ 0
-#    endif
-#  endif
-
-#endif /* defined(__powerpc__) || defined(__ppc__) */
+#endif /* defined(__ia64__) || defined(__i386__) || defined(__x86_64__) */
 
 #if !ETHR_GCC_RELAXED_VERSIONS__
 #  undef ETHR_GCC_RELAXED_MOD_VERSIONS__

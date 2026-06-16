@@ -126,10 +126,6 @@
  */
 #if defined(__i386__) || defined(__x86_64__)
 #  include "../i386/ethr_membar.h"
-#elif defined(__sparc__)
-#  include "../sparc32/ethr_membar.h"
-#elif defined(__powerpc__) || defined(__ppc__) || defined(__powerpc64__)
-#  include "../ppc32/ethr_membar.h"
 #elif !defined(ETHR_GCC_ATOMIC_MEMBAR_H__)			\
     && (ETHR_HAVE_GCC_ASM_ARM_DMB_INSTRUCTION			\
 	|| ETHR_HAVE___sync_synchronize				\

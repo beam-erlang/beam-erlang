@@ -133,60 +133,6 @@ ethr_ts_event *ethr_get_tse__(void)
     return pthread_getspecific(ethr_ts_event_key__);
 }
 
-#if defined(ETHR_PPC_RUNTIME_CONF__)
-
-#include <sys/wait.h>
-
-static void
-handle_lwsync_sigill(int signum)
-{
-    _exit(1);
-}
-
-static int
-ppc_init__(void)
-{
-    int pid;
-
-    /* If anything what so ever fails we assume no lwsync for safety */
-    ethr_runtime__.conf.have_lwsync = 0;
-
-    /*
-     * We perform the lwsync test (which might cause an illegal
-     * instruction signal) in a separate process in order to be
-     * completely certain that we do not mess up our own state.
-     */
-    pid = fork();
-    if (pid == 0) {
-	struct sigaction act, oact;
-
-	sigemptyset(&act.sa_mask);
-	act.sa_flags = SA_RESETHAND;
-	act.sa_handler = handle_lwsync_sigill;
-	if (sigaction(SIGILL, &act, &oact) != 0)
-	    _exit(2);
-
-	__asm__ __volatile__ ("lwsync\n\t" : : : "memory");
-
-	_exit(0);
-    }
-
-    if (pid != -1) {
-	while (1) {
-	    int status, res;
-	    res = waitpid(pid, &status, 0);
-	    if (res == pid) {
-		if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
-		    ethr_runtime__.conf.have_lwsync = 1;
-		break;
-	    }
-	}
-    }
-    return 0;
-}
-
-#endif
-
 #if defined(ETHR_X86_RUNTIME_CONF__)
 
 void
@@ -263,12 +209,6 @@ ethr_init(ethr_init_data *id)
 	return EINVAL;
 
     ethr_not_inited__ = 0;
-
-#if defined(ETHR_PPC_RUNTIME_CONF__)
-    res = ppc_init__();
-    if (res != 0)
-	goto error;
-#endif
 
 #ifdef ETHR_HAVE_ETHR_GET_MONOTONIC_TIME
     init_get_monotonic_time();
