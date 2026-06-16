@@ -1,0 +1,88 @@
+name: Release candidate
+'on':
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: candidate-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Resolve target matrix
+      run: echo "matrix=$(python3 ci/catalog.py matrix --release)" >> "$GITHUB_OUTPUT"
+      shell: bash
+      id: matrix
+      env:
+        BEAM_ANDROID_ARM64_RUNNER: ${{ vars.BEAM_ANDROID_ARM64_RUNNER }}
+        BEAM_IOS_DEVICE_RUNNER: ${{ vars.BEAM_IOS_DEVICE_RUNNER }}
+  build:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_build-target.yml
+    with:
+      target: ${{ matrix.id }}
+      runner: ${{ matrix.runner }}
+      candidate: true
+  acceptance:
+    if: always() && !cancelled() && needs.matrix.result == 'success'
+    needs:
+    - matrix
+    - build
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_test-artifact.yml
+    with:
+      target: ${{ matrix.id }}
+      runner: ${{ matrix.test_runner }}
+      execution_enabled: ${{ matrix.execution_enabled }}
+      extended: true
+  collect:
+    if: always()
+    needs:
+    - matrix
+    - build
+    - acceptance
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        path: ${{ runner.temp }}/downloaded
+    - name: Collect exact candidates and qualification
+      run: |-
+        python release/collect-downloads.py "$RUNNER_TEMP/downloaded" "$RUNNER_TEMP/release"
+        python release/release.py collect --directory "$RUNNER_TEMP/release" --output "$RUNNER_TEMP/release/candidate-manifest.json"
+      shell: bash
+    - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+      with:
+        subject-path: ${{ runner.temp }}/release/*
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: release-candidate
+        path: ${{ runner.temp }}/release/
+        if-no-files-found: warn
+        retention-days: 14
+    - name: Enforce candidate eligibility
+      run: python -c "import json,os; m=json.load(open(os.environ['RUNNER_TEMP']+'/release/candidate-manifest.json'));
+        print(m['blockers']); raise SystemExit(0 if m['eligible'] else 1)"
+      shell: bash

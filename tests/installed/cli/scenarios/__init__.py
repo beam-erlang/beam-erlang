@@ -1,0 +1,1 @@
+"""Reusable installed CLI scenarios."""

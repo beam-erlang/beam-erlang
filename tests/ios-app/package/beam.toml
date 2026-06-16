@@ -1,0 +1,15 @@
+format = 1
+[package]
+name = "acceptance/ios-app"
+version = "1"
+[build]
+sources = ["ios_acceptance.erl", "ios_native.erl"]
+[build.native]
+cmake = "native"
+outputs = ["probe"]
+[build.native.nifs]
+ios_native = "probe"
+[exports]
+resources = ["payload.txt"]
+[host]
+modules = ["erlang", "beam_host", "beam_time"]

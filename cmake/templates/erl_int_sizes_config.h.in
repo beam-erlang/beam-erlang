@@ -61,7 +61,11 @@ typedef long          Sint64;
 #elif SIZEOF_LONG_LONG == 8
 typedef unsigned long long Uint64;
 typedef long long          Sint64;
+#ifdef _MSC_VER
+#define ErtsStrToSint64 _strtoi64
+#else
 #define ErtsStrToSint64 strtoll
+#endif
 #endif
 #define HAVE_INT64 1
 
@@ -80,7 +84,12 @@ typedef long long          Sint64;
  * (SIZEOF_LONG==8) + pristine erl_drv_nif.h logic.
  */
 #ifndef ErlNapiUInt64
-#if SIZEOF_LONG == 8
+#if defined(_MSC_VER)
+typedef unsigned __int64 ErlNapiUInt64;
+typedef signed __int64 ErlNapiSInt64;
+#define ERL_NAPI_SINT64_MAX__ 9223372036854775807i64
+#define ERL_NAPI_SINT64_MIN__ (-ERL_NAPI_SINT64_MAX__ - 1i64)
+#elif SIZEOF_LONG == 8
 typedef unsigned long ErlNapiUInt64;
 typedef signed long   ErlNapiSInt64;
 #define ERL_NAPI_SINT64_MAX__ 9223372036854775807L

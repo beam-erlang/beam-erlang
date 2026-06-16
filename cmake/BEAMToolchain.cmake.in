@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Generated for one immutable SDK slice. DEVELOPER_DIR must select Xcode.
+if(NOT DEFINED ENV{DEVELOPER_DIR} OR "$ENV{DEVELOPER_DIR}" STREQUAL "")
+    message(FATAL_ERROR "Set DEVELOPER_DIR to the selected Xcode Developer directory")
+endif()
+set(CMAKE_SYSTEM_NAME iOS)
+set(CMAKE_SYSTEM_PROCESSOR arm64)
+set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "SDK architecture" FORCE)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "@CMAKE_OSX_DEPLOYMENT_TARGET@" CACHE STRING "SDK minimum" FORCE)
+execute_process(COMMAND /usr/bin/xcrun --sdk @BEAM_CONSUMER_SYSROOT@ --show-sdk-path
+    OUTPUT_VARIABLE _beam_sysroot OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+if(NOT IS_DIRECTORY "${_beam_sysroot}")
+    message(FATAL_ERROR "Selected Xcode has no @BEAM_CONSUMER_SYSROOT@ SDK")
+endif()
+set(CMAKE_OSX_SYSROOT "${_beam_sysroot}" CACHE PATH "Selected Apple SDK" FORCE)
+get_filename_component(_beam_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+set(BEAM_DIR "${_beam_prefix}/lib/cmake/BEAM" CACHE PATH "Selected BEAM target" FORCE)
+set(CMAKE_FIND_ROOT_PATH "${_beam_prefix}" "${_beam_sysroot}")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)

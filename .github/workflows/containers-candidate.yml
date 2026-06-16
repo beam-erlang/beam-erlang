@@ -1,0 +1,104 @@
+name: Container candidate
+'on':
+  pull_request:
+    branches:
+    - master
+    - maint-*
+    paths:
+    - containers/**
+    - .github/workflows/*container*.yml
+    - ci/**
+  schedule:
+  - cron: 37 3 * * 2
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published release tag (empty selects latest stable)
+        required: false
+        type: string
+permissions:
+  contents: read
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Resolve target matrix
+      run: echo "matrix=$(python3 ci/catalog.py matrix --family linux)" >> "$GITHUB_OUTPUT"
+      shell: bash
+      id: matrix
+      env:
+        BEAM_ANDROID_ARM64_RUNNER: ${{ vars.BEAM_ANDROID_ARM64_RUNNER }}
+        BEAM_IOS_DEVICE_RUNNER: ${{ vars.BEAM_IOS_DEVICE_RUNNER }}
+  build:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_build-target.yml
+    with:
+      target: ${{ matrix.id }}
+      runner: ${{ matrix.runner }}
+      candidate: false
+    if: github.event_name == 'pull_request'
+  images:
+    if: always() && needs.matrix.result == 'success' && needs.build.result != 'cancelled'
+    needs:
+    - matrix
+    - build
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_build-container.yml
+    with:
+      target: ${{ matrix.id }}
+      runner: ${{ matrix.runner }}
+      version: ${{ inputs.version || '' }}
+      ci_payload: ${{ github.event_name == 'pull_request' }}
+  collect:
+    needs: images
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: image-*
+        path: ${{ runner.temp }}/images
+    - name: Assemble immutable multiarchitecture OCI indexes
+      run: python containers/images.py collect --inputs "$RUNNER_TEMP/images" --work "$RUNNER_TEMP/candidate"
+      shell: bash
+    - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+      if: github.event_name != 'pull_request'
+      with:
+        subject-path: ${{ runner.temp }}/candidate/*
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: container-candidate
+        path: ${{ runner.temp }}/candidate/
+        if-no-files-found: warn
+        retention-days: 14
+  summary:
+    if: always()
+    needs: [matrix, build, images, collect]
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - run: python3 ci/summarize.py --needs "$RESULTS"
+      env:
+        RESULTS: ${{ toJSON(needs) }}

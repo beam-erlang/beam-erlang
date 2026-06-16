@@ -1,0 +1,150 @@
+#!/usr/bin/env perl 
+#
+# %CopyrightBegin%
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright Ericsson AB 1999-2025. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# %CopyrightEnd%
+#
+use strict;
+use File::Basename;
+
+# This program generates driver_tab.c which holds the driver_tab
+# array.  Since the contents of driver_tab will depend on which
+# drivers we wish to include it has to be generated.
+
+# usage: make_driver_tab [-o filename] drivers...
+
+my $file = "";
+my $nif = "";
+my @emu_drivers = ();
+my @emu_nifs = ();
+my @static_drivers = ();
+my @static_nifs = ();
+my $mode = 1;
+
+while (@ARGV) {
+    my $d = shift;
+    if ( $d =~ /^-o$/ ) {
+	$file = shift or die("-o requires argument");
+	next;
+    }
+    if ( $d =~ /^-nifs$/ ) {
+	$mode = 2;
+	next;
+    }
+    if ( $d =~ /^-drivers$/ ) {
+	$mode = 1;
+	next;
+    }
+    if ( $d =~ /^(.*\.a)(:[A-Za-z_][A-Za-z0-9_]*)+$/ ) {
+        # Only implemented for NIFs
+        if ($mode != 2) {
+            next;
+        }
+
+        my @nifs = split(/:/, $2);
+        shift(@nifs);
+
+        foreach my $nif_symbol ( @nifs ) {
+            push(@static_nifs, $nif_symbol)
+        }
+        next;
+    }
+    elsif ( $d =~ /\.a$/ ) {
+	$d = basename $d;
+	$d =~ s/\.a$//;	# strip .a
+	$d =~ s/\.gprof$//;	# strip .gprof
+	if ($mode == 1) {
+	    push(@static_drivers, $d);
+	}
+	if ($mode == 2) {
+	    push(@static_nifs, $d);
+	}
+	next;
+    } elsif ($mode == 2) {
+        $d = basename $d;
+        $d =~ s/_nif(\..*|)$//; # strip nif.* or just nif
+        push(@emu_nifs, $d);
+        next;
+    }
+    $d = basename $d;
+    $d =~ s/drv(\..*|)$//;	# strip drv.* or just drv
+    push(@emu_drivers, $d);
+}
+
+# Did we want output to a file?
+if ( $file ) {
+    open(STDOUT, ">$file") or die("can't open $file for writing");
+}
+
+print <<EOF;
+#ifdef HAVE_CONFIG_H
+#  include "config.h"
+#endif /* HAVE_CONFIG_H */
+#include <stdio.h>
+#include "global.h"
+
+
+EOF
+
+# Static entries are explicit VM build inputs, independent of host policy.
+print "#include \"erl_alloc.h\"\n";
+foreach (@emu_drivers) { print "extern ErlDrvEntry ${_}driver_entry;\n"; }
+foreach (@static_drivers) { print "ErlDrvEntry *${_}_driver_init(void);\n"; }
+print "const ErtsStaticDriverSpec erts_static_driver_specs[] = {\n";
+foreach (@emu_drivers) { print "    {&${_}driver_entry, NULL, 0},\n"; }
+foreach (@static_drivers) { print "    {NULL, &${_}_driver_init, 1},\n"; }
+print "    {NULL, NULL, 0}\n};\n";
+foreach (@emu_nifs, @static_nifs) {
+    my $name = $_;
+    $name =~ s/\.debug//;
+    print "void *${name}_nif_init(void);\n";
+}
+print "const ErtsStaticNifSpec erts_static_nif_specs[] = {\n";
+foreach (@emu_nifs) {
+    my $name = $_;
+    $name =~ s/\.debug//;
+    print "    {&${name}_nif_init, 0},\n";
+}
+foreach (@static_nifs) {
+    my $name = $_;
+    $name =~ s/\.debug//;
+    print "    {&${name}_nif_init, 1},\n";
+}
+print "    {NULL, 0}\n};\n";
+print <<'EOF';
+/* Resolve archive-driver entry points at the existing VM IO-init phase. The
+ * immutable specifications never retain VM lookup state. */
+ErtsStaticDriver *erts_init_static_drivers(void)
+{
+    const ErtsStaticDriverSpec *spec = erts_static_driver_specs;
+    ErtsStaticDriver *drivers;
+    size_t count = 0, i;
+
+    while (spec[count].de || spec[count].driver_init)
+        count++;
+    drivers = erts_alloc(ERTS_ALC_T_TMP, (count + 1) * sizeof(*drivers));
+    for (i = 0; i < count; i++) {
+        drivers[i].de = spec[i].driver_init ? spec[i].driver_init() : spec[i].de;
+        drivers[i].taint = spec[i].taint;
+    }
+    drivers[count].de = NULL;
+    drivers[count].taint = 0;
+    return drivers;
+}
+EOF

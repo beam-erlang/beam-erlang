@@ -1,0 +1,19 @@
+prefix=${pcfiledir}/../..
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+build_id=@BEAM_COMPONENT_BUILD_ID@
+flavor=@ERTS_BUILD_FLAVOR@
+target_triple=@ERTS_HOST_TRIPLE@
+sdk_metadata=${prefix}/lib/beam/sdk.toml
+target_metadata=${prefix}/lib/beam/target.toml
+artifact_catalog=${prefix}/lib/beam/runtime-artifacts.json
+
+Name: BEAM/Erlang
+Description: BEAM runtime C API (shared linkage)
+Version: @BEAM_RELEASE_VERSION@
+URL: https://beam.erlangsters.org
+# pcfiledir already escapes spaces for fragment expansion; quoting again would
+# preserve those escape characters as literal parts of the compiler paths.
+Libs: -L${libdir} -lbeam
+Cflags: -I${includedir}

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "pkgconf": {
+    "python_package": "3.0.7.post0"
+  },
+  "android": {
+    "ndk": "28.2.13676358",
+    "api": 36,
+    "build_tools": "36.0.0",
+    "system_images": [
+      "system-images;android-35;google_apis;x86_64",
+      "system-images;android-35;google_apis;arm64-v8a",
+      "system-images;android-35;google_apis_ps16k;arm64-v8a",
+      "system-images;android-35;google_apis_ps16k;x86_64",
+      "system-images;android-26;google_apis;x86_64",
+      "system-images;android-36;google_apis;arm64-v8a",
+      "system-images;android-36;google_apis;x86_64"
+    ],
+    "minimum_api": 26,
+    "gradle": "8.13",
+    "android_gradle_plugin": "8.13.0",
+    "java": 17,
+    "bundletool": "1.18.2"
+  },
+  "msys2": {
+    "release": "2025-06-22",
+    "archive": "msys2-base-x86_64-20250622.tar.xz"
+  },
+  "apple": {
+    "runner": "macos-15",
+    "deployment": "15.0"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "repository": "beam-erlang/beam-erlang",
+  "candidate_workflow": ".github/workflows/release-candidate.yml",
+  "publication_workflow": ".github/workflows/release-publish.yml",
+  "release_owners": [],
+  "recovery_owners": [],
+  "promotion_enabled": false,
+  "blockers": [
+    "Mandatory OTP compatibility and strict-coverage failures remain unresolved.",
+    "The release repository is private; review public release hosting and repository visibility before publication."
+  ],
+  "environment": "release",
+  "lines": {
+    "master": {
+      "erts_major": "17",
+      "channels": [
+        "preview"
+      ],
+      "upstream_line": "maint-29"
+    },
+    "maint-17": {
+      "erts_major": "17",
+      "channels": [
+        "preview",
+        "stable"
+      ],
+      "upstream_line": "maint-29"
+    }
+  },
+  "targets": [
+    "linux-debian13-amd64-gcc-emu",
+    "linux-debian13-amd64-gcc-jit",
+    "linux-debian13-arm64-gcc-emu",
+    "linux-debian13-arm64-gcc-jit",
+    "linux-alpine3.24-amd64-gcc-emu",
+    "linux-alpine3.24-amd64-gcc-jit",
+    "linux-alpine3.24-arm64-gcc-emu",
+    "linux-alpine3.24-arm64-gcc-jit",
+    "windows-amd64-msvc-emu",
+    "windows-amd64-msvc-jit",
+    "windows-amd64-ucrt64-emu",
+    "windows-amd64-ucrt64-jit",
+    "windows-amd64-clang64-emu",
+    "windows-amd64-clang64-jit",
+    "windows-arm64-msvc-emu",
+    "windows-arm64-msvc-jit",
+    "windows-arm64-clangarm64-emu",
+    "windows-arm64-clangarm64-jit",
+    "macos-arm64-appleclang-emu",
+    "macos-arm64-appleclang-jit",
+    "android-arm64-ndk-emu-linux",
+    "android-arm64-ndk-jit-linux",
+    "android-amd64-ndk-emu-linux",
+    "android-amd64-ndk-jit-linux",
+    "ios-device-arm64-emu",
+    "ios-simulator-arm64-emu"
+  ],
+  "integration_targets": [
+    "android-arm64-ndk-emu-windows",
+    "android-arm64-ndk-jit-windows",
+    "android-amd64-ndk-emu-windows",
+    "android-amd64-ndk-jit-windows",
+    "android-arm64-ndk-emu-macos",
+    "android-arm64-ndk-jit-macos",
+    "android-amd64-ndk-emu-macos",
+    "android-amd64-ndk-jit-macos",
+    "linux-ubuntu24.04-amd64-gcc-emu",
+    "linux-ubuntu24.04-amd64-gcc-jit"
+  ]
+}

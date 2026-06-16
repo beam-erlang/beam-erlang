@@ -1,0 +1,9 @@
+{
+  "upstream_commit": "550d7b7898706c7822362c42e7b93120c1d1f29a",
+  "files": {
+    "../support/ts_install_cth.erl": {
+      "source": "lib/common_test/test_server/ts_install_cth.erl",
+      "sha256": "72ffadc4c6e67cbaf44e5f5afc5bd9a4aebbcdbc8f8e3a5081e5d8843bd8497a"
+    }
+  }
+}

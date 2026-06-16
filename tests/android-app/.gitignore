@@ -1,0 +1,9 @@
+/.gradle/
+/.kotlin/
+/build/
+/app/build/
+/app/.cxx/
+/local.properties
+/package/build/
+/package/.beam/
+/package/beam.lock

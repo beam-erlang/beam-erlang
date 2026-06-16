@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.25)
+project(android_acceptance_native LANGUAGES C)
+find_package(BEAM CONFIG REQUIRED COMPONENTS NIF)
+add_library(probe STATIC probe.c)
+beam_target_nif(probe MODULE android_native)
+beam_package_native_output(probe NAME probe)
+
+add_library(shared_probe SHARED shared_probe.c)
+beam_target_nif(shared_probe MODULE android_shared)
+beam_package_native_output(shared_probe NAME shared_probe)

@@ -1,0 +1,12 @@
+include("${CMAKE_CURRENT_LIST_DIR}/Darwin.cmake")
+set(BEAM_PLATFORM_TRIPLE apple-ios)
+set(BEAM_HAS_CHILD_SETUP OFF)
+set(BEAM_APPLE_FRAMEWORKS ON)
+string(TOLOWER "${CMAKE_OSX_SYSROOT}" _ios_sysroot)
+if(_ios_sysroot MATCHES "simulator")
+    set(BEAM_APPLE_VARIANT simulator)
+else()
+    set(BEAM_APPLE_VARIANT device)
+endif()
+
+list(APPEND BEAM_PLATFORM_DEFINITIONS __IOS__)

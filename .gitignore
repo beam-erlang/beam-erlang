@@ -1,0 +1,30 @@
+# Build trees and development installs (CMake presets: build/<preset>/, install/<preset>/)
+/build/
+/build-*/
+/install/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+.ninja_deps
+.ninja_log
+build.ninja
+CMakeUserPresets.json
+
+# Editors / OS
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.user
+
+# Crash dumps
+erl_crash.dump
+
+# Python test-runner caches
+__pycache__/
+*.py[cod]

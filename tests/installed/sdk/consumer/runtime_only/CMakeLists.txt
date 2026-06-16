@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.25)
+project(runtime_sdk_only LANGUAGES C)
+
+if(REQUIRE_CLI)
+    find_package(BEAM CONFIG REQUIRED COMPONENTS CLI)
+else()
+    find_package(BEAM CONFIG REQUIRED COMPONENTS Runtime NIF Driver)
+    if(TARGET BEAM::CLI)
+        message(FATAL_ERROR "Runtime-only installation unexpectedly exports a CLI")
+    endif()
+endif()
+add_executable(runtime_sdk_only main.c)
+target_link_libraries(runtime_sdk_only PRIVATE BEAM::Runtime BEAM::NIF BEAM::Driver)

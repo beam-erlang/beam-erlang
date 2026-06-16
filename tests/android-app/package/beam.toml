@@ -1,0 +1,16 @@
+format = 1
+[package]
+name = "acceptance/android-app"
+version = "1"
+[build]
+sources = ["android_acceptance.erl", "android_native.erl", "android_shared.erl"]
+[build.native]
+cmake = "native"
+outputs = ["probe", "shared_probe"]
+[build.native.nifs]
+android_native = "probe"
+android_shared = "shared_probe"
+[exports]
+resources = ["payload.txt"]
+[host]
+modules = ["erlang", "beam_host", "beam_time"]

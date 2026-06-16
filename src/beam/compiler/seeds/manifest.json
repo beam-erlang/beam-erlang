@@ -1,0 +1,1696 @@
+{
+  "format": 1,
+  "options": [
+    "deterministic"
+  ],
+  "modules": [
+    {
+      "name": "beam_a",
+      "sha256": "347972be202a6fd8c9ba897c6c23054b65a12f65cb9475a270c2e2c744fd49df",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_a.erl"
+      }
+    },
+    {
+      "name": "beam_asm",
+      "sha256": "740a2bf36060dc4080e3eb1a98a904f2e65012e8be1685e598a960cb0b785e90",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_asm.erl"
+      }
+    },
+    {
+      "name": "beam_block",
+      "sha256": "81a528e03745aff937f47ce789e7057ca2f1f0c387599b70f58bd9b83e9d4f5f",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_block.erl"
+      }
+    },
+    {
+      "name": "beam_bounds",
+      "sha256": "bd1c2651149893e7f476f153bad3deee208404b01cf3ccb810d0eaa551de2eaa",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_bounds.erl"
+      }
+    },
+    {
+      "name": "beam_call_types",
+      "sha256": "b00d410a20f3bc955ac40034ee7040fbdbe698f60dc66867456d6e1e6c2256b3",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_call_types.erl"
+      }
+    },
+    {
+      "name": "beam_clean",
+      "sha256": "0b98cc9bf99373a508f6b707a995a249f8174d350745b4cf33c3ca79a382f3a0",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_clean.erl"
+      }
+    },
+    {
+      "name": "beam_core_to_ssa",
+      "sha256": "3a33a673ae2408541e4257c870b273fbdf21375697b16b1dd0dfa21d3dcfc71a",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_core_to_ssa.erl"
+      }
+    },
+    {
+      "name": "beam_dict",
+      "sha256": "ddac0ed3ae786eaa99615b6f7164e8c3968262b160d4d00e248fdb3c86c308ac",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_dict.erl"
+      }
+    },
+    {
+      "name": "beam_disasm",
+      "sha256": "43badd6cb6b187cd15ba27a170f8cb7ff0c72717bea2c0962fcaf13447e56091",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_disasm.erl"
+      }
+    },
+    {
+      "name": "beam_doc",
+      "sha256": "538e2392e034c6dc38da4a16f3f584cb09d7718ba27d5cdc4bca100b67d2d940",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_doc.erl"
+      }
+    },
+    {
+      "name": "beam_flatten",
+      "sha256": "535ce1a6cde283b9428a8291e659b04339afff2feb1a22adf1a4af22bc57459d",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_flatten.erl"
+      }
+    },
+    {
+      "name": "beam_jump",
+      "sha256": "09c80922980e7b98d8998aa5edc77dd70722a3f4fbd52f360778c57d2c9a8910",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_jump.erl"
+      }
+    },
+    {
+      "name": "beam_listing",
+      "sha256": "aec4e39dbb7dbb7592db96cb7df3c3eac9ba116b3a4d7fe3d8fbeb212a683ecb",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_listing.erl"
+      }
+    },
+    {
+      "name": "beam_ssa",
+      "sha256": "1458640298aab1c612602cefedec4b0161faaea7c28e2dd688cb00c465c20f97",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_alias",
+      "sha256": "85f8b62a03c0e5174d8be996d3bd966d948967ca7ac1a1b9de19ddbc4da74708",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_alias.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_bc_size",
+      "sha256": "6c790421cbc2917ded13ef65b7296752c01bbeb3c347c40985f059d5a8f30ec1",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_bc_size.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_bool",
+      "sha256": "4963a4d532453e886073b7c78dee7b02bbf4f48d1908c6eecaa35105938e9071",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_bool.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_bsm",
+      "sha256": "861c17a503f7a4e5770e0ab09620c0151e6de1d0a68976b61cafa31cb2980d74",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_bsm.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_check",
+      "sha256": "5a1532692abec682f9590c177123e29b54a6347025b47c1f929ed49f38aadb3c",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_check.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_codegen",
+      "sha256": "304958cfae626ca73400f5e303a2dd6ab2d178169fa82fec9c6b26a1de5d3c55",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_codegen.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_dead",
+      "sha256": "5034a3570df89f5a7618d4f2e7f142048116ad95856b9ae435267392550159a4",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_dead.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_destructive_update",
+      "sha256": "398e222092dde60a41a1e3bc876679c5b9f7d1ee9c35e1ac1aaaca4bacc44c15",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_destructive_update.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_lint",
+      "sha256": "6d97676534f45e32efaf4e909d0c7c39d1b13f5cbe8d132b8f31179763187d09",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_lint.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_opt",
+      "sha256": "ed4e1c99005ab2d4761028be6d008c46f680524dea561486ae7c5151c2b3bd3b",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_opt.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_pp",
+      "sha256": "32a9c0b8d991e0576370c56bf600fcff4d90b105a66f5249e17c8fa6dd544398",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_pp.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_pre_codegen",
+      "sha256": "6e20dab0f37b0e0f3cf4456a8776fecdca5d584c18066bbd68f60a42f876adcf",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_pre_codegen.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_recv",
+      "sha256": "7c3f848c16fb5be72ff16ccf6d341ab40713bfe1a162361186ba09047f201673",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_recv.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_share",
+      "sha256": "86ec842b7be7d9db3b92b42bfd41be547abbc43250e69dad4c92913759271fe4",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_share.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_ss",
+      "sha256": "1852e38ae111609b00e4f3e9d83d4bbf9f5b3ce1b9c6593df454905380e4a3ef",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_ss.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_throw",
+      "sha256": "2f4d760e8e67f9a95382c7d5418a750801b1b098378f825610a52f1e25654a14",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_throw.erl"
+      }
+    },
+    {
+      "name": "beam_ssa_type",
+      "sha256": "c3bbc04503d962db8e3360214a7952ea2e7e1dae3617eda132c6e82f41631804",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_ssa_type.erl"
+      }
+    },
+    {
+      "name": "beam_trim",
+      "sha256": "ae31ae5bce66c6a360c2814814329c808a393d11939006b564da0eaebd1b2613",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_trim.erl"
+      }
+    },
+    {
+      "name": "beam_types",
+      "sha256": "983df89a126f7b668a467b9cca3c1993ac015d1f3ae5992174aff0e12c97de77",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_types.erl"
+      }
+    },
+    {
+      "name": "beam_utils",
+      "sha256": "f92c2eb2585dd24a91c067b3d3596a23129e87b5974bf42c8f56834852fe3e2c",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_utils.erl"
+      }
+    },
+    {
+      "name": "beam_validator",
+      "sha256": "1fc12178ec336c9915a0bc93d240709288b13b8756138556def5e82aa44d30a0",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_validator.erl"
+      }
+    },
+    {
+      "name": "beam_z",
+      "sha256": "b7733f85aeef17098c54de04c711d212346fa7c89e6521533289512f67c111bd",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/beam_z.erl"
+      }
+    },
+    {
+      "name": "cerl",
+      "sha256": "7c47c54d3b8d19f8e6764f829b8f93ddd65f65304274b292e051ad632b784cf0",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/cerl.erl"
+      }
+    },
+    {
+      "name": "cerl_clauses",
+      "sha256": "a21fe225f947a788c5aa20d015c2287a934836adfec3825e3faa9d516c3f79ae",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/cerl_clauses.erl"
+      }
+    },
+    {
+      "name": "cerl_inline",
+      "sha256": "9d3ab5450532c00d372f2fcbc774710f06170119b7d09a05583fc7fb6fc44616",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/cerl_inline.erl"
+      }
+    },
+    {
+      "name": "cerl_trees",
+      "sha256": "144d95978847a3d614b63bdae3bba01fd4ab5facd22dbf1bb161a7b62d338614",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/cerl_trees.erl"
+      }
+    },
+    {
+      "name": "compile",
+      "sha256": "a9f1282a6e8e0c2c3bc27f41446d42c7a412270c0ae30d5b23ce183ac8fdf1c4",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/compile.erl"
+      }
+    },
+    {
+      "name": "core_lib",
+      "sha256": "942647da6d54394993c537522f3173a535696b03da2fdf9a4c3f577ccdd4758c",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/core_lib.erl"
+      }
+    },
+    {
+      "name": "core_lint",
+      "sha256": "e4b81214731e4a1fdf812b388d00e12233b79db78e85f3b3fede3088fc821939",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/core_lint.erl"
+      }
+    },
+    {
+      "name": "core_pp",
+      "sha256": "0153e3b7825a57957e520951ddb01d627750e103afbddb603a4529d62c85b51e",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/core_pp.erl"
+      }
+    },
+    {
+      "name": "core_scan",
+      "sha256": "fb5c47d66ea44dd45437993cfaccb1312e8d0286fb4184a8e81ee73fc59e65e7",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/core_scan.erl"
+      }
+    },
+    {
+      "name": "erl_bifs",
+      "sha256": "7a4ad6b9c1a5c5537ea0f73b397249387d909946580a69f71f0a7021ad6e3970",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/erl_bifs.erl"
+      }
+    },
+    {
+      "name": "rec_env",
+      "sha256": "948f5ce208980645ac94329fc380e9be6db76edeb81648d1d6fd00a638e0917e",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/rec_env.erl"
+      }
+    },
+    {
+      "name": "sys_core_alias",
+      "sha256": "cbeed3592e9bb9eeb81df2b4efc1526b6ed0d86ae48821b911adb593f3c64576",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_core_alias.erl"
+      }
+    },
+    {
+      "name": "sys_core_bsm",
+      "sha256": "983e729f587e901e513f5dc33368cd88ed44f20e9197e05ac103b0135ea5ea88",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_core_bsm.erl"
+      }
+    },
+    {
+      "name": "sys_core_fold",
+      "sha256": "8d42f4e682539d9ec4352c46f69c993666527aa250e3b2f1709d1b961abeac23",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_core_fold.erl"
+      }
+    },
+    {
+      "name": "sys_core_fold_lists",
+      "sha256": "fcf9247311e73e7393ea6ec16bf0d81e427279aeafb07a975c052cf79c2c80dd",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_core_fold_lists.erl"
+      }
+    },
+    {
+      "name": "sys_core_inline",
+      "sha256": "140e2868ac7d40b50f5883e7b63d862c0ca7e7b65eff8dc4c11ef0f3b6563f7b",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_core_inline.erl"
+      }
+    },
+    {
+      "name": "sys_core_prepare",
+      "sha256": "1e5d6d2b8e24b6c929ecb2daa86682fe7acc829f3d98a86e03762a63e5900d36",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_core_prepare.erl"
+      }
+    },
+    {
+      "name": "sys_coverage",
+      "sha256": "708efabe4461c2432dac196979fd704af6c0f05e3e120a7bade0977cebeb3825",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_coverage.erl"
+      }
+    },
+    {
+      "name": "sys_messages",
+      "sha256": "3bdf23294b6d62b7c8c69ccd29819363ee063a868abbfd8f2db2f17473ae679e",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_messages.erl"
+      }
+    },
+    {
+      "name": "sys_pre_attributes",
+      "sha256": "194c999689020d73209bca0b9484a1594218425da3e0ac80f19ea3e85b6df359",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/sys_pre_attributes.erl"
+      }
+    },
+    {
+      "name": "v3_core",
+      "sha256": "767aae7171586f9546fac23b4d522edac56d7996213064bcea7562e3217b6468",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/passes/v3_core.erl"
+      }
+    },
+    {
+      "name": "epp",
+      "sha256": "970f7660b3066617702a3f560f334c9cb4c1ec1bdc7834789d407f1c0a8594c6",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/frontend/epp.erl"
+      }
+    },
+    {
+      "name": "erl_expand_records",
+      "sha256": "5bc023f9e8a931d4810d65308e1b2641558ccf99ccb9839c8c4603b939011111",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/frontend/erl_expand_records.erl"
+      }
+    },
+    {
+      "name": "erl_features",
+      "sha256": "324f759ab7d6e137a661988d3c6f9f40ba3044f9eb082b34bbf86caef2e253bf",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/frontend/erl_features.erl"
+      }
+    },
+    {
+      "name": "erl_lint",
+      "sha256": "b1d35039bba03ce7556ff8ab599bffbdf08f963e0854b84e40b99ce64ab125d6",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/frontend/erl_lint.erl"
+      }
+    },
+    {
+      "name": "beam_compiler_host",
+      "sha256": "13bc7a94ac3ddb7378f2651ea92653849cc2d7da59cfa7aa1bb0fe0171107605",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/host/beam_compiler_host.erl"
+      }
+    },
+    {
+      "name": "code",
+      "sha256": "57ed4069d66f7dd4505daa7c48aaf91a62dc539ed123bc8939f0c4b5a6c88edd",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/host/code.erl"
+      }
+    },
+    {
+      "name": "error_handler",
+      "sha256": "157bc80323c25081b4f32b06852a51752e3cb36cf4dcd2b7db6e38ce174810a8",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/host/error_handler.erl"
+      }
+    },
+    {
+      "name": "file",
+      "sha256": "36b384a24a7bf15fd37520ee624f2e812cb4276ad5fcb76d77b8afbd0898657f",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/host/file.erl"
+      }
+    },
+    {
+      "name": "init",
+      "sha256": "ba95fe2bddb72748ec81a9e0033b016e50fcc956b649bb7448301c43cc1b79a0",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/host/init.erl"
+      }
+    },
+    {
+      "name": "io",
+      "sha256": "425e83189eb95bc721c7276cc25f1a32306650bd6689db3204d3d05c6b046b03",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/host/io.erl"
+      }
+    },
+    {
+      "name": "os",
+      "sha256": "e968a7998a1d57c142eabbf2402795b6551c38e39ad59026f5d2cb5921f90904",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/host/os.erl"
+      }
+    },
+    {
+      "name": "beam_compiler_engine",
+      "sha256": "5ca12bac1c8745059625461d6458c9b0df7f6252fdcf98dcf197164e7ccda00a",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/beam_compiler_engine.erl"
+      }
+    },
+    {
+      "name": "beam_compiler_cli",
+      "sha256": "719698e6ac918e9be65b8c0e28bc9dc0ecd147b7ce2d81905db1915cd6835790",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/compiler/beam_compiler_cli.erl"
+      }
+    },
+    {
+      "name": "beam_opcodes",
+      "sha256": "33edca055a0c00fc7fa2d63e99ab25424a250ebdcf07a7befb1aa2363efe4eb6",
+      "source": {
+        "scope": "generated",
+        "path": "beam_opcodes.erl"
+      }
+    },
+    {
+      "name": "array",
+      "sha256": "b5d3b21db6329cec9780a16d4964d07e647e3e1a9291d30c8961e565ecfa6619",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/array.erl"
+      }
+    },
+    {
+      "name": "beam_lib",
+      "sha256": "fc05484e43a07d1e8b167f7985097dea1bf51f75bfc281ce68b3d7be8299c6da",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/beam_lib.erl"
+      }
+    },
+    {
+      "name": "binary",
+      "sha256": "8602141da38be59bbcdc6b4dc3661565e6220b1440caed1e9fc3e99042500124",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/binary.erl"
+      }
+    },
+    {
+      "name": "dict",
+      "sha256": "0d23c2ab41b0e3fd5d6ee64c75ca7e3dbf51185934dabee71d6d0eff4c900a61",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/dict.erl"
+      }
+    },
+    {
+      "name": "digraph",
+      "sha256": "e735e0a2dc868e36280a3f1a897e91a9755766b694e219c378ff96bc9388012b",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/digraph.erl"
+      }
+    },
+    {
+      "name": "digraph_utils",
+      "sha256": "55652990e0c1aafc7a48579e44c62c960368c3fb2617eeaf0567f0a4971d041e",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/digraph_utils.erl"
+      }
+    },
+    {
+      "name": "erl_abstract_code",
+      "sha256": "430f9e67c9e76f0ba5ce3e0bbb34b469dbe185c132ec486cf4745ddf71e4e094",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_abstract_code.erl"
+      }
+    },
+    {
+      "name": "erl_anno",
+      "sha256": "f76b86502f2d2ff78d558ca50da0396b8b60386fc49754c9d34adf4862743d67",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_anno.erl"
+      }
+    },
+    {
+      "name": "erl_bits",
+      "sha256": "a6418d393747f69b57c53e7653343fef09282d5d7844d2619b1d5c99e86974f9",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_bits.erl"
+      }
+    },
+    {
+      "name": "erl_error",
+      "sha256": "ff66213d954968d6b6369a3555f90b544ea7e489ac3ddbdd416eae3651ff2648",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_error.erl"
+      }
+    },
+    {
+      "name": "erl_eval",
+      "sha256": "a1f153d1a6b4c9e1faeb5079f3aaf653ce9a4b25743c689c8d23dfd823d6a298",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_eval.erl"
+      }
+    },
+    {
+      "name": "erl_internal",
+      "sha256": "613dba1ce50122ae3740e7bd2f8f47a1da4b789ab59d48ab59bf1fdc4d0ea80e",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_internal.erl"
+      }
+    },
+    {
+      "name": "erl_parse",
+      "sha256": "fd551cbd4fd20fcec25cfdd02a392702bfaed0a93c4b88268d1c33640b47a1a0",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_parse.erl"
+      }
+    },
+    {
+      "name": "erl_posix_msg",
+      "sha256": "5a7e48ff755dff1f4ba9278d5c549df870b6a501c03341f2727c442e2f03e6d3",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_posix_msg.erl"
+      }
+    },
+    {
+      "name": "erl_pp",
+      "sha256": "93d77446134dc22e28d91242d33e3c03744000500401f660627b1e5560e6fd1d",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_pp.erl"
+      }
+    },
+    {
+      "name": "erl_scan",
+      "sha256": "986713bdb52c8e0a2857cb0310ca9256c6c68e6b724d60abbdb02857adda54a9",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_scan.erl"
+      }
+    },
+    {
+      "name": "erl_stdlib_errors",
+      "sha256": "723c53020d722c3238eac6f5ac7b34357880ecd68147823c894de8e7aa8aa13a",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/erl_stdlib_errors.erl"
+      }
+    },
+    {
+      "name": "ets",
+      "sha256": "716e0ab681b76b5f181e352d3f28b376f4306c4ffdd9da5faa2708eeacfeb8a7",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/ets.erl"
+      }
+    },
+    {
+      "name": "eval_bits",
+      "sha256": "1ada7d892eb55314e74f93081e64afef25c7ac1677ba42d19cf791d407e2eb2a",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/eval_bits.erl"
+      }
+    },
+    {
+      "name": "filelib",
+      "sha256": "e8f2facf15c47c5dc4a32850ffac24036c800242167cec8799ea629836afbdfe",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/filelib.erl"
+      }
+    },
+    {
+      "name": "filename",
+      "sha256": "d5dff12bb460848d574ea4df2854861b02122d8c99159ab23f80a0279cef507b",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/filename.erl"
+      }
+    },
+    {
+      "name": "gb_sets",
+      "sha256": "090c9b755ef776802c6ada540f6e70fb2a184382da7e3426e71f43fe44fdac80",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/gb_sets.erl"
+      }
+    },
+    {
+      "name": "gb_trees",
+      "sha256": "4046f55f63122db4d1137a19859d4e74974ac56d4d3f1482a9deaf64dde38d2a",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/gb_trees.erl"
+      }
+    },
+    {
+      "name": "graph",
+      "sha256": "2921ab1660a7b8a4573266e49246d81363a67c294a14644aef8058ecaa332073",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/graph.erl"
+      }
+    },
+    {
+      "name": "io_lib",
+      "sha256": "2eb0c7aa6577ed787f21adbd67704a741d10f223f2a10b34472d8fa722afc0aa",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/io_lib.erl"
+      }
+    },
+    {
+      "name": "io_lib_format",
+      "sha256": "aa2dbb21080800065511f0858bcf6101a1c8359bcd88dd76b19055bbe70ca7b3",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/io_lib_format.erl"
+      }
+    },
+    {
+      "name": "io_lib_fread",
+      "sha256": "0182f0e615a30b76d9dc48de2de0ef9b8a78d2a3b2e812b12abb9cc55c971c17",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/io_lib_fread.erl"
+      }
+    },
+    {
+      "name": "io_lib_pretty",
+      "sha256": "e5768544f0ef31d0cb7332c22227d3854b4937bd83ccefa628ea56e8e61b248c",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/io_lib_pretty.erl"
+      }
+    },
+    {
+      "name": "lists",
+      "sha256": "09a1e7a1a4c46de74499711d401d5844c0269b90cfb0ba809d5273c624d68a97",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/lists.erl"
+      }
+    },
+    {
+      "name": "maps",
+      "sha256": "d913d288a1f5e6406468bd25e7407fd17a3724bd69106bb84655f59a8ef176be",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/maps.erl"
+      }
+    },
+    {
+      "name": "orddict",
+      "sha256": "51cb03becea179faf3319bb583a2fe00672a2814995820b3891d81f72d600459",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/orddict.erl"
+      }
+    },
+    {
+      "name": "ordsets",
+      "sha256": "71100732b1662db4286947629e94b664e0ff34639d5efba9bbe367f3cf02c675",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/ordsets.erl"
+      }
+    },
+    {
+      "name": "otp_internal",
+      "sha256": "12177ceb8763442b5a433a3a3cf7394910b82c1131c8bb19eeb444401c4a18e7",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/otp_internal.erl"
+      }
+    },
+    {
+      "name": "proplists",
+      "sha256": "704cef97a3740455d24cde1e01cc2ff96129e3c1cb27ec6fc3236b11ef658a89",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/proplists.erl"
+      }
+    },
+    {
+      "name": "queue",
+      "sha256": "df1d264b36ccfc3d8cca5b0bf13d3aad54ff781195b93145f23af2d55f04dbb4",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/queue.erl"
+      }
+    },
+    {
+      "name": "sets",
+      "sha256": "266824526dbc57a8e5bc9ff4cb6936fae92a6bd477dba396922f298b76a40548",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/sets.erl"
+      }
+    },
+    {
+      "name": "sofs",
+      "sha256": "ff9658886bd89e289365eb9a257beafb8e7ed84f8076c31d235f169bcd460655",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/sofs.erl"
+      }
+    },
+    {
+      "name": "string",
+      "sha256": "caeb20ceb6101456f4b4b89dfa7b59a74193b946a6e2a74b38c546373e19444d",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/string.erl"
+      }
+    },
+    {
+      "name": "unicode",
+      "sha256": "147ae33cce43685b788ca5c6eb88bac39c2f65efaa852adcdb3561fca59ff3ac",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/unicode.erl"
+      }
+    },
+    {
+      "name": "unicode_util",
+      "sha256": "906d1b57c9220cb944e60814a8294e43a16412b977fe570731dd7a1b4258a9c0",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/support/src/unicode_util.erl"
+      }
+    },
+    {
+      "name": "beam_host",
+      "sha256": "babaab0e6037237609aac6a92d25b259f065d87cdcfa5c2dd87421ba3cda1b27",
+      "source": {
+        "scope": "source",
+        "path": "src/beam/services/beam_host.erl"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "scope": "source",
+      "path": "src/erts/emulator/utils/beam_makeops",
+      "sha256": "56c159076e94975a78f691eef939af24de5f41daae105117d4cfc5dead632123"
+    },
+    {
+      "scope": "source",
+      "path": "src/lib/compiler/src/genop.tab",
+      "sha256": "79cf0ee1df79f0b50f5055338cbf4ee238115c12db862de89f7fca0c5309b017"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/beam_compiler_cli.erl",
+      "sha256": "a68fbb16c7c9dce1665f86878c866e8e95e9113abdce204d1a2f764a7810ae52"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/beam_compiler_engine.erl",
+      "sha256": "a45f81a5ea897e3053b4d3d2fdbe883a50296533aff9771dc5b87a8ccad16a7d"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/frontend/epp.erl",
+      "sha256": "bdafe301d4ba4688cff110f31be9737af86bbf4fff299ca06361eddd8eda7584"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/frontend/erl_expand_records.erl",
+      "sha256": "19e576259c5f48c7aef73ab3745064c7c59532a38ca9447ca7fdabffaa8d3743"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/frontend/erl_features.erl",
+      "sha256": "b5e143b5caddec35cbfbd5034515a4aaf813678e1d381f4b256e564a7a68a9b2"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/frontend/erl_lint.erl",
+      "sha256": "8fe991b3eec9a3262dc2fad5a734986c49fa4926614478ee24b6b3e266ef19bd"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/host/beam_compiler_host.erl",
+      "sha256": "08abf4ace51ea5e93dae5ae38af61756ff1947f98088fe1e52e95963bc752d27"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/host/code.erl",
+      "sha256": "02c097757f49febd458d600363e93b4ee25fe1f2365eb080810364511bbba751"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/host/error_handler.erl",
+      "sha256": "b6267be9c697de83b72f5800f34d4fc020e22409a93d25b1eaea9877a9a1a6a0"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/host/file.erl",
+      "sha256": "eff22efb220cc5196aa0aadd9f0d2803470f093ba238fca1973b18f06cc100f6"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/host/init.erl",
+      "sha256": "017b067b1f2a7cc7bdbe51e2826b996ad9aa58568ee2c454d17e9568d47a19c3"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/host/io.erl",
+      "sha256": "158b75fec9f3d0486a132ff0d097612b07098371296fa19817ba4f1695e508f8"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/host/os.erl",
+      "sha256": "6095921dc37f35d5e55b3c3527f8d27cb0dccf55eae999fdfe81edcb31b2aa5a"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_a.erl",
+      "sha256": "9ef25cb2cd097861e9728e020541ca3641f567b95cfa0ff0cc48c8281cbb8919"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_asm.erl",
+      "sha256": "ec18be59cbd9650059835d0ba36742db276caf81b5fdd55af2ffea9e443e974e"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_asm.hrl",
+      "sha256": "5757e9f9caaa1df26f463a72ea9c386d13117fbf510c3b40f9fbabbea3055eae"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_block.erl",
+      "sha256": "c0567fb42ee43aa76051d265ed0ce485539fa42ae0195ea6b0861da3ccb21a89"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_bounds.erl",
+      "sha256": "2eea3cb83aff05d23d2c841e798b0f6c3b8f376b5edccfe6bffea735f89e8696"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_call_types.erl",
+      "sha256": "aba05b8e01e0af1ffebb84594dc1ddb6539df21670f4a09a0fe20b32fb3fb260"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_clean.erl",
+      "sha256": "bf13780b7285f418028ef4bee5dd6884deef3f68b57e656d7b49ac4f5dfde841"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_core_to_ssa.erl",
+      "sha256": "bb5fb37336c3bf18f48cdc67b5ec729cff74264291932042b25bc97c3b5a909f"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_dict.erl",
+      "sha256": "703c99a580cac1b0867ec12cd594bb646ed0ff8a294f72b3d03431756a1886f8"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_disasm.erl",
+      "sha256": "719679df589eca009c0b7327c7c7feeba2f503a77e71ce69945ad5da2dcd2fba"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_disasm.hrl",
+      "sha256": "0d29c9215731ec7e73c253404957ef7929a7a9437ef75cac64622919e578996b"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_doc.erl",
+      "sha256": "e5bb4a140813c0e3af832c9fc88ec125a8a163fda015b0a0eaba2f7818f95dab"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_flatten.erl",
+      "sha256": "10c3d7aa83e28d128e1cf9d4c9dd33137f911cc4bad82cb36373db3e82a6c8ac"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_jump.erl",
+      "sha256": "1a40d4b609d248eeae16096cdd23fec1c51bf4c1a5537d4fc98babff921e3a0c"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_listing.erl",
+      "sha256": "fca393e0f0a384ecc9021f86e95ad9a3d1291bdc369656e60cce03507e4f8482"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa.erl",
+      "sha256": "22a58ac61d49b5ad2afd878c96c86a73ca83b1a4b0d36b08e393606fa750a423"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa.hrl",
+      "sha256": "7ed5c591458ef6ef260fe8fd4591d797acee48d2a38a54b5ef1737a955afad62"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_alias.erl",
+      "sha256": "82fca3f35ed0e6b923c513bdf3fcd8ad0afc4fe7f8606f4c6901d62d9ada132e"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_alias_debug.hrl",
+      "sha256": "8729f3b0e3dfa0ad2852c8af49ef160d7454e9ab794d397b125db0803d17bd23"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_bc_size.erl",
+      "sha256": "8110bddf6cada9ac2744abe31343e51c2c387a86be1cf6810108410b8917a86d"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_bool.erl",
+      "sha256": "71b5e7610403c0690841cfcd32e60ab1dd207c786fcdac174a6ca6ee58614bf1"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_bsm.erl",
+      "sha256": "9883469293060fec22b2f6f83be8aba1b17c4563dfb8724568bf4a099e961376"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_check.erl",
+      "sha256": "8bbc4cb8e86cf62d7dc961d5977e58d08d631a4e846548bbbaade27e5b2f4316"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_codegen.erl",
+      "sha256": "4ab14106d967897f072cd1512a93616f62208c157cf7fca73017ef3330653cb6"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_dead.erl",
+      "sha256": "ca2c38ab2c73a0400022a227086db0fc77a2d4440f2be76681cbcf2d5245c4b1"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_destructive_update.erl",
+      "sha256": "3083405a1fcda08423755deded3bb493f46cd0763af36acfde6e29d5f12d5754"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_lint.erl",
+      "sha256": "0a1b15ff9c2730f71fddd2367273d23f4d1280d76c87ea3e8f78bc78ec1f6e7a"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_opt.erl",
+      "sha256": "9687c890f0ef8737c831180eee82127e0cd998c4a5231ec56172054f8d117e8f"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_opt.hrl",
+      "sha256": "b154285e8e85e4a6c61f92f2ce47bbadf138732bf2134657aaf43e59c23f173c"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_pp.erl",
+      "sha256": "881129865784a00a1b0892b0070cfd37b4b31675b1c1ed0376263c5d47f228cc"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_pre_codegen.erl",
+      "sha256": "d59bd59ed5611e14d9feba1883f119b9c1f0a3483c0861e1d6d680b74be3d78d"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_recv.erl",
+      "sha256": "b52f7ae2cc5efc2430e6fcdf2fd9f89a7154b85a1839e07e2eb1547dcebf0246"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_share.erl",
+      "sha256": "ee000eb3a200731fd05cae782a105977003cf3328cef3a2acd38488a3c761a1b"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_ss.erl",
+      "sha256": "402ab917c25651b9124b46e9a82c6917da75896fffbcc7dae7ab8c69c8a674a7"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_throw.erl",
+      "sha256": "7e61fac715af09696204d77e178fa3a2f61bc0fa76c1ce79e5e9d3d1e1c01039"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_ssa_type.erl",
+      "sha256": "75ec82fb9c77627d6b3c58f1142a0f31f9323188f8b9f483b7fa1ae47ba10622"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_trim.erl",
+      "sha256": "6f2842d6ee4982ad3e640a407324b52a70fc130bf26c01b2caa61d920857c63d"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_types.erl",
+      "sha256": "01bf20cffe56c99c62c04ca30744a8e22659c3ca53c84e9ae98f74970ff9eb2b"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_types.hrl",
+      "sha256": "8ca3d58b154829fd35bbbfb9daef9be0cc217e86b61093aa9d322f16348fb7a9"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_utils.erl",
+      "sha256": "edcb008120fadeb142fafe3866d7c8e2258f680f5d25b159b9fdd9d51b497b2c"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_validator.erl",
+      "sha256": "7b66330a48bf3e50c7bb95a4072870a3423028d632141ccdb8f212a584bccaf9"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/beam_z.erl",
+      "sha256": "349a0c7a078918447bf0c611d985940ffb83d964d411f8b26e77148c0080fa25"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/cerl.erl",
+      "sha256": "98c7cc3ca9d7560a9b0fe44c405045aa1eaf13c8b400f9f7c2d9cdff83b7c2d7"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/cerl_clauses.erl",
+      "sha256": "6cafcd9c84a54c13a5ecf1f7ed0390ee39eade22485d54524dd39ebafca57856"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/cerl_inline.erl",
+      "sha256": "079ac8b1ea8bbdc0f2d35b5a0ac9a511ae607466b05135dda7fc9c100d6d0e14"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/cerl_trees.erl",
+      "sha256": "e645417071f58ffa16f9527cf2f3aee4add9ec45751baf6fe1861ea1a0592429"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/compile.erl",
+      "sha256": "c80173a6ed4fbdee1d3998718d915413ee9ffb0dff8adf9a542fe94c3a100a78"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/core_lib.erl",
+      "sha256": "393db3b7c43184931dbf9665832cb0602100efe2bb0ef3fa5443edba05413ad2"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/core_lint.erl",
+      "sha256": "ce6752aff1b30dbed5645687ba2dad5bc6b8b348d958fd70308f7b31372d653b"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/core_parse.hrl",
+      "sha256": "d990ca44736908b7c418051758bc94040636db6c55567a764548866623f6e16a"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/core_pp.erl",
+      "sha256": "6380991d3707c87ef72b025e2f653752cbcdb42afc3c1e9868b5ac9a5a18970e"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/core_scan.erl",
+      "sha256": "e5a5aa33fa05493467f4d7407f0d5ce58e38b2f57fb873773defa32ed0a68b9d"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/eep48.hrl",
+      "sha256": "805b8801f04a7b001256a00a0373cc25c66aa21a9c3a321c37c89b915f259000"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/erl_bifs.erl",
+      "sha256": "19b7fc0d4fad216a81dbf086bf7d9ebcddf76e21e1394572c756ef4ddda30247"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/erl_bits.hrl",
+      "sha256": "8c3881c2726ee310853df43bfcd24529e397172b56c25374b25519c1bbce9f78"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/erl_compile.hrl",
+      "sha256": "bc8f37babd74d3acd2d4399dfe2e3d1435407b4d66083b0cbc328bab41c57b5e"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/file.hrl",
+      "sha256": "4c7ed0e4cc09c454f65c0bf0528e6e56d94ab309e232a4e25db9a486df950299"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/rec_env.erl",
+      "sha256": "5299191e93a10249d63ff770c38f81184bfaedf5cc461206e6f798d1e6f29f50"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_core_alias.erl",
+      "sha256": "83de41226dcebdb066267b44d2093db625bd814b8fca427b4640d0b9aa762e57"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_core_bsm.erl",
+      "sha256": "33ab6aa58ff00858831bdd4984cebae9fa210800d02e752416dac3ffb755171a"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_core_fold.erl",
+      "sha256": "e5c26d8f3478246cc7a7f0453c5f96c342179ac29743c9b736e4ab6fed437845"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_core_fold_lists.erl",
+      "sha256": "5ce369ea01c73ceff6ed361241eeb1eebdec2d16f295336bce12437ddea2ebc8"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_core_inline.erl",
+      "sha256": "8a59c870e48cc6c9d745563996e83bbd145be0c17203df763fd037b70c920580"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_core_prepare.erl",
+      "sha256": "317140f35e0e7e6745cd3c77a3d4d8efb71a91d0284862c875b06e97c9c41955"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_coverage.erl",
+      "sha256": "7f45d0a63ff1500abbe70b7e179d4df307e9d5e6f4685d61be199cc0420cbeb6"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_messages.erl",
+      "sha256": "c0ac215455f14a888ea52ab5c073208d21f215b562bd9f409e051e9d42827851"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/sys_pre_attributes.erl",
+      "sha256": "ef42806f9a822bf97b6e59989ce68712da662fdafbad3055bd32663eaf95c8ab"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/compiler/passes/v3_core.erl",
+      "sha256": "9eff77010f9a3681c6f70d4043e5a55071d844b54c0bb5581541a2f1fdcb4701"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/services/beam_host.erl",
+      "sha256": "c71598603bc3e060e7db46ef186ce871815ab07fe2f8bb4c213e5a1aee119710"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/doc/src/sofs.md",
+      "sha256": "3f113e8981898e755bea74403fe48cdd3a10bbd4502638f947578feaf4e9290d"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/erl_compile.hrl",
+      "sha256": "bc8f37babd74d3acd2d4399dfe2e3d1435407b4d66083b0cbc328bab41c57b5e"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/erl_parse.yrl",
+      "sha256": "95970bdadef56f11e44deef0fdc23815d185886ba34920acfb521eada115482f"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/ms_transform.erl",
+      "sha256": "f33295402a1a5f481b86f90f4adced04368305e8e2305575484f09c2a60780e4"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/ms_transform.hrl",
+      "sha256": "9b820cb65a4fb9e1e8a6ba5dcd2a30c4088e2c2b9ee2a91bc50f42786a4d2229"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/yecc.erl",
+      "sha256": "b238ac0cdee0bb0ec525c295ef9b5387ab7f679deb2dc2d2a2bb8da29d947a65"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/yeccgramm.yrl",
+      "sha256": "ea30eaae72579f65955846f4d4cb32840868eeff76532a714bfd441c408e838a"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/yeccparser.erl",
+      "sha256": "5a567913ac1b1d0705e68048ec7d8a11aef734d5b5a019bdfe0344e9aa3a5f45"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/yeccpre.hrl",
+      "sha256": "dc22e775e0a642449ddb538327bd220810571680f01da74f26ecd49b534e0516"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/parser/yeccscan.erl",
+      "sha256": "8f5b45a42643c764703ee6222ba51cc751b3a57d349e2addf4bd760c7a9f24cc"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/CaseFolding.txt",
+      "sha256": "ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/CompositionExclusions.txt",
+      "sha256": "2f239196ef3b5b61db5cc476e9bd80f534d15aa1b74e1be1dea5d042a344c85f"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/DerivedCoreProperties.txt",
+      "sha256": "24c7fed1195c482faaefd5c1e7eb821c5ee1fb6de07ecdbaa64b56a99da22c08"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/EastAsianWidth.txt",
+      "sha256": "ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/GraphemeBreakProperty.txt",
+      "sha256": "d6b51d1d2ae5c33b451b7ed994b48f1f4dc62b2272a5831e7fd418514a6bae89"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/IndicSyllabicCategory.txt",
+      "sha256": "3fc122f4cf58b0c19268d5f810263b04ab4e1e67743386ec0e0ada9c76aec5be"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/PropList.txt",
+      "sha256": "130dcddcaadaf071008bdfce1e7743e04fdfbc910886f017d9f9ac931d8c64dd"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/README-UPDATE.txt",
+      "sha256": "3043198fad18494195e755bc1337ab0cfbf8a7144132c0eaff5be1e2c7010f63"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/SpecialCasing.txt",
+      "sha256": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/UnicodeData.txt",
+      "sha256": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/emoji-data.txt",
+      "sha256": "2cb2bb9455cda83e8481541ecf5b6dfda66a3bb89efa3fa7c5297eccf607b72b"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/gen_unicode_mod.escript",
+      "sha256": "05d245b3ba5e47f8ae917e0716dd378a441ea643173f5bc011bc2444f3a852e6"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/generators/unicode/uc_spec/vendor.info",
+      "sha256": "a2f24f5c05586f8b931bb5d70dde6d2bebae421a9aaf688f2a10d479aee89150"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/include/eep48.hrl",
+      "sha256": "805b8801f04a7b001256a00a0373cc25c66aa21a9c3a321c37c89b915f259000"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/include/erl_bits.hrl",
+      "sha256": "8c3881c2726ee310853df43bfcd24529e397172b56c25374b25519c1bbce9f78"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/include/file.hrl",
+      "sha256": "4c7ed0e4cc09c454f65c0bf0528e6e56d94ab309e232a4e25db9a486df950299"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/include/file_int.hrl",
+      "sha256": "6f59ed0117d7cfcbeec6bdd7292dfa2034a08e77de1ba8ae054bfaa6e2b7be40"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/include/otp_internal.hrl",
+      "sha256": "a5836239984fb619f23bd09cab3fa25993b078e6dfffdf9675fc3d24364731b2"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/include/swar_ascii.hrl",
+      "sha256": "6803ca275eb3eec4079fb76e01944494ad9345cfac33d3cc91b318f2516ce3a9"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/source-inventory.json",
+      "sha256": "83176f51b38455e039394359ca737ea34f80c22d249762b0f986ff0fbe5efd54"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/array.erl",
+      "sha256": "1427a94d559a0764ed4856d71005eb9ac914781e3fc7db4028226c6ba5528a66"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/beam_lib.erl",
+      "sha256": "ca80744d79c24a152a921fd65e85e47fce23b6dfd526af079bd7b467d7a9084c"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/binary.erl",
+      "sha256": "824eb8574ab19b7df1a80402562a6b05012e9b1b464916e5694e07e601fb24dc"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/dict.erl",
+      "sha256": "6df6d403dba645c13d93f3bef2ac1e8793765db4717ccc5e05aa8820d28db7c8"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/digraph.erl",
+      "sha256": "374df538d41734bad836ab3f1e2f9d1478d79a306ee6fc767d033e46dd722927"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/digraph_utils.erl",
+      "sha256": "5e6b3f73550deec93759e5ccb5d68e00161880057f880bf15f56611bedcc49b8"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_abstract_code.erl",
+      "sha256": "737ccef890a3861563d4e2c420424ae52df18571a2598fd5b76014db9c39dc95"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_anno.erl",
+      "sha256": "c1230bd58705ef8f5f070bed0a516a7d919458ef3d76da7758b518524bbae387"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_bits.erl",
+      "sha256": "25f4321cbb86441feacf1c09d2de3ee57db130d176f4aac967262bf76cbaadf8"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_error.erl",
+      "sha256": "4da31e2704573e81cf97f0a0695518b1ba1771b7408f1479d6fa6eea2c9882bb"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_eval.erl",
+      "sha256": "ad99783a03597f16fc59a64772db662165311eff893dd8dc806421497c5812fd"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_internal.erl",
+      "sha256": "d7d62083e74560591851d85821b379274fdcc88a7e10870ae6a7448775abef9d"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_parse.erl",
+      "sha256": "90cdec8753881d09eb3705c758ab60a3c854892851cbc9872e5053d35764212c"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_posix_msg.erl",
+      "sha256": "9065db5e4e189f3c634d179ed541aa6f8ac65fccbf50c9689410cba29e4a7fc3"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_pp.erl",
+      "sha256": "4f58c533c40fad1d5657e9b42176138547dbcf2dcc7b6f0e8ee3fedfb497a1b6"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_scan.erl",
+      "sha256": "57104bc88e32d6c0533fd062b36a03eb9562b57025fe91368d3ed9b27861d2f8"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/erl_stdlib_errors.erl",
+      "sha256": "1cb77a02ac33a5bba24a9023783d9e4218c8589634041451d9a5c158b811f0b9"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/ets.erl",
+      "sha256": "1082682a165a1fa8966cd2879d6b0efe543dd02eaa2bd6dd0c324ed9366a5ca3"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/eval_bits.erl",
+      "sha256": "620e1e29f2d2d7b181422dc6efce441ead273ca8adb490430a83860eb89c1899"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/filelib.erl",
+      "sha256": "653a8bef02a71c5fcc56bf127b5371db1f52d0568afd21dab553865065b381b4"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/filename.erl",
+      "sha256": "096b3f2cc1f74daab2cef05ac16f5cadd222f1ddbb2fc1ebe3ff2383e7f6085f"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/gb_sets.erl",
+      "sha256": "d06de6e9bc2ff396e40140098c31dffc51c9e3366ca18f538462dcbcb4fa8687"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/gb_trees.erl",
+      "sha256": "890b641fa4e901c4f11bf65288ea12e8a8c0480d3a4867274f699fb4ef9c60a3"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/graph.erl",
+      "sha256": "54ab6535b39f6b1ae1943aefaf7b2bb9af905cfce6e31e0c866e7eb9908ad63a"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/io_lib.erl",
+      "sha256": "c8dbd79ec4fbba1deff0f554ae9913d11821fbcc71a57d7b230c4bc54d80318f"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/io_lib_format.erl",
+      "sha256": "8ecbee07d2a39edf081e2888ddb47e8fdfc4b58ee452dd34306e1d1d3cf32c7f"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/io_lib_fread.erl",
+      "sha256": "d66c2e6b4617bcbd7c497d46830947a90903851c0b1d07ad8369ca0d3004eed3"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/io_lib_pretty.erl",
+      "sha256": "c489356b654c63453ef217bf73235ab7f2df1e99fe5cdd8b0424461d860d910b"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/lists.erl",
+      "sha256": "d429e541ca76aca8c56bb9ff31130a3b636f33d3e1923a08683157bf5709ab47"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/maps.erl",
+      "sha256": "350c707ff10180e1677cd911a4e981abcce2207db69ce5c986bb1c000d69a816"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/math.erl",
+      "sha256": "5e90531583c027ce05f24484f628edda064edeac29a925a1c31a12e24346217a"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/orddict.erl",
+      "sha256": "ca497657f8813aeecd732003f85885b9545681918beed4d29cf539790a6723e1"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/ordsets.erl",
+      "sha256": "526d1505d6cc482497f812879cdb41c533ea4bfc103e74850245f84c465cd70d"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/otp_internal.erl",
+      "sha256": "12d858d70cefa0f161201a8477cdbda8501616edec8703d4473988b5827da910"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/proplists.erl",
+      "sha256": "a0cabb89dd3fc82ddcefc2c14502d12b6a4e0503a84b45867fcc18ee1f2e96a0"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/queue.erl",
+      "sha256": "61b322302ecf74578d72b442d2317ea200a5dee4e0994b58c5e1e961f252b101"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/records.erl",
+      "sha256": "564c31a3136213e8a8dd6ea5233182a626444dc4282766709fa7400b7ce7160c"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/sets.erl",
+      "sha256": "74cd10e9fcf5e653ab7b999c733ac1b531f3b80a45c63ae5f87c638f3aa83812"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/sofs.erl",
+      "sha256": "9b87da843d93d687e0a8bf7a0642aa521d10658b561cf2cdd7514e7180801e70"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/string.erl",
+      "sha256": "2af1b99230fc09b9ba4160b520f5c0bb2ccefd98b2cade481ae412e883c3e152"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/unicode.erl",
+      "sha256": "9b7b0e9ce44b8a1f3db379da4cdfc692f83c0e6cc741c96241b0ad563780b156"
+    },
+    {
+      "scope": "source",
+      "path": "src/beam/support/src/unicode_util.erl",
+      "sha256": "12dcaef7d0948a3f99af4577f7219fadf1ddde39085e85de70232ce254520afc"
+    },
+    {
+      "scope": "generated",
+      "path": "beam_opcodes.erl",
+      "sha256": "3e3e2e4ad6984908910ac9e5990d069c024f3ee7bdff701184b700f850cb72a5"
+    },
+    {
+      "scope": "generated",
+      "path": "beam_opcodes.hrl",
+      "sha256": "6d431d02982f963b1aef975f43cb4dc90f7fa7375ae4b296963a2fb0bc2ae4ce"
+    }
+  ]
+}

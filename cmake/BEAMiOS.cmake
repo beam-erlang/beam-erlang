@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: Apache-2.0
+# Deploy verified SDK assets; the application owns composition and signing.
+function(beam_target_ios_application target)
+    cmake_parse_arguments(IOS "" "" "COMPONENTS;INVENTORIES" ${ARGN})
+    if(IOS_UNPARSED_ARGUMENTS OR NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" OR NOT CMAKE_GENERATOR STREQUAL "Xcode")
+        message(FATAL_ERROR "beam_target_ios_application requires an iOS Xcode application target")
+    endif()
+    get_filename_component(_prefix "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../../.." ABSOLUTE)
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/BEAMVerifySDK.cmake")
+    beam_get_runtime_artifact(_runtime NAME runtime)
+    get_filename_component(_runtime_framework "${_runtime}" DIRECTORY)
+    set(_frameworks "${_runtime_framework}")
+    foreach(_component IN LISTS IOS_COMPONENTS)
+        if(NOT _component MATCHES "^(file|network|zlib)$")
+            message(FATAL_ERROR "Unsupported iOS component: ${_component}")
+        endif()
+        beam_get_runtime_artifact(_binary NAME "component.${_component}")
+        get_filename_component(_framework "${_binary}" DIRECTORY)
+        list(APPEND _frameworks "${_framework}")
+    endforeach()
+    target_link_libraries(${target} PRIVATE BEAM::Runtime)
+    set_target_properties(${target} PROPERTIES MACOSX_BUNDLE TRUE
+        XCODE_EMBED_FRAMEWORKS "${_frameworks}"
+        XCODE_EMBED_FRAMEWORKS_CODE_SIGN_ON_COPY YES
+        XCODE_EMBED_FRAMEWORKS_REMOVE_HEADERS_ON_COPY YES
+        XCODE_ATTRIBUTE_LD_RUNPATH_SEARCH_PATHS "@executable_path/Frameworks"
+        XCODE_ATTRIBUTE_ENABLE_BITCODE NO)
+    foreach(_inventory IN LISTS IOS_INVENTORIES)
+        beam_check_bytecode_inventory(${_inventory})
+        string(TOUPPER "${_inventory}" _upper)
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/BEAMBytecode.cmake")
+        set(_location "lib/beam/${_inventory}")
+        if(_inventory STREQUAL "base")
+            set(_location lib/beam/library)
+        endif()
+        foreach(_module IN LISTS BEAM_${_upper}_MODULES)
+            set(_input "${_prefix}/${_location}/ebin/${_module}.beam")
+            target_sources(${target} PRIVATE "${_input}")
+            set_source_files_properties("${_input}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${_location}/ebin")
+        endforeach()
+    endforeach()
+    beam_target_bytecode_verifier(${target} INVENTORIES ${IOS_INVENTORIES})
+endfunction()

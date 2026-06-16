@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "publication_enabled": false,
+  "kind": "beam-ci-sdk-snapshot",
+  "reason": "Repository visibility, initial reviewed snapshot publication and release activation are separate operational decisions."
+}

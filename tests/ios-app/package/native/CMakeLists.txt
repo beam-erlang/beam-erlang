@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.25)
+project(ios_acceptance_native LANGUAGES C)
+find_package(BEAM CONFIG REQUIRED COMPONENTS NIF)
+add_library(probe STATIC probe.c)
+beam_target_nif(probe MODULE ios_native)
+beam_package_native_output(probe NAME probe)

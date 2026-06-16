@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+# Resolve the native PE closure rather than relying on the build machine's PATH.
+if(POLICY CMP0207)
+    cmake_policy(SET CMP0207 NEW)
+endif()
+set(_root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}")
+# The SDK and package builder also support C++ native extensions on EMU.
+if(NOT "@BEAM_WINDOWS_CXX_RUNTIME@" STREQUAL "")
+    file(INSTALL "@BEAM_WINDOWS_CXX_RUNTIME@" DESTINATION "${_root}/bin" TYPE FILE)
+endif()
+file(GLOB_RECURSE _executables "${_root}/*.exe")
+file(GLOB_RECURSE _libraries "${_root}/*.dll")
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM windows+pe)
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL objdump)
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_COMMAND "@CMAKE_OBJDUMP@")
+file(GET_RUNTIME_DEPENDENCIES EXECUTABLES ${_executables} LIBRARIES ${_libraries}
+    DIRECTORIES "${_root}/bin" "@BEAM_WINDOWS_RUNTIME_DIRECTORY@"
+    PRE_EXCLUDE_REGEXES "^[Aa][Pp][Ii]-[Mm][Ss]-" "^[Ee][Xx][Tt]-[Mm][Ss]-"
+    POST_EXCLUDE_REGEXES [=[.*[/\\][Ww][Ii][Nn][Dd][Oo][Ww][Ss][/\\].*]=]
+    RESOLVED_DEPENDENCIES_VAR _resolved UNRESOLVED_DEPENDENCIES_VAR _unresolved)
+if(_unresolved)
+    message(FATAL_ERROR "Unresolved native Windows dependencies: ${_unresolved}")
+endif()
+set(_dependencies)
+if(NOT "@BEAM_WINDOWS_CXX_RUNTIME@" STREQUAL "")
+    list(APPEND _resolved "${_root}/bin/libstdc++-6.dll")
+endif()
+set(_products @BEAM_WINDOWS_PRODUCT_DLLS@)
+foreach(_file IN LISTS _resolved)
+    get_filename_component(_name "${_file}" NAME)
+    string(TOLOWER "${_name}" _lower)
+    if(_lower STREQUAL "msys-2.0.dll")
+        message(FATAL_ERROR "A native Windows distribution must not depend on msys-2.0.dll")
+    endif()
+    cmake_path(IS_PREFIX _root "${_file}" NORMALIZE _internal)
+    if(_internal AND _name IN_LIST _products)
+        continue()
+    endif()
+    if(NOT _internal)
+        file(INSTALL "${_file}" DESTINATION "${_root}/bin" TYPE FILE)
+    endif()
+    string(SHA256 _id "${_lower}")
+    list(APPEND _dependencies "windows.${_id}|runtime-dependency|bin/${_name}|-")
+endforeach()
+list(REMOVE_DUPLICATES _dependencies)
+# Consumed by the artifact inventory installed immediately after this script.
+set(BEAM_WINDOWS_RUNTIME_RECORDS ${_dependencies})

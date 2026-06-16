@@ -1,0 +1,125 @@
+name: Extended qualification
+'on':
+  schedule:
+  - cron: 37 2 * * *
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Dispatch each registered line
+      run: python ci/dispatch.py
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Resolve target matrix
+      run: echo "matrix=$(python3 ci/catalog.py matrix)" >> "$GITHUB_OUTPUT"
+      shell: bash
+      id: matrix
+      env:
+        BEAM_ANDROID_ARM64_RUNNER: ${{ vars.BEAM_ANDROID_ARM64_RUNNER }}
+        BEAM_IOS_DEVICE_RUNNER: ${{ vars.BEAM_IOS_DEVICE_RUNNER }}
+    if: github.event_name != 'schedule'
+  build:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_build-target.yml
+    with:
+      target: ${{ matrix.id }}
+      runner: ${{ matrix.runner }}
+      candidate: false
+  acceptance:
+    if: always() && !cancelled() && needs.matrix.result == 'success'
+    needs:
+    - matrix
+    - build
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_test-artifact.yml
+    with:
+      target: ${{ matrix.id }}
+      runner: ${{ matrix.test_runner }}
+      execution_enabled: ${{ matrix.execution_enabled }}
+      extended: true
+  diagnostics:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor:
+        - emu
+        - jit
+        configuration:
+        - asan
+        - debug
+        - relwithdebinfo
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Prepare toolchain
+      run: python ci/provision.py --target "linux-ubuntu24.04-amd64-gcc-$FLAVOR"
+      shell: bash
+      env:
+        FLAVOR: ${{ matrix.flavor }}
+        CONFIGURATION: ${{ matrix.configuration }}
+    - name: Sanitizers and repeated lifecycle acceptance
+      run: |-
+        python ci/build.py --target "linux-ubuntu24.04-amd64-gcc-$FLAVOR" --preset "linux-$FLAVOR-$CONFIGURATION" --work "$RUNNER_TEMP/diagnostics"
+        ctest --test-dir "$RUNNER_TEMP/diagnostics/build" --output-on-failure --repeat until-fail:10 -R "installed-(bare|returning|components|process-owned)"
+      shell: bash
+      env:
+        FLAVOR: ${{ matrix.flavor }}
+        CONFIGURATION: ${{ matrix.configuration }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: diagnostic-reports-${{ matrix.flavor }}-${{ matrix.configuration }}
+        path: ${{ runner.temp }}/diagnostics/build/Testing/
+        if-no-files-found: warn
+        retention-days: 14
+  summary:
+    if: always()
+    needs:
+    - dispatch
+    - matrix
+    - build
+    - acceptance
+    - diagnostics
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: reports-*
+        path: reports
+    - name: Aggregate results
+      if: always()
+      run: python3 ci/summarize.py --needs "$RESULTS" --reports reports
+      shell: bash
+      env:
+        RESULTS: ${{ toJSON(needs) }}

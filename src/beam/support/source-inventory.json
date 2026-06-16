@@ -1,0 +1,685 @@
+{
+  "format": 1,
+  "upstream_commit": "550d7b7898706c7822362c42e7b93120c1d1f29a",
+  "compiler_modules": [
+    "array",
+    "beam_lib",
+    "binary",
+    "dict",
+    "digraph",
+    "digraph_utils",
+    "erl_abstract_code",
+    "erl_anno",
+    "erl_bits",
+    "erl_error",
+    "erl_eval",
+    "erl_internal",
+    "erl_parse",
+    "erl_posix_msg",
+    "erl_pp",
+    "erl_scan",
+    "erl_stdlib_errors",
+    "ets",
+    "eval_bits",
+    "filelib",
+    "filename",
+    "gb_sets",
+    "gb_trees",
+    "graph",
+    "io_lib",
+    "io_lib_format",
+    "io_lib_fread",
+    "io_lib_pretty",
+    "lists",
+    "maps",
+    "orddict",
+    "ordsets",
+    "otp_internal",
+    "proplists",
+    "queue",
+    "sets",
+    "sofs",
+    "string",
+    "unicode",
+    "unicode_util"
+  ],
+  "private_support_modules": [
+    "array",
+    "beam_lib",
+    "binary",
+    "dict",
+    "digraph",
+    "digraph_utils",
+    "erl_abstract_code",
+    "erl_anno",
+    "erl_bits",
+    "erl_error",
+    "erl_eval",
+    "erl_internal",
+    "erl_parse",
+    "erl_posix_msg",
+    "erl_pp",
+    "erl_scan",
+    "erl_stdlib_errors",
+    "ets",
+    "eval_bits",
+    "filelib",
+    "filename",
+    "gb_sets",
+    "gb_trees",
+    "graph",
+    "io_lib",
+    "io_lib_format",
+    "io_lib_fread",
+    "io_lib_pretty",
+    "lists",
+    "maps",
+    "math",
+    "orddict",
+    "ordsets",
+    "otp_internal",
+    "proplists",
+    "queue",
+    "records",
+    "sets",
+    "sofs",
+    "string",
+    "unicode",
+    "unicode_util"
+  ],
+  "files": [
+    {
+      "path": "src/beam/support/src/array.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/array.erl",
+      "original_sha256": "1427a94d559a0764ed4856d71005eb9ac914781e3fc7db4028226c6ba5528a66",
+      "sha256": "1427a94d559a0764ed4856d71005eb9ac914781e3fc7db4028226c6ba5528a66",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/beam_lib.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/beam_lib.erl",
+      "original_sha256": "4c45e63f6fdd0023c35afbde9d6bef77f562e42077eb686e906bd60af6211f1d",
+      "sha256": "ca80744d79c24a152a921fd65e85e47fce23b6dfd526af079bd7b467d7a9084c",
+      "adaptation": "explicit owned include headers"
+    },
+    {
+      "path": "src/beam/support/src/binary.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/binary.erl",
+      "original_sha256": "824eb8574ab19b7df1a80402562a6b05012e9b1b464916e5694e07e601fb24dc",
+      "sha256": "824eb8574ab19b7df1a80402562a6b05012e9b1b464916e5694e07e601fb24dc",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/dict.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/dict.erl",
+      "original_sha256": "6df6d403dba645c13d93f3bef2ac1e8793765db4717ccc5e05aa8820d28db7c8",
+      "sha256": "6df6d403dba645c13d93f3bef2ac1e8793765db4717ccc5e05aa8820d28db7c8",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/digraph.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/digraph.erl",
+      "original_sha256": "374df538d41734bad836ab3f1e2f9d1478d79a306ee6fc767d033e46dd722927",
+      "sha256": "374df538d41734bad836ab3f1e2f9d1478d79a306ee6fc767d033e46dd722927",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/digraph_utils.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/digraph_utils.erl",
+      "original_sha256": "5e6b3f73550deec93759e5ccb5d68e00161880057f880bf15f56611bedcc49b8",
+      "sha256": "5e6b3f73550deec93759e5ccb5d68e00161880057f880bf15f56611bedcc49b8",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_abstract_code.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_abstract_code.erl",
+      "original_sha256": "737ccef890a3861563d4e2c420424ae52df18571a2598fd5b76014db9c39dc95",
+      "sha256": "737ccef890a3861563d4e2c420424ae52df18571a2598fd5b76014db9c39dc95",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_anno.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_anno.erl",
+      "original_sha256": "c1230bd58705ef8f5f070bed0a516a7d919458ef3d76da7758b518524bbae387",
+      "sha256": "c1230bd58705ef8f5f070bed0a516a7d919458ef3d76da7758b518524bbae387",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_bits.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_bits.erl",
+      "original_sha256": "d1deff5899b4da9097605b411c6d29b9a5de58abb578336e514cf67e2a2772ab",
+      "sha256": "25f4321cbb86441feacf1c09d2de3ee57db130d176f4aac967262bf76cbaadf8",
+      "adaptation": "explicit owned include headers"
+    },
+    {
+      "path": "src/beam/support/src/erl_error.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_error.erl",
+      "original_sha256": "4da31e2704573e81cf97f0a0695518b1ba1771b7408f1479d6fa6eea2c9882bb",
+      "sha256": "4da31e2704573e81cf97f0a0695518b1ba1771b7408f1479d6fa6eea2c9882bb",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_eval.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_eval.erl",
+      "original_sha256": "ad99783a03597f16fc59a64772db662165311eff893dd8dc806421497c5812fd",
+      "sha256": "ad99783a03597f16fc59a64772db662165311eff893dd8dc806421497c5812fd",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_internal.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_internal.erl",
+      "original_sha256": "d7d62083e74560591851d85821b379274fdcc88a7e10870ae6a7448775abef9d",
+      "sha256": "d7d62083e74560591851d85821b379274fdcc88a7e10870ae6a7448775abef9d",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_parse.erl",
+      "role": "generated-source",
+      "origin": "generated/erl_parse.erl",
+      "original_sha256": "90cdec8753881d09eb3705c758ab60a3c854892851cbc9872e5053d35764212c",
+      "sha256": "90cdec8753881d09eb3705c758ab60a3c854892851cbc9872e5053d35764212c",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_posix_msg.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_posix_msg.erl",
+      "original_sha256": "9065db5e4e189f3c634d179ed541aa6f8ac65fccbf50c9689410cba29e4a7fc3",
+      "sha256": "9065db5e4e189f3c634d179ed541aa6f8ac65fccbf50c9689410cba29e4a7fc3",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_pp.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_pp.erl",
+      "original_sha256": "4f58c533c40fad1d5657e9b42176138547dbcf2dcc7b6f0e8ee3fedfb497a1b6",
+      "sha256": "4f58c533c40fad1d5657e9b42176138547dbcf2dcc7b6f0e8ee3fedfb497a1b6",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_scan.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_scan.erl",
+      "original_sha256": "57104bc88e32d6c0533fd062b36a03eb9562b57025fe91368d3ed9b27861d2f8",
+      "sha256": "57104bc88e32d6c0533fd062b36a03eb9562b57025fe91368d3ed9b27861d2f8",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/erl_stdlib_errors.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/erl_stdlib_errors.erl",
+      "original_sha256": "1cb77a02ac33a5bba24a9023783d9e4218c8589634041451d9a5c158b811f0b9",
+      "sha256": "1cb77a02ac33a5bba24a9023783d9e4218c8589634041451d9a5c158b811f0b9",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/ets.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/ets.erl",
+      "original_sha256": "48f852480307e21d3ccaa40932ea5f5424fabee9f278d03924426565242730e2",
+      "sha256": "1082682a165a1fa8966cd2879d6b0efe543dd02eaa2bd6dd0c324ed9366a5ca3",
+      "adaptation": "explicit owned include headers"
+    },
+    {
+      "path": "src/beam/support/src/eval_bits.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/eval_bits.erl",
+      "original_sha256": "620e1e29f2d2d7b181422dc6efce441ead273ca8adb490430a83860eb89c1899",
+      "sha256": "620e1e29f2d2d7b181422dc6efce441ead273ca8adb490430a83860eb89c1899",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/filelib.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/filelib.erl",
+      "original_sha256": "e9952a847dc0ee2f5bd1f95ee6c44a90f740156153babcca8114d9933c90c398",
+      "sha256": "653a8bef02a71c5fcc56bf127b5371db1f52d0568afd21dab553865065b381b4",
+      "adaptation": "explicit owned include headers"
+    },
+    {
+      "path": "src/beam/support/src/filename.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/filename.erl",
+      "original_sha256": "9a8b531082382bc570bc45b23856e7451fb3f7fb895a0e5c518c143f4ff36ef7",
+      "sha256": "096b3f2cc1f74daab2cef05ac16f5cadd222f1ddbb2fc1ebe3ff2383e7f6085f",
+      "adaptation": "explicit owned include headers"
+    },
+    {
+      "path": "src/beam/support/src/gb_sets.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/gb_sets.erl",
+      "original_sha256": "d06de6e9bc2ff396e40140098c31dffc51c9e3366ca18f538462dcbcb4fa8687",
+      "sha256": "d06de6e9bc2ff396e40140098c31dffc51c9e3366ca18f538462dcbcb4fa8687",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/gb_trees.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/gb_trees.erl",
+      "original_sha256": "890b641fa4e901c4f11bf65288ea12e8a8c0480d3a4867274f699fb4ef9c60a3",
+      "sha256": "890b641fa4e901c4f11bf65288ea12e8a8c0480d3a4867274f699fb4ef9c60a3",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/graph.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/graph.erl",
+      "original_sha256": "54ab6535b39f6b1ae1943aefaf7b2bb9af905cfce6e31e0c866e7eb9908ad63a",
+      "sha256": "54ab6535b39f6b1ae1943aefaf7b2bb9af905cfce6e31e0c866e7eb9908ad63a",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/io_lib.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/io_lib.erl",
+      "original_sha256": "c8dbd79ec4fbba1deff0f554ae9913d11821fbcc71a57d7b230c4bc54d80318f",
+      "sha256": "c8dbd79ec4fbba1deff0f554ae9913d11821fbcc71a57d7b230c4bc54d80318f",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/io_lib_format.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/io_lib_format.erl",
+      "original_sha256": "8ecbee07d2a39edf081e2888ddb47e8fdfc4b58ee452dd34306e1d1d3cf32c7f",
+      "sha256": "8ecbee07d2a39edf081e2888ddb47e8fdfc4b58ee452dd34306e1d1d3cf32c7f",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/io_lib_fread.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/io_lib_fread.erl",
+      "original_sha256": "d66c2e6b4617bcbd7c497d46830947a90903851c0b1d07ad8369ca0d3004eed3",
+      "sha256": "d66c2e6b4617bcbd7c497d46830947a90903851c0b1d07ad8369ca0d3004eed3",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/io_lib_pretty.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/io_lib_pretty.erl",
+      "original_sha256": "c489356b654c63453ef217bf73235ab7f2df1e99fe5cdd8b0424461d860d910b",
+      "sha256": "c489356b654c63453ef217bf73235ab7f2df1e99fe5cdd8b0424461d860d910b",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/lists.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/lists.erl",
+      "original_sha256": "d429e541ca76aca8c56bb9ff31130a3b636f33d3e1923a08683157bf5709ab47",
+      "sha256": "d429e541ca76aca8c56bb9ff31130a3b636f33d3e1923a08683157bf5709ab47",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/maps.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/maps.erl",
+      "original_sha256": "350c707ff10180e1677cd911a4e981abcce2207db69ce5c986bb1c000d69a816",
+      "sha256": "350c707ff10180e1677cd911a4e981abcce2207db69ce5c986bb1c000d69a816",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/math.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/math.erl",
+      "original_sha256": "5e90531583c027ce05f24484f628edda064edeac29a925a1c31a12e24346217a",
+      "sha256": "5e90531583c027ce05f24484f628edda064edeac29a925a1c31a12e24346217a",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/orddict.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/orddict.erl",
+      "original_sha256": "ca497657f8813aeecd732003f85885b9545681918beed4d29cf539790a6723e1",
+      "sha256": "ca497657f8813aeecd732003f85885b9545681918beed4d29cf539790a6723e1",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/ordsets.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/ordsets.erl",
+      "original_sha256": "526d1505d6cc482497f812879cdb41c533ea4bfc103e74850245f84c465cd70d",
+      "sha256": "526d1505d6cc482497f812879cdb41c533ea4bfc103e74850245f84c465cd70d",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/otp_internal.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/otp_internal.erl",
+      "original_sha256": "12d858d70cefa0f161201a8477cdbda8501616edec8703d4473988b5827da910",
+      "sha256": "12d858d70cefa0f161201a8477cdbda8501616edec8703d4473988b5827da910",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/proplists.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/proplists.erl",
+      "original_sha256": "a0cabb89dd3fc82ddcefc2c14502d12b6a4e0503a84b45867fcc18ee1f2e96a0",
+      "sha256": "a0cabb89dd3fc82ddcefc2c14502d12b6a4e0503a84b45867fcc18ee1f2e96a0",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/queue.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/queue.erl",
+      "original_sha256": "61b322302ecf74578d72b442d2317ea200a5dee4e0994b58c5e1e961f252b101",
+      "sha256": "61b322302ecf74578d72b442d2317ea200a5dee4e0994b58c5e1e961f252b101",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/records.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/records.erl",
+      "original_sha256": "564c31a3136213e8a8dd6ea5233182a626444dc4282766709fa7400b7ce7160c",
+      "sha256": "564c31a3136213e8a8dd6ea5233182a626444dc4282766709fa7400b7ce7160c",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/sets.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/sets.erl",
+      "original_sha256": "74cd10e9fcf5e653ab7b999c733ac1b531f3b80a45c63ae5f87c638f3aa83812",
+      "sha256": "74cd10e9fcf5e653ab7b999c733ac1b531f3b80a45c63ae5f87c638f3aa83812",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/sofs.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/sofs.erl",
+      "original_sha256": "9b87da843d93d687e0a8bf7a0642aa521d10658b561cf2cdd7514e7180801e70",
+      "sha256": "9b87da843d93d687e0a8bf7a0642aa521d10658b561cf2cdd7514e7180801e70",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/string.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/string.erl",
+      "original_sha256": "2af1b99230fc09b9ba4160b520f5c0bb2ccefd98b2cade481ae412e883c3e152",
+      "sha256": "2af1b99230fc09b9ba4160b520f5c0bb2ccefd98b2cade481ae412e883c3e152",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/unicode.erl",
+      "role": "source",
+      "origin": "lib/stdlib/src/unicode.erl",
+      "original_sha256": "9b7b0e9ce44b8a1f3db379da4cdfc692f83c0e6cc741c96241b0ad563780b156",
+      "sha256": "9b7b0e9ce44b8a1f3db379da4cdfc692f83c0e6cc741c96241b0ad563780b156",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/src/unicode_util.erl",
+      "role": "generated-source",
+      "origin": "generated/unicode_util.erl",
+      "original_sha256": "12dcaef7d0948a3f99af4577f7219fadf1ddde39085e85de70232ce254520afc",
+      "sha256": "12dcaef7d0948a3f99af4577f7219fadf1ddde39085e85de70232ce254520afc",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/include/file.hrl",
+      "role": "header",
+      "origin": "lib/kernel/include/file.hrl",
+      "original_sha256": "4c7ed0e4cc09c454f65c0bf0528e6e56d94ab309e232a4e25db9a486df950299",
+      "sha256": "4c7ed0e4cc09c454f65c0bf0528e6e56d94ab309e232a4e25db9a486df950299",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/include/eep48.hrl",
+      "role": "header",
+      "origin": "lib/kernel/include/eep48.hrl",
+      "original_sha256": "805b8801f04a7b001256a00a0373cc25c66aa21a9c3a321c37c89b915f259000",
+      "sha256": "805b8801f04a7b001256a00a0373cc25c66aa21a9c3a321c37c89b915f259000",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/include/file_int.hrl",
+      "role": "header",
+      "origin": "lib/kernel/src/file_int.hrl",
+      "original_sha256": "6f59ed0117d7cfcbeec6bdd7292dfa2034a08e77de1ba8ae054bfaa6e2b7be40",
+      "sha256": "6f59ed0117d7cfcbeec6bdd7292dfa2034a08e77de1ba8ae054bfaa6e2b7be40",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/include/erl_bits.hrl",
+      "role": "header",
+      "origin": "lib/stdlib/include/erl_bits.hrl",
+      "original_sha256": "8c3881c2726ee310853df43bfcd24529e397172b56c25374b25519c1bbce9f78",
+      "sha256": "8c3881c2726ee310853df43bfcd24529e397172b56c25374b25519c1bbce9f78",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/include/otp_internal.hrl",
+      "role": "header",
+      "origin": "lib/stdlib/src/otp_internal.hrl",
+      "original_sha256": "a5836239984fb619f23bd09cab3fa25993b078e6dfffdf9675fc3d24364731b2",
+      "sha256": "a5836239984fb619f23bd09cab3fa25993b078e6dfffdf9675fc3d24364731b2",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/include/swar_ascii.hrl",
+      "role": "header",
+      "origin": "lib/stdlib/src/swar_ascii.hrl",
+      "original_sha256": "6803ca275eb3eec4079fb76e01944494ad9345cfac33d3cc91b318f2516ce3a9",
+      "sha256": "6803ca275eb3eec4079fb76e01944494ad9345cfac33d3cc91b318f2516ce3a9",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/erl_parse.yrl",
+      "role": "generator-input",
+      "origin": "lib/stdlib/src/erl_parse.yrl",
+      "original_sha256": "95970bdadef56f11e44deef0fdc23815d185886ba34920acfb521eada115482f",
+      "sha256": "95970bdadef56f11e44deef0fdc23815d185886ba34920acfb521eada115482f",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/yecc.erl",
+      "role": "generator-input",
+      "origin": "lib/parsetools/src/yecc.erl",
+      "original_sha256": "b238ac0cdee0bb0ec525c295ef9b5387ab7f679deb2dc2d2a2bb8da29d947a65",
+      "sha256": "b238ac0cdee0bb0ec525c295ef9b5387ab7f679deb2dc2d2a2bb8da29d947a65",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/yeccscan.erl",
+      "role": "generator-input",
+      "origin": "lib/parsetools/src/yeccscan.erl",
+      "original_sha256": "8f5b45a42643c764703ee6222ba51cc751b3a57d349e2addf4bd760c7a9f24cc",
+      "sha256": "8f5b45a42643c764703ee6222ba51cc751b3a57d349e2addf4bd760c7a9f24cc",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/yeccparser.erl",
+      "role": "generator-input",
+      "origin": "lib/parsetools/src/yeccparser.erl",
+      "original_sha256": "5a567913ac1b1d0705e68048ec7d8a11aef734d5b5a019bdfe0344e9aa3a5f45",
+      "sha256": "5a567913ac1b1d0705e68048ec7d8a11aef734d5b5a019bdfe0344e9aa3a5f45",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/yeccgramm.yrl",
+      "role": "generator-input",
+      "origin": "lib/parsetools/src/yeccgramm.yrl",
+      "original_sha256": "ea30eaae72579f65955846f4d4cb32840868eeff76532a714bfd441c408e838a",
+      "sha256": "ea30eaae72579f65955846f4d4cb32840868eeff76532a714bfd441c408e838a",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/yeccpre.hrl",
+      "role": "generator-input",
+      "origin": "lib/parsetools/include/yeccpre.hrl",
+      "original_sha256": "dc22e775e0a642449ddb538327bd220810571680f01da74f26ecd49b534e0516",
+      "sha256": "dc22e775e0a642449ddb538327bd220810571680f01da74f26ecd49b534e0516",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/ms_transform.erl",
+      "role": "generator-input",
+      "origin": "lib/stdlib/src/ms_transform.erl",
+      "original_sha256": "f33295402a1a5f481b86f90f4adced04368305e8e2305575484f09c2a60780e4",
+      "sha256": "f33295402a1a5f481b86f90f4adced04368305e8e2305575484f09c2a60780e4",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/ms_transform.hrl",
+      "role": "generator-input",
+      "origin": "lib/stdlib/include/ms_transform.hrl",
+      "original_sha256": "9b820cb65a4fb9e1e8a6ba5dcd2a30c4088e2c2b9ee2a91bc50f42786a4d2229",
+      "sha256": "9b820cb65a4fb9e1e8a6ba5dcd2a30c4088e2c2b9ee2a91bc50f42786a4d2229",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/parser/erl_compile.hrl",
+      "role": "generator-input",
+      "origin": "lib/stdlib/include/erl_compile.hrl",
+      "original_sha256": "bc8f37babd74d3acd2d4399dfe2e3d1435407b4d66083b0cbc328bab41c57b5e",
+      "sha256": "bc8f37babd74d3acd2d4399dfe2e3d1435407b4d66083b0cbc328bab41c57b5e",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/CaseFolding.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/CaseFolding.txt",
+      "original_sha256": "ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183",
+      "sha256": "ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/CompositionExclusions.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/CompositionExclusions.txt",
+      "original_sha256": "2f239196ef3b5b61db5cc476e9bd80f534d15aa1b74e1be1dea5d042a344c85f",
+      "sha256": "2f239196ef3b5b61db5cc476e9bd80f534d15aa1b74e1be1dea5d042a344c85f",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/DerivedCoreProperties.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/DerivedCoreProperties.txt",
+      "original_sha256": "24c7fed1195c482faaefd5c1e7eb821c5ee1fb6de07ecdbaa64b56a99da22c08",
+      "sha256": "24c7fed1195c482faaefd5c1e7eb821c5ee1fb6de07ecdbaa64b56a99da22c08",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/EastAsianWidth.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/EastAsianWidth.txt",
+      "original_sha256": "ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33",
+      "sha256": "ea7ce50f3444a050333448dffef1cadd9325af55cbb764b4a2280faf52170a33",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/GraphemeBreakProperty.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/GraphemeBreakProperty.txt",
+      "original_sha256": "d6b51d1d2ae5c33b451b7ed994b48f1f4dc62b2272a5831e7fd418514a6bae89",
+      "sha256": "d6b51d1d2ae5c33b451b7ed994b48f1f4dc62b2272a5831e7fd418514a6bae89",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/IndicSyllabicCategory.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/IndicSyllabicCategory.txt",
+      "original_sha256": "3fc122f4cf58b0c19268d5f810263b04ab4e1e67743386ec0e0ada9c76aec5be",
+      "sha256": "3fc122f4cf58b0c19268d5f810263b04ab4e1e67743386ec0e0ada9c76aec5be",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/PropList.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/PropList.txt",
+      "original_sha256": "130dcddcaadaf071008bdfce1e7743e04fdfbc910886f017d9f9ac931d8c64dd",
+      "sha256": "130dcddcaadaf071008bdfce1e7743e04fdfbc910886f017d9f9ac931d8c64dd",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/README-UPDATE.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/README-UPDATE.txt",
+      "original_sha256": "3043198fad18494195e755bc1337ab0cfbf8a7144132c0eaff5be1e2c7010f63",
+      "sha256": "3043198fad18494195e755bc1337ab0cfbf8a7144132c0eaff5be1e2c7010f63",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/SpecialCasing.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/SpecialCasing.txt",
+      "original_sha256": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588",
+      "sha256": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/UnicodeData.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/UnicodeData.txt",
+      "original_sha256": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c",
+      "sha256": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/emoji-data.txt",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/emoji-data.txt",
+      "original_sha256": "2cb2bb9455cda83e8481541ecf5b6dfda66a3bb89efa3fa7c5297eccf607b72b",
+      "sha256": "2cb2bb9455cda83e8481541ecf5b6dfda66a3bb89efa3fa7c5297eccf607b72b",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/gen_unicode_mod.escript",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/gen_unicode_mod.escript",
+      "original_sha256": "05d245b3ba5e47f8ae917e0716dd378a441ea643173f5bc011bc2444f3a852e6",
+      "sha256": "05d245b3ba5e47f8ae917e0716dd378a441ea643173f5bc011bc2444f3a852e6",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/generators/unicode/uc_spec/vendor.info",
+      "role": "generator-input",
+      "origin": "lib/stdlib/uc_spec/vendor.info",
+      "original_sha256": "a2f24f5c05586f8b931bb5d70dde6d2bebae421a9aaf688f2a10d479aee89150",
+      "sha256": "a2f24f5c05586f8b931bb5d70dde6d2bebae421a9aaf688f2a10d479aee89150",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/network/socket.erl",
+      "role": "source",
+      "origin": "lib/kernel/src/socket.erl",
+      "original_sha256": "54ba24b8572dd8264d28902a6e59592e90d007e30758c45d869cc10ff5821bef",
+      "sha256": "54ba24b8572dd8264d28902a6e59592e90d007e30758c45d869cc10ff5821bef",
+      "adaptation": null
+    },
+    {
+      "path": "src/beam/support/doc/src/sofs.md",
+      "role": "source-resource",
+      "origin": "lib/stdlib/doc/src/sofs.md",
+      "original_sha256": "3f113e8981898e755bea74403fe48cdd3a10bbd4502638f947578feaf4e9290d",
+      "sha256": "3f113e8981898e755bea74403fe48cdd3a10bbd4502638f947578feaf4e9290d",
+      "adaptation": null
+    }
+  ],
+  "generators": {
+    "erl_parse": {
+      "grammar": "src/beam/support/generators/parser/erl_parse.yrl",
+      "template": "src/beam/support/generators/parser/yeccpre.hrl",
+      "entry": "yecc:file/2",
+      "options": [
+        "{deterministic,true}",
+        "{parserfile,Output}"
+      ]
+    },
+    "unicode_util": {
+      "entry": "gen_unicode_mod.escript:main/1",
+      "arguments": [],
+      "working_directory": "src/beam/support/generators/unicode/src",
+      "data_directory": "../uc_spec"
+    }
+  }
+}

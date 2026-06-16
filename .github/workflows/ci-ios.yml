@@ -1,0 +1,78 @@
+name: ci-ios
+'on':
+  pull_request:
+    branches:
+    - master
+    - maint-*
+  push:
+    branches:
+    - master
+    - maint-*
+  merge_group: {}
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: ci-ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Resolve target matrix
+      run: echo "matrix=$(python3 ci/catalog.py matrix --family ios)" >> "$GITHUB_OUTPUT"
+      shell: bash
+      id: matrix
+      env:
+        BEAM_ANDROID_ARM64_RUNNER: ${{ vars.BEAM_ANDROID_ARM64_RUNNER }}
+        BEAM_IOS_DEVICE_RUNNER: ${{ vars.BEAM_IOS_DEVICE_RUNNER }}
+  build:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_build-target.yml
+    with:
+      target: ${{ matrix.id }}
+      runner: ${{ matrix.runner }}
+      candidate: false
+  acceptance:
+    if: always() && !cancelled() && needs.matrix.result == 'success'
+    needs:
+    - matrix
+    - build
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_test-artifact.yml
+    with:
+      target: ${{ matrix.id }}
+      runner: ${{ matrix.test_runner }}
+      execution_enabled: ${{ matrix.execution_enabled }}
+      extended: false
+  summary:
+    if: always()
+    needs:
+    - matrix
+    - build
+    - acceptance
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: reports-*
+        path: reports
+    - name: Aggregate results
+      if: always()
+      run: python3 ci/summarize.py --needs "$RESULTS" --reports reports
+      shell: bash
+      env:
+        RESULTS: ${{ toJSON(needs) }}
