@@ -1,0 +1,45 @@
+# Linux build of the beam executable (interpreter and JIT).
+
+name: Linux
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [emu, jit]
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            perl \
+            pkg-config \
+            libncurses-dev
+
+      - name: Configure
+        run: cmake --preset linux-${{ matrix.flavor }}
+
+      - name: Build
+        run: cmake --build --preset linux-${{ matrix.flavor }}
