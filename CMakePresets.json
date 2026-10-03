@@ -1,0 +1,42 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "linux-emu",
+      "displayName": "Linux (interpreter)",
+      "description": "Native Linux, interpreter flavor, Release.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ERTS_BUILD_FLAVOR": "emu"
+      }
+    },
+    {
+      "name": "linux-jit",
+      "displayName": "Linux (JIT)",
+      "description": "Native Linux, JIT flavor, Release.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ERTS_BUILD_FLAVOR": "jit"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-emu",
+      "configurePreset": "linux-emu"
+    },
+    {
+      "name": "linux-jit",
+      "configurePreset": "linux-jit"
+    }
+  ]
+}
