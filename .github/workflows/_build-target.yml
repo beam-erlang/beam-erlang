@@ -1,0 +1,76 @@
+name: Build target
+'on':
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+      runner:
+        type: string
+        required: true
+      candidate:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 180
+    environment: ${{ inputs.candidate && startsWith(inputs.target, 'windows-') && 'release-signing-windows' || inputs.candidate && startsWith(inputs.target, 'macos-') && 'release-signing-apple' || 'ci' }}
+    env:
+      BEAM_SIGN_IDENTITY: ${{ inputs.candidate && vars.BEAM_SIGN_IDENTITY || '' }}
+      BEAM_NOTARY_PROFILE: ${{ vars.BEAM_NOTARY_PROFILE }}
+      BEAM_TIMESTAMP_URL: ${{ vars.BEAM_TIMESTAMP_URL }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Prepare toolchain
+      run: python ci/provision.py --target "$TARGET"
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+    - name: Install candidate signing credentials
+      if: inputs.candidate
+      run: python ci/signing.py prepare --target "$TARGET"
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        BEAM_SIGN_CERTIFICATE: ${{ secrets.BEAM_SIGN_CERTIFICATE }}
+        BEAM_SIGN_PASSWORD: ${{ secrets.BEAM_SIGN_PASSWORD }}
+        BEAM_KEYCHAIN_PASSWORD: ${{ secrets.BEAM_KEYCHAIN_PASSWORD }}
+        BEAM_NOTARY_KEY: ${{ secrets.BEAM_NOTARY_KEY }}
+        BEAM_NOTARY_KEY_ID: ${{ secrets.BEAM_NOTARY_KEY_ID }}
+        BEAM_NOTARY_ISSUER: ${{ secrets.BEAM_NOTARY_ISSUER }}
+    - name: Build, install, test and archive
+      run: python ci/build.py --target "$TARGET" --work "$RUNNER_TEMP/beam" $CANDIDATE
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        CANDIDATE: ${{ inputs.candidate && '--candidate' || '' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: payload-${{ inputs.target }}
+        path: ${{ runner.temp }}/beam/payload/
+        if-no-files-found: warn
+        retention-days: 14
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: diagnostics-${{ inputs.target }}
+        path: |-
+          ${{ runner.temp }}/beam/build/Testing/
+          ${{ runner.temp }}/beam/build/CMakeFiles/CMakeConfigureLog.yaml
+        if-no-files-found: warn
+        retention-days: 14
+    - name: Remove candidate signing credentials
+      if: always() && inputs.candidate
+      run: python ci/signing.py cleanup --target "$TARGET"
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}

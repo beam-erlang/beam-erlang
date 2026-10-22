@@ -250,3 +250,19 @@ The deployment helpers do not provide automatic package resolution, native
 activation or a fallback to another installation.
 
 [Return to C embedding](README.md).
+
+## Target-specific SDK layout
+
+Use public CMake targets and the SDK artifact inventory rather than assuming
+`.so`, ELF or `$ORIGIN`. Windows SDKs carry native DLL/import-library layouts;
+macOS uses Mach-O loader paths; iOS packages shared runtime/components as complete
+framework bundles. `beam_install_deployment` copies iOS frameworks into the
+application's `Frameworks` directory and selected ordinary inventories into its
+resources. The consumer signs the complete application after embedding. Framework
+packaging does not activate capabilities or relax matching-build checks.
+
+Cross consumers must select a native compiler for Erlang sources separately;
+executing a target `BEAM::CLI` as a build generator is invalid. The
+[target fixture](../../tests/target/CMakeLists.txt) uses source-attested bytecode
+transported by the producer. Static runtime consumers retain their existing
+composition restrictions; there is no new static native-component API.

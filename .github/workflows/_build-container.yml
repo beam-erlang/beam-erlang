@@ -1,0 +1,58 @@
+name: Build container
+'on':
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+      runner:
+        type: string
+        required: true
+      version:
+        type: string
+        default: ''
+      ci_payload:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  image:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install OCI tools
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y skopeo
+        docker buildx create --use
+      shell: bash
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      if: inputs.ci_payload
+      with:
+        name: payload-${{ inputs.target }}
+        path: ${{ runner.temp }}/payload
+    - name: Build and test exact SDK image
+      run: python containers/images.py build --target "$TARGET" --work "$RUNNER_TEMP/image" --version "$VERSION"
+        $CI_PAYLOAD
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        VERSION: ${{ inputs.version }}
+        CI_PAYLOAD: ${{ inputs.ci_payload && format('--ci-payload {0}/payload', runner.temp) || '' }}
+        GH_TOKEN: ${{ github.token }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: image-${{ inputs.target }}
+        path: |-
+          ${{ runner.temp }}/image/*.oci.tar
+          ${{ runner.temp }}/image/*-image.json
+        if-no-files-found: warn
+        retention-days: 14

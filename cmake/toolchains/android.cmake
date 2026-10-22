@@ -1,0 +1,7 @@
+if(NOT DEFINED ENV{ANDROID_NDK_ROOT})
+    message(FATAL_ERROR "Select an installed NDK with ANDROID_NDK_ROOT")
+endif()
+file(TO_CMAKE_PATH "$ENV{ANDROID_NDK_ROOT}" _ndk)
+set(ANDROID_PLATFORM android-26 CACHE STRING "Android API")
+set(ANDROID_STL c++_shared CACHE STRING "One C++ runtime per application")
+include("${_ndk}/build/cmake/android.toolchain.cmake")

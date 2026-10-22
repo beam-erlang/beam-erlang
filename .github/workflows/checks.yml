@@ -1,0 +1,35 @@
+name: Source and contract checks
+'on':
+  pull_request:
+    branches:
+    - master
+    - maint-*
+  push:
+    branches:
+    - master
+    - maint-*
+  merge_group: {}
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Validate GitHub Actions syntax and reusable interfaces
+      run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes=
+      shell: bash
+    - name: Validate catalog and presets
+      run: python ci/check.py
+      shell: bash
+    - name: Test orchestration and release contracts
+      run: |-
+        python -m unittest discover -s ci -p 'test_*.py'
+        python -m unittest discover -s release -p 'test_*.py'
+      shell: bash

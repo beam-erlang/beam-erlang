@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "android": {
+    "ndk": "28.2.13676358",
+    "api": 35,
+    "build_tools": "35.0.0",
+    "system_images": [
+      "system-images;android-35;google_apis;x86_64",
+      "system-images;android-35;google_apis;arm64-v8a",
+      "system-images;android-35;google_apis_ps16k;arm64-v8a",
+      "system-images;android-35;google_apis_ps16k;x86_64"
+    ]
+  },
+  "msys2": {
+    "release": "2025-06-22",
+    "archive": "msys2-base-x86_64-20250622.tar.xz"
+  },
+  "apple": {
+    "runner": "macos-15",
+    "deployment": "15.0"
+  }
+}

@@ -557,8 +557,8 @@ the future consumer targets the separate OTP distribution. Consumer sources and
 whole OTP application recipes remain deferred. Ordinary local-library builds
 are implemented. Older candidates under workspace `notes/` are historical.
 
-The tool build consumes `BEAM_PACKAGE_SOURCE_DIR`, defaulting to the sibling
-`beam-erlang-package`. Its shared recipe owns source/output inventories; the
+The tool build consumes `BEAM_PACKAGE_SOURCE_DIR`, selected explicitly as a local
+`beam-erlang-package` checkout. Its shared recipe owns source/output inventories; the
 adapter in `cmake/PackageTool.cmake` supplies the verified modern build compiler and generates
 the private host header. Missing companion sources fail at configure time. Native
 alias/host behavior and installed acceptance stay here. Its compiler dependency follows the main build bootstrap and its acceptance. Hosted CI explicitly acquires the exact public package commit in
@@ -600,3 +600,21 @@ stabilization decisions and acceptance. Native component descriptors remain a
 private matching-build contract. OTP runtime/application version reporting
 remains owned by the separate OTP product. Missing release inputs and mandatory
 OTP failures block promotion, never become passing no-ops.
+
+## Build, CI and release ownership
+
+The complete intended desktop/mobile matrix is registered in `ci/targets.json`
+and implemented through CMake presets and the reusable GitHub Actions workers.
+See [CI architecture](ci/README.md) and [release operations](release/README.md).
+Keep target compiler flags in CMake, runner provisioning in `ci/`, behavioral
+fixtures in `tests/`, and image recipes in `containers/`. Do not reduce the
+catalog to platforms currently passing. Report actual failures and disabled
+execution explicitly; neither satisfies a required release gate.
+
+Cross compilation uses isolated source-attested native host tools. Never execute
+target binaries for generation or install native host tools into a target SDK.
+`BEAM_HOST_TOOLS_ROOT` selects a verified native build at its recorded path.
+Product maintenance lines and channels are registered in `release/policy.json`;
+branch existence alone does not establish support. Stable and preview share the
+same qualified-byte pipeline. Current source pins, owner configuration and OTP
+compatibility blockers remain independent from the architecture's completeness.

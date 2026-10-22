@@ -99,7 +99,7 @@ target_include_directories(beam_emulator PRIVATE "${CMAKE_BINARY_DIR}/components
 function(beam_link_runtime TARGET)
     target_link_libraries(${TARGET} PRIVATE
         beam_emulator beam_core_preload beam_core_shared_data_native
-        ryu pcre zlib ethread m ${CMAKE_DL_LIBS})
+        ryu pcre zlib ethread ${BEAM_SYSTEM_LIBRARIES})
     if(ERTS_TERMCAP_LIB)
         target_link_libraries(${TARGET} PRIVATE ${ERTS_TERMCAP_LIB})
     endif()
@@ -134,6 +134,8 @@ if(ERTS_BUILD_FLAVOR STREQUAL "jit")
     set_target_properties(libbeam PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
+beam_platform_library(libbeam BEAM)
+
 # The archive contains the same compiled VM and support objects as libbeam.so.
 # Only this private final-link marker differs between the two images.
 add_library(libbeam_static STATIC
@@ -143,7 +145,11 @@ foreach(_objects IN ITEMS beam_emulator beam_core_preload beam_core_shared_data_
         beam_return_helper ryu pcre zlib ethread)
     target_sources(libbeam_static PRIVATE $<TARGET_OBJECTS:${_objects}>)
 endforeach()
-set_target_properties(libbeam_static PROPERTIES OUTPUT_NAME beam
+set(_static_name beam)
+if(WIN32)
+    set(_static_name beam_static)
+endif()
+set_target_properties(libbeam_static PROPERTIES OUTPUT_NAME ${_static_name}
     EXPORT_NAME RuntimeStaticArchive ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 add_library(beam_runtime_static INTERFACE)
 add_library(BEAM::RuntimeStatic ALIAS beam_runtime_static)
@@ -153,17 +159,19 @@ target_include_directories(beam_runtime_static INTERFACE
 target_link_libraries(beam_runtime_static INTERFACE
     "$<BUILD_INTERFACE:$<LINK_LIBRARY:WHOLE_ARCHIVE,libbeam_static>>"
     "$<INSTALL_INTERFACE:$<LINK_LIBRARY:WHOLE_ARCHIVE,BEAM::RuntimeStaticArchive>>"
-    m ${CMAKE_DL_LIBS} pthread)
+    ${BEAM_SYSTEM_LIBRARIES})
 if(ERTS_TERMCAP_LIB)
     target_link_libraries(beam_runtime_static INTERFACE ${ERTS_TERMCAP_LIB})
 endif()
 if(ERTS_BUILD_FLAVOR STREQUAL "jit")
     # An installed C-only project does not enable CMake's C++ linker selection.
-    target_link_libraries(beam_runtime_static INTERFACE stdc++)
+    target_link_libraries(beam_runtime_static INTERFACE ${BEAM_CXX_RUNTIME})
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
 target_link_options(beam_runtime_static INTERFACE
     "$<BUILD_INTERFACE:LINKER:--export-dynamic-symbol-list=${CMAKE_SOURCE_DIR}/cmake/RuntimeExports.list>"
     "$<INSTALL_INTERFACE:LINKER:--export-dynamic-symbol-list=$<INSTALL_PREFIX>/lib/cmake/BEAM/RuntimeExports.list>")
+endif()
 foreach(_pair IN ITEMS "libbeam;shared" "beam_runtime_static;static")
     list(GET _pair 0 _target)
     list(GET _pair 1 _linkage)
@@ -180,6 +188,7 @@ target_link_libraries(beam_cli_recipe PUBLIC BEAM::Runtime)
 set_target_properties(beam_cli_recipe PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+if(BEAM_BUILD_CLI)
 add_executable(beam
     ${CMAKE_SOURCE_DIR}/src/beam_main.c
     ${BEAM_BOOT_CLI_SOURCES}
@@ -189,12 +198,17 @@ target_link_libraries(beam PRIVATE beam_cli_recipe)
 set_target_properties(beam PROPERTIES
     EXPORT_NAME CLI
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    BUILD_RPATH "\$ORIGIN/../lib"
-    INSTALL_RPATH "\$ORIGIN/../lib"
+    BUILD_RPATH "${BEAM_LOADER_ORIGIN}/../lib"
+    INSTALL_RPATH "${BEAM_LOADER_ORIGIN}/../lib"
     BUILD_RPATH_USE_ORIGIN TRUE
 )
 
+endif()
+
 foreach(_compiler IN ITEMS beam_seed_compiler beam_bootstrap)
+    if(TARGET ${_compiler})
+        continue()
+    endif()
     add_executable(${_compiler}
         "${CMAKE_SOURCE_DIR}/src/beam/compiler/beam_build_compiler.c"
         ${BEAM_COMPILER_NATIVE_SOURCES})
@@ -211,10 +225,11 @@ foreach(_compiler IN ITEMS beam_seed_compiler beam_bootstrap)
         BEAM_COMPILER_COMMAND_FUNCTION="bootstrap" BEAM_BUILD_COMPILER_ROOT="${_compiler_root}")
     set_target_properties(${_compiler} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-        BUILD_RPATH "\$ORIGIN/../lib" BUILD_RPATH_USE_ORIGIN TRUE)
+        BUILD_RPATH "${BEAM_LOADER_ORIGIN}/../lib" BUILD_RPATH_USE_ORIGIN TRUE)
 endforeach()
 
 # The VM forks this program at startup. It is not a user-facing command.
+if(BEAM_HAS_CHILD_SETUP)
 add_executable(erl_child_setup
     sys/unix/erl_child_setup.c
     sys/unix/sys_uds.c
@@ -246,6 +261,8 @@ target_link_libraries(erl_child_setup PRIVATE beam-erlang::erts_headers)
 set_target_properties(erl_child_setup PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/libexec/beam
 )
+
+endif()
 
 message(STATUS "libbeam: ${CMAKE_BINARY_DIR}/lib/libbeam.so (${ERTS_BUILD_FLAVOR})")
 message(STATUS "beam executable: ${CMAKE_BINARY_DIR}/bin/beam (${ERTS_BUILD_FLAVOR})")

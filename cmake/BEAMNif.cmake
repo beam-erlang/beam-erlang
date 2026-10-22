@@ -22,7 +22,11 @@ function(beam_target_nif target)
 #ifdef __cplusplus
 extern \"C\" {
 #endif
+#ifdef _WIN32
+__declspec(dllexport) extern const char beam_nif_sdk_v1[];
+#else
 __attribute__((visibility(\"default\"))) extern const char beam_nif_sdk_v1[];
+#endif
 const char beam_nif_sdk_v1[] = \"${_identity}\";
 #ifdef __cplusplus
 }
@@ -30,4 +34,7 @@ const char beam_nif_sdk_v1[] = \"${_identity}\";
 " @ONLY)
     target_sources("${target}" PRIVATE "${_stamp}")
     target_link_libraries("${target}" PRIVATE BEAM::NIF)
+    if(WIN32)
+        target_link_libraries("${target}" PRIVATE BEAM::Runtime)
+    endif()
 endfunction()

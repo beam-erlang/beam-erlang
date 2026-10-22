@@ -33,17 +33,20 @@ function(beam_add_component TARGET)
         DEPENDS ${UNIT_BEAM_FILES} ${UNIT_DEPENDS}
             "${CMAKE_SOURCE_DIR}/cmake/GenerateEmbeddedBytecode.pl"
         COMMENT "Embedding ${UNIT_NAME} component bytecode" VERBATIM)
-    add_library(${TARGET} MODULE ${UNIT_NATIVE_SOURCES} "${_descriptor}")
+    add_library(${TARGET} SHARED ${UNIT_NATIVE_SOURCES} "${_descriptor}")
     beam_configure_native_component(${TARGET})
     target_compile_definitions(${TARGET} PRIVATE ERTS_CONFIG_SKIP_ATOM_TABLE)
     target_include_directories(${TARGET} PRIVATE
         "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}/components/include")
     target_link_libraries(${TARGET} PRIVATE libbeam)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
     target_link_options(${TARGET} PRIVATE "LINKER:-z,defs" "LINKER:--version-script,${_dir}/exports.map")
     set_property(TARGET ${TARGET} APPEND PROPERTY LINK_DEPENDS "${_dir}/exports.map")
+    endif()
     set_target_properties(${TARGET} PROPERTIES
         OUTPUT_NAME "beam-${UNIT_NAME}" PREFIX "lib"
         C_VISIBILITY_PRESET default
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-        BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN")
+        BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "${BEAM_LOADER_ORIGIN}")
+    beam_platform_library(${TARGET} "BEAM${UNIT_NAME}")
 endfunction()

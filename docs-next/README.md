@@ -55,3 +55,5 @@ remain available in the [existing documentation tree](../docs/README.md).
 The candidate currently provides a starting language guide and library catalog,
 not a complete language or BIF reference. Runtime integration and compatibility
 coverage is recorded separately in the [test guide](../tests/README.md).
+
+- [Building the SDK](getting-started/building.md): target presets, native host tools and cross compilation.

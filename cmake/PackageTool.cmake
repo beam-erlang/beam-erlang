@@ -1,5 +1,5 @@
 # Build the selected package-tool sources using the distribution bootstrap.
-set(BEAM_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../beam-erlang-package" CACHE PATH
+set(BEAM_PACKAGE_SOURCE_DIR "" CACHE PATH
     "Local beam-erlang-package source checkout (required; never downloaded)")
 get_filename_component(_package_source "${BEAM_PACKAGE_SOURCE_DIR}" ABSOLUTE
     BASE_DIR "${CMAKE_SOURCE_DIR}")

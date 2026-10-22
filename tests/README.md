@@ -193,3 +193,23 @@ improper tails, trailing bytes and deceptive values inside binary payloads.
 Resource acceptance must continue observing actual descriptors, children and
 threads as well as VM accounting; printed constants and successful harness
 cleanup are not evidence of runtime cleanup.
+
+## Platform orchestration and cross builds
+
+The [CI catalog](../ci/README.md) selects complete build/test presets. Native
+builds retain the full suite above. Cross builds register `target-sdk-layout`
+for host-side installed inventory verification and produce embedding inputs with
+native imported compiler tools. They do not execute target code during generation.
+`target/execute.py` verifies transported SDK/support archives and builds public
+SDK consumers before Android emulator or iOS simulator execution. The device
+route records compile/link acceptance and physical execution as untested.
+
+The mobile adapter reuses first-call, API validation and deployment fixtures,
+including file/network/zlib, repeated lifetimes, missing assets, bytecode identity
+and recovery in a copied deployment. See the
+[architecture evidence](../../dev-documents/workflow-cmake-architecture.md) for
+actual platform execution evidence. Never classify missing coverage as a pass.
+Disabled infrastructure produces an unexecuted report and blocks qualification.
+`ci/test_catalog.py` owns route selection, archive extraction and host manifest
+boundary tests; `release/test_release.py` owns release evidence and publication
+refusal/retry behavior. Neither suite claims target execution.

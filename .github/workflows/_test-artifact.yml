@@ -1,0 +1,81 @@
+name: Test acquired artifact
+'on':
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+      runner:
+        type: string
+        required: true
+      execution_enabled:
+        type: boolean
+        default: true
+      extended:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    if: inputs.execution_enabled
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Prepare executor
+      run: python ci/provision.py --target "$TARGET" --executor
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: payload-${{ inputs.target }}
+        path: ${{ runner.temp }}/beam/payload
+    - name: Qualify transported SDK
+      run: python ci/test_artifact.py --target "$TARGET" --work "$RUNNER_TEMP/beam" $EXTENDED
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        EXTENDED: ${{ inputs.extended && '--extended' || '' }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: reports-${{ inputs.target }}
+        path: ${{ runner.temp }}/beam/reports/
+        if-no-files-found: warn
+        retention-days: 14
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: acceptance-diagnostics-${{ inputs.target }}
+        path: |-
+          ${{ runner.temp }}/beam/acquired/*.log
+          ${{ runner.temp }}/beam/otp/build/Testing/
+          ${{ runner.temp }}/beam/package/build/Testing/
+        if-no-files-found: warn
+        retention-days: 14
+  unexecuted:
+    if: '!inputs.execution_enabled'
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Record unavailable executor
+      run: python ci/unexecuted.py --target "$TARGET" --output reports
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: reports-${{ inputs.target }}
+        path: reports/
+        if-no-files-found: warn
+        retention-days: 14

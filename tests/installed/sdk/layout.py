@@ -132,6 +132,8 @@ def check_runtime_artifacts(prefix):
         "erl_nif_api_funcs": [], "erl_int_sizes_config": [],
     }.items():
         expected[f"header.{name}"] = ("native-header", f"include/beam/nif/{name}.h", dependencies)
+    for name in ("file", "network", "zlib"):
+        expected[f"component.{name}"] = ("native-component", f"lib/libbeam-{name}.so", ["runtime"])
     check(set(manifest["artifacts"]) == set(expected), "unexpected runtime artifact IDs")
     for name, (kind, path, dependencies) in expected.items():
         artifact = manifest["artifacts"][name]

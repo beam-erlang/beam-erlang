@@ -7,46 +7,818 @@
   },
   "configurePresets": [
     {
-      "name": "linux-emu",
-      "displayName": "Linux (interpreter)",
-      "description": "Native Linux, interpreter flavor, Release.",
+      "name": "base",
+      "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "installDir": "${sourceDir}/install/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
+        "BEAM_RELEASE_DEBUG_INFO": true
+      }
+    },
+    {
+      "name": "linux-debian13-amd64-gcc-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_LIBC": "glibc",
+        "BEAM_TARGET_MINIMUM": "13"
+      }
+    },
+    {
+      "name": "linux-debian13-amd64-gcc-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_LIBC": "glibc",
+        "BEAM_TARGET_MINIMUM": "13"
+      }
+    },
+    {
+      "name": "linux-debian13-arm64-gcc-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_LIBC": "glibc",
+        "BEAM_TARGET_MINIMUM": "13"
+      }
+    },
+    {
+      "name": "linux-debian13-arm64-gcc-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_LIBC": "glibc",
+        "BEAM_TARGET_MINIMUM": "13"
+      }
+    },
+    {
+      "name": "linux-alpine3.24-amd64-gcc-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_LIBC": "musl",
+        "BEAM_TARGET_MINIMUM": "3.24"
+      }
+    },
+    {
+      "name": "linux-alpine3.24-amd64-gcc-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_LIBC": "musl",
+        "BEAM_TARGET_MINIMUM": "3.24"
+      }
+    },
+    {
+      "name": "linux-alpine3.24-arm64-gcc-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_LIBC": "musl",
+        "BEAM_TARGET_MINIMUM": "3.24"
+      }
+    },
+    {
+      "name": "linux-alpine3.24-arm64-gcc-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_LIBC": "musl",
+        "BEAM_TARGET_MINIMUM": "3.24"
+      }
+    },
+    {
+      "name": "windows-amd64-msvc-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-amd64-msvc-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-amd64-ucrt64-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-amd64-ucrt64-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-amd64-clang64-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-amd64-clang64-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-arm64-msvc-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-arm64-msvc-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-arm64-clangarm64-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "windows-arm64-clangarm64-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "BEAM_TARGET_MINIMUM": "11"
+      }
+    },
+    {
+      "name": "macos-arm64-appleclang-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0"
+      }
+    },
+    {
+      "name": "macos-arm64-appleclang-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0"
+      }
+    },
+    {
+      "name": "android-arm64-ndk-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/android.cmake",
+        "ANDROID_ABI": "arm64-v8a"
+      }
+    },
+    {
+      "name": "android-arm64-ndk-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/android.cmake",
+        "ANDROID_ABI": "arm64-v8a"
+      }
+    },
+    {
+      "name": "android-amd64-ndk-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/android.cmake",
+        "ANDROID_ABI": "x86_64"
+      }
+    },
+    {
+      "name": "android-amd64-ndk-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/android.cmake",
+        "ANDROID_ABI": "x86_64"
+      }
+    },
+    {
+      "name": "ios-device-arm64-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/ios-device.cmake"
+      }
+    },
+    {
+      "name": "ios-simulator-arm64-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/ios-simulator.cmake"
+      }
+    },
+    {
+      "name": "linux-ubuntu24.04-amd64-gcc-emu",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "emu",
+        "BEAM_TARGET_LIBC": "glibc"
+      }
+    },
+    {
+      "name": "linux-ubuntu24.04-amd64-gcc-jit",
+      "inherits": "base",
+      "cacheVariables": {
+        "ERTS_BUILD_FLAVOR": "jit",
+        "BEAM_TARGET_LIBC": "glibc"
+      }
+    },
+    {
+      "name": "linux-emu",
+      "inherits": "base",
+      "cacheVariables": {
         "ERTS_BUILD_FLAVOR": "emu"
       }
     },
     {
-      "name": "linux-jit",
-      "displayName": "Linux (JIT)",
-      "description": "Native Linux, JIT flavor, Release.",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "installDir": "${sourceDir}/install/${presetName}",
+      "name": "linux-emu-debug",
+      "inherits": "linux-emu",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-emu-relwithdebinfo",
+      "inherits": "linux-emu",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "linux-emu-asan",
+      "inherits": "linux-emu",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BEAM_SANITIZERS": "address;undefined"
+      }
+    },
+    {
+      "name": "linux-jit",
+      "inherits": "base",
+      "cacheVariables": {
         "ERTS_BUILD_FLAVOR": "jit"
+      }
+    },
+    {
+      "name": "linux-jit-debug",
+      "inherits": "linux-jit",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-jit-relwithdebinfo",
+      "inherits": "linux-jit",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "linux-jit-asan",
+      "inherits": "linux-jit",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BEAM_SANITIZERS": "address;undefined"
       }
     }
   ],
   "buildPresets": [
     {
+      "name": "linux-debian13-amd64-gcc-emu",
+      "configurePreset": "linux-debian13-amd64-gcc-emu"
+    },
+    {
+      "name": "linux-debian13-amd64-gcc-jit",
+      "configurePreset": "linux-debian13-amd64-gcc-jit"
+    },
+    {
+      "name": "linux-debian13-arm64-gcc-emu",
+      "configurePreset": "linux-debian13-arm64-gcc-emu"
+    },
+    {
+      "name": "linux-debian13-arm64-gcc-jit",
+      "configurePreset": "linux-debian13-arm64-gcc-jit"
+    },
+    {
+      "name": "linux-alpine3.24-amd64-gcc-emu",
+      "configurePreset": "linux-alpine3.24-amd64-gcc-emu"
+    },
+    {
+      "name": "linux-alpine3.24-amd64-gcc-jit",
+      "configurePreset": "linux-alpine3.24-amd64-gcc-jit"
+    },
+    {
+      "name": "linux-alpine3.24-arm64-gcc-emu",
+      "configurePreset": "linux-alpine3.24-arm64-gcc-emu"
+    },
+    {
+      "name": "linux-alpine3.24-arm64-gcc-jit",
+      "configurePreset": "linux-alpine3.24-arm64-gcc-jit"
+    },
+    {
+      "name": "windows-amd64-msvc-emu",
+      "configurePreset": "windows-amd64-msvc-emu"
+    },
+    {
+      "name": "windows-amd64-msvc-jit",
+      "configurePreset": "windows-amd64-msvc-jit"
+    },
+    {
+      "name": "windows-amd64-ucrt64-emu",
+      "configurePreset": "windows-amd64-ucrt64-emu"
+    },
+    {
+      "name": "windows-amd64-ucrt64-jit",
+      "configurePreset": "windows-amd64-ucrt64-jit"
+    },
+    {
+      "name": "windows-amd64-clang64-emu",
+      "configurePreset": "windows-amd64-clang64-emu"
+    },
+    {
+      "name": "windows-amd64-clang64-jit",
+      "configurePreset": "windows-amd64-clang64-jit"
+    },
+    {
+      "name": "windows-arm64-msvc-emu",
+      "configurePreset": "windows-arm64-msvc-emu"
+    },
+    {
+      "name": "windows-arm64-msvc-jit",
+      "configurePreset": "windows-arm64-msvc-jit"
+    },
+    {
+      "name": "windows-arm64-clangarm64-emu",
+      "configurePreset": "windows-arm64-clangarm64-emu"
+    },
+    {
+      "name": "windows-arm64-clangarm64-jit",
+      "configurePreset": "windows-arm64-clangarm64-jit"
+    },
+    {
+      "name": "macos-arm64-appleclang-emu",
+      "configurePreset": "macos-arm64-appleclang-emu"
+    },
+    {
+      "name": "macos-arm64-appleclang-jit",
+      "configurePreset": "macos-arm64-appleclang-jit"
+    },
+    {
+      "name": "android-arm64-ndk-emu",
+      "configurePreset": "android-arm64-ndk-emu"
+    },
+    {
+      "name": "android-arm64-ndk-jit",
+      "configurePreset": "android-arm64-ndk-jit"
+    },
+    {
+      "name": "android-amd64-ndk-emu",
+      "configurePreset": "android-amd64-ndk-emu"
+    },
+    {
+      "name": "android-amd64-ndk-jit",
+      "configurePreset": "android-amd64-ndk-jit"
+    },
+    {
+      "name": "ios-device-arm64-emu",
+      "configurePreset": "ios-device-arm64-emu"
+    },
+    {
+      "name": "ios-simulator-arm64-emu",
+      "configurePreset": "ios-simulator-arm64-emu"
+    },
+    {
+      "name": "linux-ubuntu24.04-amd64-gcc-emu",
+      "configurePreset": "linux-ubuntu24.04-amd64-gcc-emu"
+    },
+    {
+      "name": "linux-ubuntu24.04-amd64-gcc-jit",
+      "configurePreset": "linux-ubuntu24.04-amd64-gcc-jit"
+    },
+    {
       "name": "linux-emu",
       "configurePreset": "linux-emu"
     },
     {
+      "name": "linux-emu-debug",
+      "configurePreset": "linux-emu-debug"
+    },
+    {
+      "name": "linux-emu-relwithdebinfo",
+      "configurePreset": "linux-emu-relwithdebinfo"
+    },
+    {
+      "name": "linux-emu-asan",
+      "configurePreset": "linux-emu-asan"
+    },
+    {
       "name": "linux-jit",
       "configurePreset": "linux-jit"
+    },
+    {
+      "name": "linux-jit-debug",
+      "configurePreset": "linux-jit-debug"
+    },
+    {
+      "name": "linux-jit-relwithdebinfo",
+      "configurePreset": "linux-jit-relwithdebinfo"
+    },
+    {
+      "name": "linux-jit-asan",
+      "configurePreset": "linux-jit-asan"
     }
   ],
   "testPresets": [
+    {
+      "name": "linux-debian13-amd64-gcc-emu",
+      "configurePreset": "linux-debian13-amd64-gcc-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-debian13-amd64-gcc-jit",
+      "configurePreset": "linux-debian13-amd64-gcc-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-debian13-arm64-gcc-emu",
+      "configurePreset": "linux-debian13-arm64-gcc-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-debian13-arm64-gcc-jit",
+      "configurePreset": "linux-debian13-arm64-gcc-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-alpine3.24-amd64-gcc-emu",
+      "configurePreset": "linux-alpine3.24-amd64-gcc-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-alpine3.24-amd64-gcc-jit",
+      "configurePreset": "linux-alpine3.24-amd64-gcc-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-alpine3.24-arm64-gcc-emu",
+      "configurePreset": "linux-alpine3.24-arm64-gcc-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-alpine3.24-arm64-gcc-jit",
+      "configurePreset": "linux-alpine3.24-arm64-gcc-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-amd64-msvc-emu",
+      "configurePreset": "windows-amd64-msvc-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-amd64-msvc-jit",
+      "configurePreset": "windows-amd64-msvc-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-amd64-ucrt64-emu",
+      "configurePreset": "windows-amd64-ucrt64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-amd64-ucrt64-jit",
+      "configurePreset": "windows-amd64-ucrt64-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-amd64-clang64-emu",
+      "configurePreset": "windows-amd64-clang64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-amd64-clang64-jit",
+      "configurePreset": "windows-amd64-clang64-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-arm64-msvc-emu",
+      "configurePreset": "windows-arm64-msvc-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-arm64-msvc-jit",
+      "configurePreset": "windows-arm64-msvc-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-arm64-clangarm64-emu",
+      "configurePreset": "windows-arm64-clangarm64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-arm64-clangarm64-jit",
+      "configurePreset": "windows-arm64-clangarm64-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "macos-arm64-appleclang-emu",
+      "configurePreset": "macos-arm64-appleclang-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "macos-arm64-appleclang-jit",
+      "configurePreset": "macos-arm64-appleclang-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "android-arm64-ndk-emu",
+      "configurePreset": "android-arm64-ndk-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "android-arm64-ndk-jit",
+      "configurePreset": "android-arm64-ndk-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "android-amd64-ndk-emu",
+      "configurePreset": "android-amd64-ndk-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "android-amd64-ndk-jit",
+      "configurePreset": "android-amd64-ndk-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "ios-device-arm64-emu",
+      "configurePreset": "ios-device-arm64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "ios-simulator-arm64-emu",
+      "configurePreset": "ios-simulator-arm64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-ubuntu24.04-amd64-gcc-emu",
+      "configurePreset": "linux-ubuntu24.04-amd64-gcc-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-ubuntu24.04-amd64-gcc-jit",
+      "configurePreset": "linux-ubuntu24.04-amd64-gcc-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
     {
       "name": "linux-emu",
       "configurePreset": "linux-emu",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-emu-debug",
+      "configurePreset": "linux-emu-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-emu-relwithdebinfo",
+      "configurePreset": "linux-emu-relwithdebinfo",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-emu-asan",
+      "configurePreset": "linux-emu-asan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     },
     {
@@ -54,6 +826,39 @@
       "configurePreset": "linux-jit",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-jit-debug",
+      "configurePreset": "linux-jit-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-jit-relwithdebinfo",
+      "configurePreset": "linux-jit-relwithdebinfo",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-jit-asan",
+      "configurePreset": "linux-jit-asan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     }
   ]

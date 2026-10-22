@@ -1,4 +1,4 @@
-# beam-erlang — Linux build of the BEAM virtual machine.
+# BEAM/Erlang: one target SDK and an explicit native bootstrap.
 #
 # Configures and links lib/libbeam.so and bin/beam for one emulator flavor
 # (jit or emu). Private hosts compile the modern components from source using
@@ -15,47 +15,10 @@ project(
     LANGUAGES C CXX
 )
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(FATAL_ERROR
-        "This build supports Linux only (CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME})")
-endif()
-
-# gnu11: beam_emu dispatch uses computed gotos. C++17 is required by the JIT.
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS ON)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Single-config build type" FORCE)
-elseif(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
-    message(FATAL_ERROR
-        "CMAKE_BUILD_TYPE must be Release (got '${CMAKE_BUILD_TYPE}')")
-endif()
-
-# Release archives keep debug information without changing optimization or
-# stripping the installed payload after integrity metadata has been generated.
-option(BEAM_RELEASE_DEBUG_INFO "Retain native debug information in release archives" OFF)
-if(BEAM_RELEASE_DEBUG_INFO)
-    string(APPEND CMAKE_C_FLAGS_RELEASE " -g")
-    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -g")
-    string(APPEND CMAKE_ASM_FLAGS_RELEASE " -g")
-endif()
-file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/erts/beam_release_version.h"
-    CONTENT "#define BEAM_RELEASE_VERSION \"${BEAM_RELEASE_VERSION}\"\n" @ONLY)
-
-set(ERTS_BUILD_FLAVOR "jit" CACHE STRING "Emulator flavor: jit or emu")
-set_property(CACHE ERTS_BUILD_FLAVOR PROPERTY STRINGS jit emu)
-if(NOT ERTS_BUILD_FLAVOR MATCHES "^(jit|emu)$")
-    message(FATAL_ERROR
-        "ERTS_BUILD_FLAVOR must be jit or emu (got '${ERTS_BUILD_FLAVOR}')")
-endif()
-
-# In-tree zlib and ryu. Kernel poll (epoll) is required, not optional.
-set(ERTS_ZLIB_VENDORED ON)
+include(cmake/ProjectOptions.cmake)
+include(cmake/TargetPlatform.cmake)
+include(cmake/PlatformTargets.cmake)
+include(cmake/HostTools.cmake)
 
 find_package(Perl REQUIRED)
 message(STATUS "Perl: ${PERL_EXECUTABLE}")
@@ -84,11 +47,10 @@ target_include_directories(beam_erts_headers INTERFACE
 )
 add_subdirectory(emulator erts/emulator)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Runtime.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallSDK.cmake)
+beam_register_host_tools_manifest()
 
-include(CTest)
-if(BUILD_TESTING)
-    add_subdirectory(tests)
-endif()
+include(cmake/Testing.cmake)
 
 message(STATUS "beam-erlang configured")
 message(STATUS "  Flavor: ${ERTS_BUILD_FLAVOR}")

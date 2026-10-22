@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import subprocess
+import sys
 import release
 p = argparse.ArgumentParser()
 for name in ['record','source','work','report']: p.add_argument('--'+name, required=True)
@@ -20,5 +21,5 @@ subprocess.run(['cmake','-S',a.source,'-B',str(work/'build'),
 cache = (work/'build/CMakeCache.txt').read_text()
 if 'BEAM_PACKAGE_ACQUIRED_PAYLOAD:BOOL=ON' not in cache:
     raise ValueError('package pin lacks acquired-payload qualification support')
-subprocess.run(['python3',str(release.ROOT/'release/release.py'),'ctest','--kind','package',
+subprocess.run([sys.executable,str(release.ROOT/'release/release.py'),'ctest','--kind','package',
                 '--build',str(work/'build'),'--record',a.record,'--report',a.report], check=True)

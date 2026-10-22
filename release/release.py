@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preview transport and qualification. Native SDK schemas remain SDK-owned."""
+"""Artifact transport and qualification. Native SDK schemas remain SDK-owned."""
 import argparse
 import hashlib
 import json
@@ -14,6 +14,10 @@ import tarfile
 import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
+import stat
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
+import catalog
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = re.compile(r'[0-9a-f]{40}')
@@ -146,6 +150,18 @@ def extract(archive, destination):
     dest = Path(destination).resolve()
     if dest.exists():
         raise ValueError('extraction destination must be fresh')
+    if str(archive).endswith('.zip'):
+        with zipfile.ZipFile(archive) as zip:
+            roots = {Path(m.filename).parts[0] for m in zip.infolist() if m.filename}
+            if len(roots) != 1:
+                raise ValueError('archive must contain one root')
+            for m in zip.infolist():
+                path = Path(m.filename)
+                if (path.is_absolute() or '..' in path.parts or '\\' in m.filename
+                    or ':' in m.filename or stat.S_ISLNK(m.external_attr >> 16)):
+                    raise ValueError('unsafe ZIP member')
+            zip.extractall(dest)
+        return dest / next(iter(roots))
     with tarfile.open(archive, 'r:gz') as tar:
         members = tar.getmembers()
         roots = {Path(m.name).parts[0] for m in members if Path(m.name).parts}
@@ -171,6 +187,13 @@ def extract(archive, destination):
 
 
 def archive_tree(tree, output, root_name):
+    if str(output).endswith('.zip'):
+        with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as zip:
+            for path in sorted(Path(tree).rglob('*')):
+                if path.is_symlink():
+                    raise ValueError('Windows ZIP installations cannot contain symlinks')
+                zip.write(path, str(Path(root_name) / path.relative_to(tree)))
+        return
     with tarfile.open(output, 'w:gz', dereference=False) as tar:
         tar.add(tree, arcname=root_name)
 
@@ -186,27 +209,30 @@ def export_source(tree, revision, output, name):
         subprocess.run(['git', '-C', str(tree), 'archive', '--format=tar.gz', '--prefix=' + name + '/', revision], stdout=f, check=True)
 
 
+def probe(*args):
+    result = subprocess.run(args, text=True, capture_output=True) if shutil.which(args[0]) else None
+    return {'command': list(args), 'status': result.returncode if result else None,
+            'output': (result.stdout + result.stderr) if result else 'tool unavailable'}
+
+
 def environment(build, prefix):
-    libs = {}
+    info = qualification_host()
+    info.update(cmake_cache=(Path(build)/'CMakeCache.txt').read_text(),
+                compile_commands=read(Path(build)/'compile_commands.json') if (Path(build)/'compile_commands.json').exists() else None,
+                reproducible_native_binaries=False)
+    libraries = {}
     for path in sorted(Path(prefix).rglob('*')):
         if path.is_file() and not path.is_symlink():
-            with path.open('rb') as f:
-                elf = f.read(4) == b'\x7fELF'
-            if elf:
-                result = subprocess.run(['ldd', str(path)], text=True, capture_output=True)
-                libs[str(path.relative_to(prefix))] = {
-                    'loader_resolution': result.stdout + result.stderr,
-                    'elf_headers': run('readelf', '-l', path),
-                    'elf_notes': run('readelf', '-n', path),
-                    'symbol_versions': run('readelf', '--version-info', path)}
-    return {'kernel': platform.release(), 'machine': platform.machine(),
-            'cpu': run('lscpu'),
-            'runner_image': os.environ.get('ImageOS'), 'runner_image_version': os.environ.get('ImageVersion'),
-            'os_release': Path('/etc/os-release').read_text(), 'compiler': run('cc', '--version'),
-            'packages': run('dpkg-query', '-W'), 'runtime_libraries': libs,
-            'cmake_cache': (Path(build) / 'CMakeCache.txt').read_text(),
-            'compile_commands': read(Path(build) / 'compile_commands.json'),
-            'reproducible_native_binaries': False}
+            with path.open('rb') as f: magic = f.read(4)
+            if magic == b'\x7fELF':
+                libraries[str(path.relative_to(prefix))] = probe('readelf', '-h', '-l', '-V', str(path))
+            elif magic[:2] == b'MZ':
+                libraries[str(path.relative_to(prefix))] = probe('dumpbin', '/DEPENDENTS', str(path)) if shutil.which('dumpbin') else probe('objdump','-p',str(path))
+            elif magic in (b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf'):
+                libraries[str(path.relative_to(prefix))] = probe('otool','-L',str(path))
+    info['runtime_libraries'] = libraries
+    return info
+
 
 
 def inventory(build):
@@ -216,6 +242,9 @@ def inventory(build):
 def export_support(build, output):
     build = Path(build).resolve()
     tests = [t for t in inventory(build) if t['name'].startswith('installed-')]
+    if not tests and (build / 'target-acceptance/answer_beam.h').is_file():
+        archive_tree(build/'target-acceptance', output, 'support')
+        return
     if not tests:
         raise ValueError('installed acceptance not registered')
     with tempfile.TemporaryDirectory() as temp:
@@ -240,7 +269,8 @@ def pack(args):
     data = inputs(args.inputs)
     version = (ROOT / 'BEAM_VERSION').read_text().strip()
     metadata = version_metadata(version)
-    revision = clean_revision(ROOT)
+    development = getattr(args, "development", False)
+    revision = run("git", "-C", ROOT, "rev-parse", "HEAD") if development else clean_revision(ROOT)
     if os.environ.get('GITHUB_SHA') and revision != os.environ['GITHUB_SHA']:
         raise ValueError('BEAM source differs from selected workflow commit')
     package_revision = clean_revision(args.package)
@@ -253,11 +283,11 @@ def pack(args):
         raise ValueError('producer build source selections do not match release sources')
     if (Path(args.prefix)/'lib/beam/sdk.toml').read_bytes() != (Path(args.build)/'sdk.toml').read_bytes():
         raise ValueError('installation belongs to a different SDK build')
-    if 'BEAM_RELEASE_DEBUG_INFO:BOOL=ON' not in cache or 'CMAKE_BUILD_TYPE:STRING=Release' not in cache:
+    if not development and ('BEAM_RELEASE_DEBUG_INFO:BOOL=ON' not in cache or 'CMAKE_BUILD_TYPE:STRING=Release' not in cache):
         raise ValueError('release archives require optimized Release with debug information enabled at configuration')
-    os_release = Path('/etc/os-release').read_text()
-    if 'ID=ubuntu' not in os_release or 'VERSION_ID="24.04"' not in os_release or platform.machine() != 'x86_64':
-        raise ValueError('preview producer must be Ubuntu 24.04 x86_64')
+    selected = catalog.target(args.target)
+    if selected['flavor'] != args.flavor:
+        raise ValueError('target/flavor mismatch')
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     import tomllib
@@ -265,8 +295,10 @@ def pack(args):
     # SDK identity is captured at production; consumers receive it from this record.
     if sdk['identity'] != version or sdk['flavor'] != args.flavor:
         raise ValueError('SDK release identity mismatch')
-    stem = f'beam-erlang-{version}-ubuntu-24.04-x86_64-{args.flavor}'
-    payload = out / (stem + '.tar.gz')
+    if sdk['os'] != selected['os'] or {'x86_64':'amd64','AMD64':'amd64','aarch64':'arm64','ARM64':'arm64'}.get(sdk['architecture'],sdk['architecture']) != selected['arch']:
+        raise ValueError('SDK platform differs from target catalog')
+    stem = f'beam-erlang-{version}-{args.target}'
+    payload = out / (stem + ('.zip' if selected['os'] == 'Windows' else '.tar.gz'))
     with tempfile.TemporaryDirectory() as temporary:
         staged = Path(temporary) / stem
         shutil.copytree(args.prefix, staged, symlinks=True)
@@ -294,17 +326,18 @@ def pack(args):
     export_support(args.build, support)
     for name, tree, rev in [('beam-erlang', ROOT, revision), ('beam-erlang-package', args.package, package_revision)]:
         export_source(tree, rev, out / f'{name}-{version}-source.tar.gz', f'{name}-{version}')
-    envfile = out / f'environment-{args.flavor}.json'
+    envfile = out / f'environment-{args.target}.json'
     write(envfile, environment(args.build, args.prefix))
     record = {'schema': 1, 'version': version, **metadata,
-              'target': 'ubuntu-24.04-x86_64', 'flavor': args.flavor,
+              'target': args.target, 'platform': selected, 'flavor': args.flavor, 'development': development,
               'source': revision, 'inputs': data, 'sdk': sdk, 'archive': asset(payload),
               'acceptance': asset(support), 'environment': asset(envfile),
               'sources': [asset(p) for p in sorted(out.glob('*-source.tar.gz'))],
               'origin': {'repository': os.environ.get('GITHUB_REPOSITORY'),
-                         'workflow': '.github/workflows/preview-candidate.yml',
+                         'workflow': '.github/workflows/release-candidate.yml' if not development else os.environ.get('GITHUB_WORKFLOW_REF', 'local'),
+                         'branch': os.environ.get('GITHUB_REF_NAME'),
                          'run_id': os.environ.get('GITHUB_RUN_ID'), 'attempt': os.environ.get('GITHUB_RUN_ATTEMPT')}}
-    write(out / f'candidate-{args.flavor}.json', record)
+    write(out / f'candidate-{args.target}.json', record)
 
 
 def acquired(args):
@@ -345,9 +378,9 @@ def qualification_host():
     return {'kernel': platform.release(), 'machine': platform.machine(),
             'runner_image': os.environ.get('ImageOS'),
             'runner_image_version': os.environ.get('ImageVersion'),
-            'os_release': Path('/etc/os-release').read_text(),
-            'cpu': run('lscpu'), 'compiler': run('cc', '--version'),
-            'packages': run('dpkg-query', '-W')}
+            'os_release': Path('/etc/os-release').read_text() if Path('/etc/os-release').exists() else platform.platform(),
+            'compiler': probe('cl') if os.name == 'nt' and shutil.which('cl') else probe('cc','--version'),
+            'packages': probe('apk','info','-v') if shutil.which('apk') else probe('dpkg-query','-W') if shutil.which('dpkg-query') else probe('brew','list','--versions') if shutil.which('brew') else probe('pacman','-Q')}
 
 
 def upstream_results(build):
@@ -364,6 +397,8 @@ def ctest(args):
     tests = inventory(args.build)
     names = {t['name'] for t in tests}
     required = OTP_TESTS if args.kind == 'otp' else PACKAGE_TESTS if args.kind == 'package' else {'installed-sdk', 'installed-compile', 'installed-components', 'compiler-artifacts'}
+    if args.kind == 'beam' and 'target-sdk-layout' in names:
+        required = {'target-sdk-layout'}
     if not required <= names:
         raise ValueError('mandatory tests missing: ' + ', '.join(sorted(required - names)))
     junit = Path(args.report).resolve().with_suffix('.xml')
@@ -391,102 +426,97 @@ def ctest(args):
         raise ValueError('qualification failed or contains mandatory skipped/untested coverage')
 
 
+def check_line(version, branch, policy):
+    metadata = version_metadata(version)
+    line = policy['lines'].get(branch)
+    if not line or metadata['channel'] not in line['channels'] or metadata['erts_version'].split('.')[0] != line['erts_major']:
+        raise ValueError('release identity is not permitted on source line: ' + str(branch))
+
+
+def report_kinds(target):
+    row = catalog.target(target)
+    if row['family'] == 'integration': return ['beam', 'acquired', 'package', 'otp']
+    return ['beam', 'acquired', 'package'] if row['qualification'] == 'desktop' else ['beam', 'acquired']
+
+
 def eligible(manifest, policy):
-    if (type(manifest.get('schema')) is not int or manifest['schema'] != 1
-            or manifest.get('repository') != policy['repository']):
+    if type(manifest.get('schema')) is not int or manifest['schema'] != 1 or manifest.get('repository') != policy['repository']:
         raise ValueError('untrusted release manifest')
     validate_version_record(manifest)
     if policy.get('promotion_enabled') is not True or policy['blockers']:
         raise ValueError('public promotion is disabled: ' + '; '.join(policy['blockers']))
     for role in ['release_owners', 'recovery_owners']:
-        if not isinstance(policy[role], list) or not policy[role] or any(not isinstance(owner, str) or not owner.strip() for owner in policy[role]):
+        if not isinstance(policy.get(role), list) or not policy[role] or any(not isinstance(x,str) or not x.strip() for x in policy[role]):
             raise ValueError('release and recovery owners must be configured')
-    if set(manifest['candidates']) != {'emu', 'jit'}:
-        raise ValueError('both complete flavors required')
-    for flavor, record in manifest['candidates'].items():
-        validate_candidate_version(record, manifest['version'])
-        if record['target'] != policy['target'] or record['flavor'] != flavor or record['version'] != manifest['version'] or record['source'] != manifest['source']:
-            raise ValueError('mixed candidate identities')
-        if record['sdk']['identity'] != manifest['version'] or record['sdk']['flavor'] != flavor or not DIGEST.fullmatch(record['sdk']['build-id']):
-            raise ValueError('invalid SDK candidate identity')
-        if record['origin']['repository'] != policy['repository'] or record['origin']['workflow'] != policy['candidate_workflow'] or record['origin']['run_id'] != manifest['run_id']:
-            raise ValueError('untrusted candidate workflow origin')
-        inputs_data = record['inputs']
-        validate_inputs(inputs_data, qualification=True)
-        if inputs_data != manifest['candidates']['emu']['inputs']:
-            raise ValueError('flavors have different release inputs')
-    expected_reports = {flavor + '-' + kind for flavor in ['emu', 'jit']
-                        for kind in ['beam', 'acquired', 'package', 'otp']}
-    if set(manifest['qualification']) != expected_reports or set(manifest['candidate_digests']) != {'emu', 'jit'}:
+    check_line(manifest['version'], manifest.get('branch'), policy)
+    expected = set(policy['targets'] + policy['integration_targets'])
+    if set(manifest['candidates']) != expected or set(manifest['candidate_digests']) != expected:
+        raise ValueError('incomplete or unexpected target inventory')
+    expected_reports = {target+'-'+kind for target in expected for kind in report_kinds(target)}
+    if set(manifest['qualification']) != expected_reports:
         raise ValueError('incomplete or unexpected qualification inventory')
-    for flavor in ['emu', 'jit']:
-        installed = {t['name'] for t in manifest['qualification'][flavor + '-beam']['tests']
-                     if t['name'].startswith('installed-')}
-        acquired_names = {t['name'] for t in manifest['qualification'][flavor + '-acquired']['tests']}
-        if acquired_names != installed:
-            raise ValueError('acquired acceptance differs from the complete installed selection')
-        for kind in ['beam', 'acquired', 'package', 'otp']:
-            report = manifest['qualification'].get(flavor + '-' + kind)
-            if not report or report.get('eligible') is not True or not report.get('tests'):
-                raise ValueError('incomplete or failing qualification: ' + flavor + '-' + kind)
-            if report.get('kind') != kind:
-                raise ValueError('qualification report kind mismatch')
-            names = {t['name'] for t in report['tests']}
-            if len(names) != len(report['tests']):
-                raise ValueError('duplicate qualification test entries')
-            required = OTP_TESTS if kind == 'otp' else PACKAGE_TESTS if kind == 'package' else {'installed-sdk', 'installed-compile', 'installed-components'}
-            if not required <= names:
-                raise ValueError('mandatory test registration incomplete: ' + flavor + '-' + kind)
-            for test in report['tests']:
-                if test['status'] == 'passed':
-                    continue
-                if kind == 'otp' and test['status'] == 'deferred' and (test['name'] == 'wx-product' or test['name'].startswith('upstream-wx_')):
-                    continue
-                if kind == 'beam' and test['status'] == 'skipped' and test['name'] == 'vm-ethread-thread_name':
-                    continue
-                raise ValueError('nonpassing mandatory test: ' + test['name'])
-            if report.get('candidate') != manifest['candidate_digests'][flavor]:
+    common_inputs = None
+    for target, record in manifest['candidates'].items():
+        row = catalog.target(target)
+        validate_candidate_version(record, manifest['version'])
+        if record.get('development') is not False or record['platform'] != row:
+            raise ValueError('development or altered target candidate')
+        if record['target'] != target or record['flavor'] != row['flavor'] or record['source'] != manifest['source']:
+            raise ValueError('mixed candidate identities')
+        if record['sdk']['flavor'] != row['flavor'] or not DIGEST.fullmatch(record['sdk']['build-id']):
+            raise ValueError('invalid SDK candidate identity')
+        origin=record['origin']
+        if origin['repository'] != policy['repository'] or origin['workflow'] != policy['candidate_workflow'] or origin['run_id'] != manifest['run_id'] or origin['branch'] != manifest['branch']:
+            raise ValueError('untrusted candidate workflow origin')
+        validate_inputs(record['inputs'], qualification=True)
+        if common_inputs is not None and common_inputs != record['inputs']:
+            raise ValueError('targets have different release inputs')
+        common_inputs=record['inputs']
+        for kind in report_kinds(target):
+            report=manifest['qualification'][target+'-'+kind]
+            if report.get('eligible') is not True or not report.get('tests') or report.get('kind') != kind:
+                raise ValueError('incomplete or failing qualification: '+target+'-'+kind)
+            if report.get('candidate') != manifest['candidate_digests'][target]:
                 raise ValueError('qualification is for a different candidate')
+            names={t['name'] for t in report['tests']}
+            if len(names)!=len(report['tests']): raise ValueError('duplicate test entries')
+            required=OTP_TESTS if kind=='otp' else PACKAGE_TESTS if kind=='package' else set()
+            if row['qualification']!='desktop':
+                required={'target-sdk-layout'} if kind=='beam' else {'acquired-sdk-consumer-build'}
+                if kind=='acquired' and row['executor']!='ios-device':required.update({'acquired-sdk-runtime','acquired-sdk-deployment','acquired-sdk-components','acquired-sdk-missing-and-identity','acquired-sdk-lifecycle'})
+                if kind=='acquired' and row['family']=='android':required.add('acquired-sdk-16k-pages')
+            if not required <= names: raise ValueError('mandatory tests missing')
+            for test in report['tests']:
+                if test['status']=='passed': continue
+                if kind=='otp' and test['status']=='deferred' and (test['name']=='wx-product' or test['name'].startswith('upstream-wx_')): continue
+                if kind=='beam' and test['status']=='skipped' and test['name']=='vm-ethread-thread_name': continue
+                raise ValueError('nonpassing mandatory test: '+test['name'])
+        if row['qualification']=='desktop':
+            installed={t['name'] for t in manifest['qualification'][target+'-beam']['tests'] if t['name'].startswith('installed-')}
+            acquired={t['name'] for t in manifest['qualification'][target+'-acquired']['tests']}
+            if not {'installed-sdk','installed-compile','installed-components'} <= installed or acquired != installed:
+                raise ValueError('acquired acceptance differs from complete installed selection')
 
 
 def collect(args):
-    root = Path(args.directory)
-    records = {f: read(root / f'candidate-{f}.json') for f in ['emu', 'jit']}
-    for record in records.values():
-        validate_candidate_version(record)
-    if records['emu']['source'] != records['jit']['source'] or records['emu']['version'] != records['jit']['version']:
-        raise ValueError('flavors have different source identities')
-    reports = {}
-    for f in ['emu', 'jit']:
-        for kind in ['beam', 'acquired', 'package', 'otp']:
-            p = root / f'{f}-{kind}.json'
-            if p.exists():
-                reports[f + '-' + kind] = read(p)
-    manifest = {'schema': 1, 'repository': 'beam-erlang/beam-erlang', 'version': records['emu']['version'],
-                **version_metadata(records['emu']['version']),
-                'source': records['emu']['source'], 'run_id': records['emu']['origin']['run_id'],
-                'candidates': records, 'candidate_digests': {f: digest(root / f'candidate-{f}.json') for f in records},
-                'qualification': reports, 'reports': [asset(p) for p in sorted(root.glob('*-*.json')) if p.name.split('-')[-1] in {'beam.json','acquired.json','package.json','otp.json'}]}
-    missing = []
-    for flavor, record in records.items():
-        missing.extend(flavor + ': ' + item for item in record['inputs'].get('pending', []))
-        missing.extend(flavor + ': missing qualification asset ' + key
-                       for key, item in record['inputs']['qualification_assets'].items() if not item)
-        for kind in ['beam', 'acquired', 'package', 'otp']:
-            report = reports.get(flavor + '-' + kind)
-            if not report:
-                missing.append(flavor + ': missing ' + kind + ' qualification report')
-            elif not report.get('eligible'):
-                missing.append(flavor + ': nonpassing ' + kind + ' qualification')
+    root=Path(args.directory);policy=read(args.policy)
+    expected=policy['targets']+policy['integration_targets']
+    records={t:read(root/('candidate-'+t+'.json')) for t in expected if (root/('candidate-'+t+'.json')).exists()}
+    first=next(iter(records.values()), {})
+    version=first.get('version',(ROOT/'BEAM_VERSION').read_text().strip())
+    reports={t+'-'+kind:read(root/(t+'-'+kind+'.json')) for t in expected for kind in report_kinds(t) if (root/(t+'-'+kind+'.json')).exists()}
+    manifest={'schema':1,'repository':policy['repository'],'version':version,**version_metadata(version),
+              'source':first.get('source',os.environ.get('GITHUB_SHA')),
+              'branch':first.get('origin',{}).get('branch',os.environ.get('GITHUB_REF_NAME')),
+              'run_id':first.get('origin',{}).get('run_id',os.environ.get('GITHUB_RUN_ID')),
+              'candidates':records,'candidate_digests':{t:digest(root/('candidate-'+t+'.json')) for t in records},
+              'qualification':reports,'reports':[asset(root/(name+'.json')) for name in reports]}
     try:
-        eligible(manifest, read(args.policy))
-        manifest['eligible'] = True
-        manifest['blockers'] = []
-    except (ValueError, KeyError) as e:
-        manifest['eligible'] = False
-        manifest['blockers'] = [str(e)] + missing
-    write(args.output, manifest)
-    print(json.dumps({'eligible': manifest['eligible'], 'blockers': manifest['blockers']}))
+        eligible(manifest,policy);manifest.update(eligible=True,blockers=[])
+    except (ValueError,KeyError) as error:
+        manifest.update(eligible=False,blockers=[str(error)]+['missing candidate: '+t for t in expected if t not in records]+['nonpassing or missing report: '+t+'-'+kind for t in expected for kind in report_kinds(t) if not reports.get(t+'-'+kind,{}).get('eligible')])
+    write(args.output,manifest)
+    print(json.dumps({'eligible':manifest['eligible'],'blockers':manifest['blockers']}))
 
 
 def main():
@@ -495,7 +525,7 @@ def main():
     a = sub.add_parser('acquire'); a.add_argument('--inputs', default=ROOT/'release/inputs.json'); a.add_argument('--kind', choices=['package', 'qualification'], required=True); a.add_argument('--destination', required=True); a.set_defaults(func=acquire)
     a = sub.add_parser('pack'); a.add_argument('--inputs', default=ROOT/'release/inputs.json'); a.add_argument('--flavor', choices=['emu','jit'], required=True)
     for flag in ['build', 'prefix', 'package', 'output']: a.add_argument('--'+flag, required=True)
-    a.set_defaults(func=pack)
+    a.add_argument('--target', required=True); a.add_argument('--development', action='store_true'); a.set_defaults(func=pack)
     a = sub.add_parser('acquired')
     for flag in ['record', 'work', 'report']: a.add_argument('--'+flag, required=True)
     a.set_defaults(func=acquired)

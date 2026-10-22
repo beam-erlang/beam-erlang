@@ -1,0 +1,57 @@
+name: Publish containers
+'on':
+  workflow_dispatch:
+    inputs:
+      candidate_run:
+        description: Reviewed container candidate run
+        required: true
+      manifest_sha256:
+        description: Reviewed images.json SHA-256
+        required: true
+      update_channels:
+        description: Move preview/stable image aliases
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: container-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    environment: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: container-candidate
+        run-id: ${{ inputs.candidate_run }}
+        github-token: ${{ github.token }}
+        path: ${{ runner.temp }}/candidate
+    - name: Install publisher and authenticate
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y skopeo
+        printf "%s" "$GH_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+    - name: Promote exact OCI bytes
+      run: python containers/images.py publish --work "$RUNNER_TEMP/candidate" --run "$CANDIDATE_RUN" --digest "$DIGEST"
+        $CHANNELS
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CANDIDATE_RUN: ${{ inputs.candidate_run }}
+        DIGEST: ${{ inputs.manifest_sha256 }}
+        CHANNELS: ${{ inputs.update_channels && '--update-channels' || '' }}

@@ -32,11 +32,14 @@ in place while the candidate develops into their replacement. See the
 
 ## Building
 
-The supported targets are 64-bit Linux on x86_64 and aarch64. Builds require
+The intended matrix includes Debian/glibc, Alpine/musl, Windows MSVC/MSYS2,
+macOS Apple Silicon, Android and iOS. Concrete presets and CI routes are listed
+in [CI architecture](ci/README.md); platform failures and unexecuted coverage
+remain explicit. Local Linux builds require
 CMake 3.25 or newer, Ninja, a GNU C11-compatible C compiler, a C++17 compiler and
 Perl. The build supplies its own Erlang compiler bootstrap.
 
-The default test suite also requires Python 3.9 or newer, Make, binutils,
+The default test suite also requires Python 3.11 or newer, Make, binutils,
 pkg-config, system PCRE2 and zlib development files, POSIX terminals and loopback
 networking. The system libraries exercise coexistence with the VM's bundled
 copies. Install terminal development files for terminal support. On Ubuntu 24.04:
@@ -47,7 +50,7 @@ sudo apt-get install build-essential binutils cmake ninja-build perl python3 \
 ```
 
 Distribution builds require a complete local `beam-erlang-package` checkout.
-CMake looks beside this repository by default. To select another location, pass
+Select it explicitly by passing
 `-DBEAM_PACKAGE_SOURCE_DIR=/path/to/beam-erlang-package` when configuring.
 The companion is public at [beam-erlang/beam-erlang-package](https://github.com/beam-erlang/beam-erlang-package).
 CI acquires the exact commit in `release/inputs.json`; CMake never downloads sources.
@@ -57,7 +60,7 @@ the remaining qualification and publication blockers.
 From the repository root, build, test and install the interpreter flavor:
 
 ```sh
-cmake --preset linux-emu
+cmake --preset linux-emu -DBEAM_PACKAGE_SOURCE_DIR=/path/to/beam-erlang-package
 cmake --build --preset linux-emu
 ctest --preset linux-emu
 cmake --install build/linux-emu
@@ -66,7 +69,7 @@ cmake --install build/linux-emu
 The JIT flavor uses a separate build and installation:
 
 ```sh
-cmake --preset linux-jit
+cmake --preset linux-jit -DBEAM_PACKAGE_SOURCE_DIR=/path/to/beam-erlang-package
 cmake --build --preset linux-jit
 ctest --preset linux-jit
 cmake --install build/linux-jit

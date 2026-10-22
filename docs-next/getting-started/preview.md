@@ -13,9 +13,13 @@ for identifier rules and publication readiness.
 
 ## Select and verify
 
-The first target is Ubuntu 24.04 on x86_64. Choose the JIT archive for ordinary
-use; the interpreter archive contains the same compiler, libraries, native
-components and SDK. The release manifest records the actual build kernel,
+Select the archive matching OS, architecture, libc, compiler environment and
+flavor. The catalog includes Debian 13, Alpine 3.24, Windows MSVC/MSYS2, macOS
+Apple Silicon, Android and iOS. Every archive provides the same SDK interfaces
+for its target; availability requires completed qualification. Android downloads
+come from the Linux build route. iOS supports the interpreter and contains
+framework bundles for device or simulator. Windows ZIP names distinguish MSVC,
+UCRT64, CLANG64 and CLANGARM64. See the [build matrix](../../ci/README.md). The release manifest records the actual build kernel,
 compiler, flags, system packages and required runtime libraries. It does not
 promise portability to other distributions or native binary reproducibility.
 Debug information is retained in optimized Release binaries.
@@ -25,18 +29,18 @@ from the same versioned GitHub release. Verify the manifest with GitHub CLI:
 
 ```sh
 gh attestation verify release-manifest.json --repo beam-erlang/beam-erlang \
-  --signer-workflow beam-erlang/beam-erlang/.github/workflows/preview-publish.yml \
+  --signer-workflow beam-erlang/beam-erlang/.github/workflows/release-publish.yml \
   --deny-self-hosted-runners
 ```
 
 Compare the archive's SHA-256 and byte size with the verified manifest. Then
 verify its producer attestation, whose expected workflow is
-`beam-erlang/beam-erlang/.github/workflows/preview-candidate.yml`:
+`beam-erlang/beam-erlang/.github/workflows/release-candidate.yml`:
 
 ```sh
-gh attestation verify beam-erlang-17.0-r1-preview.1-ubuntu-24.04-x86_64-jit.tar.gz \
+gh attestation verify beam-erlang-17.0-r1-preview.1-linux-debian13-amd64-gcc-jit.tar.gz \
   --repo beam-erlang/beam-erlang \
-  --signer-workflow beam-erlang/beam-erlang/.github/workflows/preview-candidate.yml \
+  --signer-workflow beam-erlang/beam-erlang/.github/workflows/release-candidate.yml \
   --deny-self-hosted-runners
 ```
 
@@ -54,13 +58,15 @@ new signed material. Follow [GitHub's offline verification procedure](https://do
 ## Install and first use
 
 Extract a verified archive into a fresh user-owned directory. Do not overlay an
-existing installation. The archive contains one installation root and preserves
-executable modes and symbolic links.
+existing installation. The archive contains one installation root. Tar archives preserve executable
+modes and symbolic links; extract Windows ZIPs with `Expand-Archive`. Mobile
+SDKs are linked into applications using the matching target toolchain. The
+example below uses Debian AMD64 JIT.
 
 ```sh
 mkdir -p "$HOME/opt"
-tar -xzf beam-erlang-17.0-r1-preview.1-ubuntu-24.04-x86_64-jit.tar.gz -C "$HOME/opt"
-export BEAM_PREFIX="$HOME/opt/beam-erlang-17.0-r1-preview.1-ubuntu-24.04-x86_64-jit"
+tar -xzf beam-erlang-17.0-r1-preview.1-linux-debian13-amd64-gcc-jit.tar.gz -C "$HOME/opt"
+export BEAM_PREFIX="$HOME/opt/beam-erlang-17.0-r1-preview.1-linux-debian13-amd64-gcc-jit"
 "$BEAM_PREFIX/bin/beam" version
 "$BEAM_PREFIX/bin/beam" help
 "$BEAM_PREFIX/bin/beam" eval 'io:format("Hello, BEAM!~n").'

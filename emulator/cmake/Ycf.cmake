@@ -12,6 +12,7 @@ function(erts_ensure_ycf_host_tool)
     include(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/YcfSources.cmake)
 
     add_executable(yielding_c_fun_host ${YCF_TOOL_SOURCES})
+    set_target_properties(yielding_c_fun_host PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     target_include_directories(yielding_c_fun_host PRIVATE "${YCF_SOURCE_DIR}")
 endfunction()
 

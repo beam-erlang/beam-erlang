@@ -88,8 +88,10 @@ function(erts_add_emulator_sources target)
             sys/unix/erl_unix_sys_ddll.c
             sys/common/erl_poll.c
         )
-    else()
-        message(FATAL_ERROR "erts_add_emulator_sources requires Linux")
+    elseif(WIN32)
+        list(APPEND EMU_SYS_SOURCES sys/win32/sys.c sys/win32/sys_env.c
+            sys/win32/sys_float.c sys/win32/sys_time.c sys/win32/sys_interrupt.c
+            sys/win32/erl_win32_sys_ddll.c sys/win32/erl_poll.c sys/win32/dosmap.c)
     endif()
 
     # epoll/kqueue builds compile erl_poll.c twice (Makefile.in ERTS_BUILD_FALLBACK_POLL):
@@ -450,22 +452,16 @@ function(erts_add_emulator_sources target)
     # command lines for these files.
     target_compile_definitions(${target} PRIVATE
         HAVE_CONFIG_H
-        USE_THREADS
-        _THREAD_SAFE
-        _REENTRANT
+        ${BEAM_PLATFORM_DEFINITIONS}
         LIBSCTP=
         ERLANG_ARCHITECTURE="${ERTS_HOST_TRIPLE}"
     )
-    target_compile_definitions(${target} PRIVATE
-        _GNU_SOURCE
-        POSIX_THREADS
-        _POSIX_THREAD_SAFE_FUNCTIONS
-    )
+
 
     # erl_internal_test.c includes ethread.h without config.h.
     set_source_files_properties(
         beam/erl_internal_test.c
-        PROPERTIES COMPILE_OPTIONS "-include;config.h"
+        PROPERTIES COMPILE_OPTIONS "$<IF:$<C_COMPILER_ID:MSVC>,/FIconfig.h,-include;config.h>"
     )
 
     if(ERTS_BUILD_FLAVOR STREQUAL "jit")
@@ -512,8 +508,8 @@ function(erts_add_emulator_sources target)
         ${CMAKE_CURRENT_SOURCE_DIR}/pcre
     )
     target_include_directories(${target} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/sys/unix
-        ${CMAKE_CURRENT_SOURCE_DIR}/drivers/unix
+        ${CMAKE_CURRENT_SOURCE_DIR}/sys/${BEAM_SYS_DIRECTORY}
+        ${CMAKE_CURRENT_SOURCE_DIR}/drivers/${BEAM_SYS_DIRECTORY}
         ${CMAKE_CURRENT_SOURCE_DIR}/zlib
     )
 endfunction()

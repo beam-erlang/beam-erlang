@@ -63,11 +63,7 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
                     'channel': 'preview' if preview is not None else 'stable', 'preview_number': preview})
                 record = {'version': version, **metadata}
                 release.validate_version_record(record, version)
-                if preview is not None:
-                    self.assertEqual(promote.preview_tag(record), 'v' + version)
-                else:
-                    with self.assertRaisesRegex(ValueError, 'preview version required'):
-                        promote.preview_tag(record)
+                self.assertEqual(promote.preview_tag(record), 'v' + version)
         for version in ['', None, True, ['17.0-r1'], '17-r1', '17.0', '017.0-r1', '17.00-r1',
                         '17.0-r0', '17.0-r01', '17.0-r1-preview.0', '17.0-r1-preview.01',
                         '17.0-r1-preview1', '17.0-r1-rc1', '0.1.0-preview.1',
@@ -161,17 +157,47 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
                   'run_id':'123','candidates':{},'candidate_digests':{},'qualification':{}}
         metadata=release.version_metadata(manifest['version'])
         manifest.update(metadata)
-        for flavor in ['emu','jit']:
-            manifest['candidate_digests'][flavor]='b'*64
-            manifest['candidates'][flavor]={'schema':1,**metadata,'target':policy['target'],'flavor':flavor,'version':manifest['version'],'source':manifest['source'],
+        manifest['branch']='master'
+        for target in policy['targets'] + policy['integration_targets']:
+            row=release.catalog.target(target);flavor=row['flavor']
+            manifest['candidate_digests'][target]='b'*64
+            manifest['candidates'][target]={'schema':1,**metadata,'target':target,'platform':row,'development':False,'flavor':flavor,'version':manifest['version'],'source':manifest['source'],
                 'sdk':{'identity':manifest['version'],'flavor':flavor,'build-id':'d'*64},
-                'origin':{'repository':policy['repository'],'workflow':policy['candidate_workflow'],'run_id':'123'},
+                'origin':{'repository':policy['repository'],'workflow':policy['candidate_workflow'],'run_id':'123','branch':'master'},
                 'inputs':copy.deepcopy(inputs)}
-            for kind in ['beam','acquired','package','otp']:
+            for kind in release.report_kinds(target):
                 names=release.OTP_TESTS if kind=='otp' else release.PACKAGE_TESTS if kind=='package' else {'installed-sdk','installed-compile','installed-components','installed-run'}
-                manifest['qualification'][flavor+'-'+kind]={'kind':kind,'eligible':True,'candidate':'b'*64,
+                if row['qualification']!='desktop':
+                    names={'target-sdk-layout'} if kind=='beam' else {'acquired-sdk-consumer-build'} if row['executor']=='ios-device' else {'acquired-sdk-consumer-build','acquired-sdk-runtime','acquired-sdk-deployment','acquired-sdk-components','acquired-sdk-missing-and-identity','acquired-sdk-lifecycle'}
+                    if kind=='acquired' and row['family']=='android':names.add('acquired-sdk-16k-pages')
+                manifest['qualification'][target+'-'+kind]={'kind':kind,'eligible':True,'candidate':'b'*64,
                     'tests':[{'name':n,'status':'passed'} for n in names]}
         return manifest,policy
+
+    def test_mobile_required_execution_cannot_be_disabled_or_omitted(self):
+        manifest,policy=self.fixture()
+        key='android-arm64-ndk-emu-linux-acquired'
+        for status in ('unexecuted','untested','skipped','failed'):
+            invalid=copy.deepcopy(manifest)
+            invalid['qualification'][key]['tests'][0]['status']=status
+            with self.subTest(status=status), self.assertRaises(ValueError):
+                release.eligible(invalid,policy)
+        invalid=copy.deepcopy(manifest)
+        invalid['qualification'][key]['tests']=[t for t in invalid['qualification'][key]['tests'] if t['name']!='acquired-sdk-16k-pages']
+        with self.assertRaisesRegex(ValueError,'mandatory tests missing'):
+            release.eligible(invalid,policy)
+
+    def test_publication_excludes_noncanonical_sdk_archives(self):
+        manifest,policy=self.fixture()
+        manifest['reports']=[]
+        for target,record in manifest['candidates'].items():
+            for kind in ('archive','acceptance','environment'):
+                record[kind]={'name':target+'-'+kind,'sha256':'a'*64,'size':1}
+            record['sources']=[]
+        public=promote.payloads(manifest)
+        for target,record in manifest['candidates'].items():
+            self.assertEqual(record['archive']['name'] in public,record['platform']['release'])
+            self.assertIn(record['environment']['name'],public)
 
     def test_version_mismatch_is_rejected_before_publication_network_access(self):
         from types import SimpleNamespace
@@ -187,10 +213,10 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
             lambda m: m.update(channel='stable'),
             lambda m: m.update(preview_number=2),
             lambda m: m.update(preview_number=True),
-            lambda m: m['candidates']['jit'].update(schema=True),
-            lambda m: m['candidates']['jit'].pop('erts_version'),
-            lambda m: m['candidates']['jit'].update(distribution_revision=2),
-            lambda m: m['candidates']['jit']['sdk'].update(identity='17.0-r2-preview.1')]
+            lambda m: m['candidates']['linux-ubuntu24.04-amd64-gcc-jit'].update(schema=True),
+            lambda m: m['candidates']['linux-ubuntu24.04-amd64-gcc-jit'].pop('erts_version'),
+            lambda m: m['candidates']['linux-ubuntu24.04-amd64-gcc-jit'].update(distribution_revision=2),
+            lambda m: m['candidates']['linux-ubuntu24.04-amd64-gcc-jit']['sdk'].update(identity='17.0-r2-preview.1')]
         for index, mutation in enumerate(mutations):
             with self.subTest(mutation=index), tempfile.TemporaryDirectory() as tmp:
                 invalid = copy.deepcopy(manifest)
@@ -204,25 +230,18 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
                         promote.prepare(args)
                     network.assert_not_called()
 
-    def test_preview_publisher_rejects_consistent_stable_identity(self):
-        from types import SimpleNamespace
-        manifest, policy = self.fixture()
-        version = '17.0-r1'
-        manifest.update(version=version, **release.version_metadata(version), eligible=True, blockers=[])
-        for candidate in manifest['candidates'].values():
-            candidate.update(version=version, **release.version_metadata(version))
-            candidate['sdk']['identity'] = version
-        release.eligible(manifest, policy)
-        original_read = release.read
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / 'candidate-manifest.json'
-            release.write(path, manifest)
-            args = SimpleNamespace(directory=tmp, digest=release.digest(path), run='123')
-            with patch.object(release, 'read', side_effect=lambda p: policy if Path(p).name == 'policy.json' else original_read(p)), \
-                    patch.object(promote, 'gh') as network:
-                with self.assertRaisesRegex(ValueError, 'preview version required'):
-                    promote.prepare(args)
-                network.assert_not_called()
+    def test_stable_requires_maintenance_line_and_retains_exact_identity(self):
+        manifest,policy=self.fixture()
+        version='17.0-r1'
+        manifest.update(version=version,**release.version_metadata(version))
+        for record in manifest['candidates'].values():
+            record.update(version=version,**release.version_metadata(version))
+            record['sdk']['identity']=version
+        with self.assertRaisesRegex(ValueError,'source line'):release.eligible(manifest,policy)
+        manifest['branch']='maint-17'
+        for record in manifest['candidates'].values():record['origin']['branch']='maint-17'
+        release.eligible(manifest,policy)
+        self.assertEqual(promote.preview_tag(manifest),'v17.0-r1')
 
     def test_promotion_complete_and_fail_closed(self):
         manifest,policy=self.fixture()
@@ -231,16 +250,16 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
                          lambda m,p: p.update(promotion_enabled='false'),
                          lambda m,p: p.update(release_owners='not-a-list'),
                          lambda m,p: p.update(recovery_owners=[]),
-                         lambda m,p: m['candidates'].pop('emu'),
-                         lambda m,p: m['candidates']['emu']['origin'].update(repository='untrusted/repo'),
-                         lambda m,p: m['candidates']['jit']['inputs']['otp'].update(commit='e'*40),
-                         lambda m,p: m['candidates']['emu']['inputs']['qualification_assets'].pop('ftp'),
-                         lambda m,p: m['qualification'].pop('jit-otp'),
-                         lambda m,p: m['qualification']['emu-otp'].update(eligible=False),
-                         lambda m,p: m['qualification']['emu-otp'].update(candidate='c'*64),
-                         lambda m,p: m['qualification']['emu-otp'].update(tests=[]),
-                         lambda m,p: m['qualification']['emu-acquired'].update(tests=[t for t in m['qualification']['emu-acquired']['tests'] if t['name']!='installed-run']),
-                         lambda m,p: m['qualification']['emu-otp']['tests'][0].update(status='skipped')]:
+                         lambda m,p: m['candidates'].pop('linux-ubuntu24.04-amd64-gcc-emu'),
+                         lambda m,p: m['candidates']['linux-ubuntu24.04-amd64-gcc-emu']['origin'].update(repository='untrusted/repo'),
+                         lambda m,p: m['candidates']['linux-ubuntu24.04-amd64-gcc-jit']['inputs']['otp'].update(commit='e'*40),
+                         lambda m,p: m['candidates']['linux-ubuntu24.04-amd64-gcc-emu']['inputs']['qualification_assets'].pop('ftp'),
+                         lambda m,p: m['qualification'].pop('linux-ubuntu24.04-amd64-gcc-jit-otp'),
+                         lambda m,p: m['qualification']['linux-ubuntu24.04-amd64-gcc-emu-otp'].update(eligible=False),
+                         lambda m,p: m['qualification']['linux-ubuntu24.04-amd64-gcc-emu-otp'].update(candidate='c'*64),
+                         lambda m,p: m['qualification']['linux-ubuntu24.04-amd64-gcc-emu-otp'].update(tests=[]),
+                         lambda m,p: m['qualification']['linux-ubuntu24.04-amd64-gcc-emu-acquired'].update(tests=[t for t in m['qualification']['linux-ubuntu24.04-amd64-gcc-emu-acquired']['tests'] if t['name']!='installed-run']),
+                         lambda m,p: m['qualification']['linux-ubuntu24.04-amd64-gcc-emu-otp']['tests'][0].update(status='skipped')]:
             m,p=copy.deepcopy(manifest),copy.deepcopy(policy);mutation(m,p)
             with self.assertRaises(ValueError): release.eligible(m,p)
 
@@ -366,8 +385,8 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
                 release.collect(SimpleNamespace(directory=root,output=output,policy=root/'policy.json'))
             result=release.read(output)
             self.assertFalse(result['eligible'])
-            self.assertTrue(any('missing otp qualification report' in message for message in result['blockers']))
-            self.assertEqual(set(result['candidate_digests']),{'emu','jit'})
+            self.assertTrue(any('nonpassing or missing report:' in message and message.endswith('-otp') for message in result['blockers']))
+            self.assertEqual(set(result['candidate_digests']),set(policy['targets']+policy['integration_targets']))
 
     def test_publication_requires_protected_environment(self):
         environment={'protection_rules':[{'type':'required_reviewers','reviewers':[{'id':1}],

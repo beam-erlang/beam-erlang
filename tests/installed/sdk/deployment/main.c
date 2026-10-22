@@ -40,11 +40,19 @@ int main(int argc, char **argv)
 #ifdef DEPLOY_RETURNING
     bytecode_input base = {0};
 #endif
+#ifdef BEAM_TARGET_ACCEPTANCE
+    CHECK(argc == 3);
+    CHECK(realpath(argv[2], root) != NULL);
+    CHECK(beam_library_path(origin, sizeof origin, &required, &error) == BEAM_OK);
+    CHECK(snprintf(native, sizeof native, "%s/%s", root, TARGET_RUNTIME) < (int)sizeof native);
+    CHECK(realpath(native, paths[0]) != NULL && !strcmp(origin, paths[0]));
+#else
     CHECK(argc == 2);
     CHECK(beam_library_path(root, sizeof root, &required, &error) == BEAM_OK);
     char *slash = strrchr(root, '/'); CHECK(slash); *slash = 0;
     slash = strrchr(root, '/'); CHECK(slash); *slash = 0;
     CHECK(getenv("DEPLOY_EXPECT_ROOT") && !strcmp(root, getenv("DEPLOY_EXPECT_ROOT")));
+#endif
     CHECK(beam_init(&system, &error) == BEAM_OK);
 #ifdef DEPLOY_RETURNING
     beam_return_options options = {0};
@@ -63,7 +71,12 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "file") || !strcmp(argv[1], "network") || !strcmp(argv[1], "zlib")) {
         int file = !strcmp(argv[1], "file"), zlib = !strcmp(argv[1], "zlib");
         options.services = file ? BEAM_SERVICE_FILE : zlib ? BEAM_SERVICE_ZLIB : BEAM_SERVICE_SOCKET;
+#ifdef BEAM_TARGET_ACCEPTANCE
+        CHECK(snprintf(paths[3], sizeof paths[3], "%s/%s", root,
+              file ? TARGET_FILE : zlib ? TARGET_ZLIB : TARGET_NETWORK) < (int)sizeof paths[3]);
+#else
         CHECK(snprintf(paths[3], sizeof paths[3], "%s/lib/libbeam-%s.so", root, argv[1]) < (int)sizeof paths[3]);
+#endif
         components[0] = (beam_component_spec){sizeof components[0], file ? BEAM_COMPONENT_FILE : zlib ? BEAM_COMPONENT_ZLIB : BEAM_COMPONENT_NETWORK, paths[3]};
         options.component_count = 1;
     }

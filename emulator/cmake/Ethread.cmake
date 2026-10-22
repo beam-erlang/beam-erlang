@@ -10,18 +10,12 @@ function(erts_add_ethread_library)
         ../lib_src/common/ethr_atomics.c
         ../lib_src/common/ethr_mutex.c
         ../lib_src/common/ethr_cbf.c
-        ../lib_src/pthread/ethread.c
-        ../lib_src/pthread/ethr_event.c
+        ../lib_src/${BEAM_THREAD_DIRECTORY}/ethread.c
+        ../lib_src/${BEAM_THREAD_DIRECTORY}/ethr_event.c
     )
     target_compile_definitions(ethread PRIVATE
-        USE_THREADS
-        _THREAD_SAFE
-        _REENTRANT
-        HAVE_CONFIG_H
-        ERTS_CONFIG_SKIP_ATOM_TABLE
-        POSIX_THREADS
-        _POSIX_THREAD_SAFE_FUNCTIONS
-        _GNU_SOURCE
+        ${BEAM_PLATFORM_DEFINITIONS}
+        HAVE_CONFIG_H ERTS_CONFIG_SKIP_ATOM_TABLE
     )
     target_link_libraries(ethread PRIVATE beam-erlang::erts_headers)
     add_dependencies(ethread tables_${ERTS_BUILD_FLAVOR})
@@ -33,7 +27,7 @@ function(erts_add_ethread_library)
         ../include
         ../include/internal
         beam
-        sys/unix
+        sys/${BEAM_SYS_DIRECTORY}
     )
     set_target_properties(ethread PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endfunction()
