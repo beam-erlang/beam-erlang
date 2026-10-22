@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
 
 from support.bytecode import TEST_SUPPORT_DIR, RETURNING_ASSETS
@@ -18,16 +19,17 @@ def run(command, cwd, env, success=True):
 
 def main():
     parser = argparse.ArgumentParser()
-    for name in ('cmake', 'build-dir', 'test-dir', 'source-dir'):
+    for name in ('cmake', 'test-dir', 'source-dir'):
         parser.add_argument('--' + name, required=True)
-    args = parser.parse_args()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args())
     root = Path(args.test_dir).resolve()
     if root.exists(): shutil.rmtree(root)
     root.mkdir(parents=True)
     work = root / 'unrelated'; work.mkdir()
     env = isolated_environment(work)
     sdk = root / 'sdk'
-    run([args.cmake, '--install', args.build_dir, '--prefix', sdk], work, env)
+    stage_installation(args, sdk)
     assert 'BEAM::Distribution' not in (sdk / 'lib/cmake/BEAM/BEAMTargets.cmake').read_text()
     source = root / 'source'
     shutil.copytree(Path(args.source_dir), source)

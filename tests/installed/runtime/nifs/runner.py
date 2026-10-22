@@ -1,5 +1,6 @@
 """Installed external NIF admission, project launch and repeated teardown."""
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import hashlib
 import os
 from pathlib import Path
@@ -14,10 +15,11 @@ from installed.cli.scenarios.terminal import check_beam_shell_history
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cmake', required=True)
-    for key in ('build-dir', 'test-dir', 'source-dir'):
+    for key in ('test-dir', 'source-dir'):
         parser.add_argument('--' + key, type=Path, required=True)
     parser.add_argument("--linkage", choices=("shared", "static"), default="shared")
-    args = parser.parse_args()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args())
     root = args.test_dir.resolve()
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)
@@ -26,7 +28,7 @@ def main():
     def execute(argv, **kw):
         return run([str(a) for a in argv], cwd=root, env=env, timeout=180, text=True, **kw)
     prefix = root / 'SDK prefix λ'
-    execute([args.cmake, '--install', args.build_dir.resolve(), '--prefix', prefix])
+    stage_installation(args, prefix)
     build = root / 'native-build'
     execute([args.cmake, '-S', source, '-B', build, f'-DCMAKE_PREFIX_PATH={prefix}',
              f'-DRUNTIME_COMPONENT={"RuntimeStatic" if args.linkage == "static" else "Runtime"}'])

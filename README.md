@@ -17,8 +17,17 @@ Linux interpreter and JIT configurations. Full compatibility with the initial
 OTP 29.0 target remains incomplete. Public interfaces and package tooling are
 experimental.
 
+The adopted release model follows upstream ERTS versions with an Erlangsters
+distribution revision. Release branches follow the supported upstream
+generations, with maintenance scope declared separately. The current source
+identity is `17.0-r1-preview.1`. No qualified public preview is available. See
+[release operations](release/README.md) for the identifier format, implementation
+and readiness.
+
 The source baseline is recorded in [UPSTREAM_COMMIT](UPSTREAM_COMMIT).
-See the [documentation index](docs/README.md) and
+Start with the [candidate user documentation](docs-next/README.md).
+The existing [documentation index and upstream material](docs/README.md) remain
+in place while the candidate develops into their replacement. See the
 [test guide](tests/README.md) for the current repository and acceptance coverage.
 
 ## Building
@@ -40,9 +49,10 @@ sudo apt-get install build-essential binutils cmake ninja-build perl python3 \
 Distribution builds require a complete local `beam-erlang-package` checkout.
 CMake looks beside this repository by default. To select another location, pass
 `-DBEAM_PACKAGE_SOURCE_DIR=/path/to/beam-erlang-package` when configuring.
-The companion repository is currently local-only; full builds require access to
-those sources. They are not downloaded automatically, and hosted source
-acquisition is not configured.
+The companion is public at [beam-erlang/beam-erlang-package](https://github.com/beam-erlang/beam-erlang-package).
+CI acquires the exact commit in `release/inputs.json`; CMake never downloads sources.
+See [preview release operations](release/README.md) for candidate production and
+the remaining qualification and publication blockers.
 
 From the repository root, build, test and install the interpreter flavor:
 

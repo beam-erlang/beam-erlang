@@ -3,6 +3,7 @@ from pathlib import Path
 
 from support.bytecode import BASE_ASSETS, BOOT_ASSETS, SERVICES_ASSETS, TEST_SUPPORT_DIR
 from support.process import check
+from support.installation import expected_version
 
 
 def check_bytecode(execute, cmake, source, sdk, client, root):
@@ -48,7 +49,7 @@ def check_inventory(execute, cmake, source, sdk, client, root, assets, name, oth
                   f'consumer accepted altered bytecode: {name}')
             if configure:
                 rejected = execute([cmake, '-S', source, '-B', root / f'rejected-{name}',
-                                    f'-DCMAKE_PREFIX_PATH={sdk}',
+                                    f'-DCMAKE_PREFIX_PATH={sdk}', f'-DEXPECTED_VERSION={expected_version()}',
                                     f'-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}'], status=None)
                 check(rejected.returncode != 0 and
                       ('asset is missing' in rejected.stderr or

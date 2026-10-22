@@ -7,6 +7,8 @@ interfaces and documentation may evolve together.
 
 ## Start here
 
+- [Preview installation and verification](getting-started/preview.md): release status,
+  authenticated downloads, first use and maintenance.
 - [Get started](getting-started.md): select an installation, open the shell and
   run an Erlang source file.
 - [Understand the runtime](concepts.md): modules, explicit capabilities and VM
@@ -36,6 +38,12 @@ linked from the standard-library catalog.
 Use the [build and installation instructions](../README.md#building) to obtain
 the current Linux interpreter or JIT distribution. Public interfaces are
 experimental, and native components require a matching build.
+
+The selected release model follows the integrated upstream ERTS version plus a
+distribution revision. This does not establish a stable C API or binary ABI;
+public interface stability and support periods require explicit declarations.
+The [preview guide](getting-started/preview.md) describes the current
+`17.0-r1-preview.1` candidate and the remaining publication boundary.
 
 The separate Erlang/OTP distribution supplies OTP applications and commands such
 as `erl`, `erlc` and `escript`. It consumes the same VM through the installed

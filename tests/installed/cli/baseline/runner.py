@@ -4,6 +4,7 @@
 
 from pathlib import Path
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import re
 import shutil
 
@@ -107,20 +108,17 @@ def check_beam_prefix(prefix, work, fixture, artifacts):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cmake", required=True)
-    parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--test-dir", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, required=True)
     parser.add_argument("--module-artifacts", type=Path, nargs="+", required=True)
-    args = parser.parse_args()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args())
     test_dir = args.test_dir.resolve()
     if test_dir.exists():
         shutil.rmtree(test_dir)
     test_dir.mkdir(parents=True)
     prefix = test_dir / "stage"
-    installed = capture([args.cmake, "--install", str(args.build_dir), "--prefix", str(prefix)],
-                        cwd=test_dir, env=isolated_environment(test_dir / "install-work"), timeout=30)
-    check(installed.returncode == 0,
-          f"installation failed:\n{installed.stdout!r}\n{installed.stderr!r}")
+    stage_installation(args, prefix)
     print("Checking fresh installation", flush=True)
     artifacts = {p.name: p.read_bytes() for p in args.module_artifacts}
     check_beam_prefix(prefix, test_dir / "fresh-work", args.fixture, artifacts)

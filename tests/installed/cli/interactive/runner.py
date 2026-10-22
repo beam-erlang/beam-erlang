@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import json
 import os
 import re
@@ -330,19 +331,19 @@ def host_case(prefix, fixture, work, env, minimal=False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
-    parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--test-dir", type=Path, required=True)
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--project-source-dir", type=Path, required=True)
     parser.add_argument("--hello-fixture", type=Path, required=True)
-    args = parser.parse_args()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args(), private=True)
     root, source, build = args.test_dir.resolve(), args.source_dir.resolve(), args.build_dir.resolve()
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True)
     env = isolated_environment(root)
     prefix = root / "prefix"
-    run([args.cmake, "--install", build, "--prefix", prefix], root, env)
+    stage_installation(args, prefix)
     fixtures = root / "fixture bytes 日本語"
     fixtures.mkdir()
     out, err = run([prefix / "bin/beam", "compile", "--deterministic", "-o", fixtures,

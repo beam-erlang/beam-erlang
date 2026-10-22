@@ -6,6 +6,12 @@ results. These are candidate user documents for the experimental Linux SDK;
 use matching headers and libraries. Source and binary compatibility are not
 promised yet.
 
+Source compatibility (rebuilding an existing host unchanged) and binary
+compatibility (running its existing binary with a newer runtime) are separate
+contracts. Neither follows from the ERTS version in a release identity. See
+[release operations](../../release/README.md) for the current preview boundary
+and the adopted stabilization policy.
+
 | Document | Start here when you want to… |
 | --- | --- |
 | [Embedding guide](guide.md) | Build a first C host, understand ownership and choose a lifecycle. |

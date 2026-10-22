@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "package": {
+    "repository": "beam-erlang/beam-erlang-package",
+    "commit": "eedf1563d6ef27c732b1b3a18050309e6d281aee"
+  },
+  "otp": {
+    "repository": "beam-erlang/erlang-otp",
+    "commit": "0e6d3fb051a733a4bfa40068339f7ed369746a22"
+  },
+  "upstream_otp": "550d7b7898706c7822362c42e7b93120c1d1f29a",
+  "qualification_assets": {
+    "reference-emu": null,
+    "reference-jit": null,
+    "provenance-emu": null,
+    "provenance-jit": null,
+    "rebar3": {
+      "url": "https://github.com/erlang/rebar3/releases/download/3.27.0/rebar3",
+      "sha256": "af85aab41f9fd74bdd6341ebdf6fe9c88077aab9f8eac82371583fa02f2b0bdf",
+      "size": 854230,
+      "identity": "Official erlang/rebar3 3.27.0 release executable, Relx 4.10.0"
+    },
+    "postgres": null,
+    "ldap": null,
+    "ftp": null
+  },
+  "pending": [
+    "Review and commit the OTP independent SDK-version adaptation, then update the OTP pin.",
+    "Review and commit the package acquired-payload test mode, then update the package pin.",
+    "Publish matching original OTP installation/provenance archives through the artifact reproducer and record HTTPS URLs, SHA-256, sizes and producer identities.",
+    "Record reviewed database/directory/FTP fixture identities and digests."
+  ]
+}

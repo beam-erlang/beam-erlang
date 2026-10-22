@@ -5,10 +5,11 @@
 # the independently attested compiler seeds.
 
 cmake_minimum_required(VERSION 3.25)
+include(cmake/Version.cmake)
 
 project(
     beam-erlang
-    VERSION 29.0
+    VERSION "${BEAM_PROJECT_VERSION}"
     DESCRIPTION "BEAM runtime"
     HOMEPAGE_URL "https://beam.erlangsters.org"
     LANGUAGES C CXX
@@ -34,6 +35,17 @@ elseif(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
     message(FATAL_ERROR
         "CMAKE_BUILD_TYPE must be Release (got '${CMAKE_BUILD_TYPE}')")
 endif()
+
+# Release archives keep debug information without changing optimization or
+# stripping the installed payload after integrity metadata has been generated.
+option(BEAM_RELEASE_DEBUG_INFO "Retain native debug information in release archives" OFF)
+if(BEAM_RELEASE_DEBUG_INFO)
+    string(APPEND CMAKE_C_FLAGS_RELEASE " -g")
+    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -g")
+    string(APPEND CMAKE_ASM_FLAGS_RELEASE " -g")
+endif()
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/erts/beam_release_version.h"
+    CONTENT "#define BEAM_RELEASE_VERSION \"${BEAM_RELEASE_VERSION}\"\n" @ONLY)
 
 set(ERTS_BUILD_FLAVOR "jit" CACHE STRING "Emulator flavor: jit or emu")
 set_property(CACHE ERTS_BUILD_FLAVOR PROPERTY STRINGS jit emu)

@@ -1,5 +1,6 @@
 """Installed artifact selection, provenance and isolated native deployment."""
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import hashlib
 import json
 import os
@@ -13,25 +14,25 @@ from support.process import check, isolated_environment, run
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cmake', required=True)
-    for name in ('build-dir', 'test-dir', 'source-dir'):
+    for name in ('test-dir', 'source-dir'):
         parser.add_argument('--' + name, type=Path, required=True)
-    args = parser.parse_args()
-    args.build_dir = args.build_dir.resolve()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args())
     args.source_dir = args.source_dir.resolve()
     root = args.test_dir.resolve()
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)
     env = isolated_environment(root)
     sdk = root / 'sdk'
-    run([args.cmake, '--install', args.build_dir, '--prefix', sdk],
-        cwd=root, env=env, timeout=90)
+    stage_installation(args, sdk)
     manifest = json.loads((sdk / 'lib/beam/runtime-artifacts.json').read_text())
     flavor = manifest['flavor']
 
     def configure(name, *, status=0, diagnostic=None, **variables):
         build = root / name
         command = [args.cmake, '-S', args.source_dir, '-B', build,
-                   f'-DCMAKE_PREFIX_PATH={sdk}', f'-DEXPECTED_FLAVOR={flavor}']
+                   f'-DCMAKE_PREFIX_PATH={sdk}', f'-DEXPECTED_FLAVOR={flavor}',
+                   f'-DEXPECTED_VERSION={expected_version()}']
         command.extend(f'-D{key}={value}' for key, value in variables.items())
         result = run(command, cwd=root, env=env, timeout=30, status=status, text=True)
         if diagnostic:
@@ -96,6 +97,8 @@ def main():
         finally:
             unavailable.rename(sdk)
 
+    configure('wrong-version', status=1, diagnostic='VERSION mismatch',
+              EXPECTED_VERSION=expected_version() + '.wrong')
     configure('wrong-flavor', status=1, diagnostic='FLAVOR mismatch',
               EXPECTED_FLAVOR='jit' if flavor == 'emu' else 'emu')
     configure('wrong-identity', status=1, diagnostic='BUILD_ID mismatch',

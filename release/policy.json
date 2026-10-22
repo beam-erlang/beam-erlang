@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "repository": "beam-erlang/beam-erlang",
+  "candidate_workflow": ".github/workflows/preview-candidate.yml",
+  "publication_workflow": ".github/workflows/preview-publish.yml",
+  "target": "ubuntu-24.04-x86_64",
+  "flavors": ["emu", "jit"],
+  "release_owners": [],
+  "recovery_owners": [],
+  "promotion_enabled": false,
+  "blockers": [
+    "Mandatory OTP compatibility and strict-coverage failures remain unresolved.",
+    "The release repository is private; review public release hosting and repository visibility before publication."
+  ]
+}

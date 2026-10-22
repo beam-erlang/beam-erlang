@@ -113,10 +113,14 @@ permanent configure-time SDK location.
 
 ## Verified runtime artifacts
 
-Independent distribution assembly uses the generic artifact catalog:
+Independent distribution assembly uses the generic artifact catalog. Supply the
+expected full version and build identity from a separately verified candidate
+record, not from the prefix being checked. Preview suffixes are significant;
+numeric CMake package-version discovery does not establish exact compatibility:
 
 ```cmake
-beam_check_runtime_sdk(VERSION 29.0 FLAVOR emu)
+beam_check_runtime_sdk(VERSION "${EXPECTED_BEAM_VERSION}"
+    BUILD_ID "${EXPECTED_BEAM_BUILD_ID}" FLAVOR emu)
 beam_get_runtime_artifact(runtime_library NAME runtime KIND runtime)
 beam_get_runtime_artifact(child_helper NAME helper.child_setup
                           KIND executable-helper RELATIVE)
@@ -128,6 +132,11 @@ beam_install_runtime_artifacts(ARTIFACTS runtime helper.child_setup)
 `beam_check_runtime_sdk` accepts exact `VERSION`, `FLAVOR` and `BUILD_ID`
 requirements; flavors are `emu` and `jit`. The build identity is not an ABI
 version. `BEAM_SDK_METADATA` points to `sdk.toml`.
+
+The adopted ERTS-based release numbering does not change these checks. The
+upstream runtime version alone cannot identify the complete distribution or
+establish compatibility with an embedding host. Use the complete identity,
+such as `17.0-r1-preview.1`; see [release operations](../../release/README.md).
 
 `BEAM_RUNTIME_ARTIFACTS` lists IDs; `BEAM_RUNTIME_ARTIFACTS_METADATA` points to
 JSON recording kind, relative path, SHA-256, dependencies and SDK provenance.

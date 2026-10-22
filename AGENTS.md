@@ -113,10 +113,17 @@ removing its old coverage. Record replacement evidence explicitly.
 The distribution milestone targets OTP 29.0 on the existing Linux
 interpreter/JIT configurations, including applications, commands/builds, native
 extensions, distributed interoperability, installation/resources, restart and
-release upgrades. Current acceptance proves only the stated baseline. Modern
-BEAM interfaces may evolve independently. No permanent source equality or
-automatic synchronization between the products is required; assess correctness
-and security fixes for both.
+release upgrades. Current acceptance proves only the stated baseline. Follow
+upstream release generations through the reviewed
+[sync process](../dev-documents/Upstream-Sync-Process.md). Project-owned modern
+interfaces remain experimental; their stabilization and subsequent compatibility
+and deprecation policy belong to the
+[release strategy](../dev-documents/distribution-release-strategy.md).
+Inherited OTP reporting such as `erlang:system_info(otp_release)` is not a
+permanent modern API requirement. Changes to the shared implementation must
+still preserve the separate OTP product's selected behavior through suitable
+adaptation and acceptance. No permanent source equality or automatic copying
+between the products is required; assess correctness and security fixes for both.
 
 Share implementations only across reviewed contracts. The common VM core can
 still affect both paths: preserve the selected OTP target through suitable
@@ -141,15 +148,34 @@ or change host OS policy. Final ownership acceptance is recorded; see
 
 ## Documentation and development notes
 
-`docs/` is the destination for user-facing documentation. It temporarily also
-holds the retained runtime documentation moved from `erts/doc/`; these inputs
-require later review and distillation. Temporary design drafts, implementation notes, migration records and
+`docs-next/` is the candidate user-facing documentation tree and will replace
+`docs/` in a later reviewed cutover. Keep the existing `docs/` README and retained
+upstream runtime documentation unchanged while developing the candidate beside
+it. Retained material requires review and distillation before becoming modern
+product guidance; its presence is not a claim of supported behavior.
+
+Organize `docs-next/` by reader task and public surface: getting started,
+language/runtime concepts, C embedding, modern standard library, native
+components, commands and packaging. Keep C tutorials/guides separate from the
+API reference. Each of `libbeam-file.so`, `libbeam-network.so` and
+`libbeam-zlib.so` owns an independent manual covering selection, capabilities,
+Erlang interfaces, lifecycle and limits. The standard-library catalog links to
+those manuals and distinguishes public core/base modules from private host
+tooling. Do not present compiler/shell helpers as a complete public OTP STDLIB.
+Package schema and command policy remain canonical in
+`../beam-erlang-package/docs/`; link from the product's packaging guide instead
+of maintaining a second specification. Label incomplete coverage and
+experimental contracts explicitly. Documentation work alone does not authorize
+interface changes; changes affecting OTP require coordinated adaptation and
+the appropriate installed acceptance in both products.
+
+Temporary design drafts, implementation notes, migration records and
 evidence belong in the workspace's `../dev-documents/`; start with its
 [index](../dev-documents/README.md). Moving these records does not retire the
 runtime strategy or the permanent acceptance contracts below. Review older
 implementation descriptions against the code before relying on them.
 
-`../dev-documents/c-api/` contains draft C API documentation. Write it for C
+`docs-next/c-api/` owns the candidate C API documentation. Write it for C
 embedders without ERTS knowledge and describe supported behavior. Keep history
 and proposed capabilities in the other development notes. The standalone
 first-call example belongs to `tests/installed/sdk/consumer/first-call/` and is
@@ -330,7 +356,7 @@ checks; do not recreate this inventory from private source paths in consumers.
 The SDK also deploys exact embedded-core bytecode through
 `beam_install_core_modules` for tools that inspect preloads on disk. This does
 not change runtime composition; consumers must not compile replacement copies
-of VM-owned core modules. See [runtime artifact SDK](../dev-documents/embedding-deployment.md).
+of VM-owned core modules. See [runtime artifact SDK](docs-next/c-api/deployment.md).
 
 ## Current builds and artifact refresh
 
@@ -364,7 +390,7 @@ selection uses the same allocator group as the retained `+Mu` parser, excluding
 temporary, literal and test allocators. Preserve enum validation, exact options
 size checking and shared/static sequential-lifetime acceptance. OTP owns the
 `+Muatags` command adaptation; no general emulator-argument API or modern command
-flag is implied. See the [C API reference](../dev-documents/c-api/reference.md).
+flag is implied. See the [C API reference](docs-next/c-api/reference.md).
 
 Normal builds verify source-attested compiler seeds and deterministic core/base
 artifacts without rewriting tracked files. `beam_refresh_native_artifacts`
@@ -411,7 +437,7 @@ equivalent installed product coverage before retiring each old test path.
 - BEAM acceptance must use the installed native `beam`, linked to the installed `libbeam.so`, and the distribution's own runtime files. OTP acceptance uses its own installed commands and host linked to that sole VM implementation. Both products must work from an unrelated working directory and after relocating the complete prefix, without runtime or loader overrides.
 - Never satisfy a requirement by substituting system Erlang, loading runtime files from reference/source/build trees, special-casing the example, fabricating output, or weakening tests. Supported boot stages, explicit dependencies, and architectural changes are legitimate implementations; an alternate path that only makes a check pass is not.
 - If the intended implementation cannot satisfy these constraints through the supported project architecture, stop that implementation path and report the concrete blocker and architectural change needed. Do not hide the blocker behind an undocumented bypass.
-- Use focused checks while developing and for test-only refactors. At integration gates for build, installation, runtime, CLI or embedding changes, run the complete CTest suite on `linux-emu` and `linux-jit`, plus affected package, playground and OTP acceptance. Full cross-product matrices belong to those gates, not every local edit. Report untested coverage explicitly; focused checks do not establish a completed distribution milestone.
+- Use focused checks while developing and for test-only refactors. At integration gates for build, installation, runtime, CLI or embedding changes, run the complete CTest suite on `linux-emu` and `linux-jit`, plus affected package and OTP acceptance. Full cross-product matrices belong to those gates, not every local edit. Report untested coverage explicitly; focused checks do not establish a completed distribution milestone.
 - Bare embedding must load complete module bytes from host memory, return copied results or exceptions to C, and stop all VM-owned threads and OS activity while C continues. It must work without external runtime files or native child helpers. Initialization and pre-start loading create no workers and execute no Erlang. Termination reclaims VM resources and permits a fresh VM under the same system; retaining runtime state, using child processes, or reloading the library cannot substitute for teardown. Copied results survive subsequent VM lifetimes and system termination while the library remains loaded. Preserve host signals, standard descriptors, terminal state, environment, and floating-point state. The distribution-owned `installed-bare` test exercises this contract independently of the playground.
 - Bare host-service callbacks run serially on the owner thread during `beam_vm_call`, with copied request/reply bytes and without VM locks held. They must not reenter the VM. Pending background requests wait for a subsequent call; stop cancels them. Optional host support and I/O modules are loaded explicitly, preserving the nine-module bare composition. Lifecycle queries observe state without running Erlang or implicitly joining workers. Preserve these contracts in installed acceptance independently of playground examples.
 
@@ -535,8 +561,8 @@ The tool build consumes `BEAM_PACKAGE_SOURCE_DIR`, defaulting to the sibling
 `beam-erlang-package`. Its shared recipe owns source/output inventories; the
 adapter in `cmake/PackageTool.cmake` supplies the verified modern build compiler and generates
 the private host header. Missing companion sources fail at configure time. Native
-alias/host behavior and installed acceptance stay here. Its compiler dependency follows the main build bootstrap and its acceptance. Hosted CI source acquisition
-is deferred while the package repository is local-only; keep checks enabled.
+alias/host behavior and installed acceptance stay here. Its compiler dependency follows the main build bootstrap and its acceptance. Hosted CI explicitly acquires the exact public package commit in
+`release/inputs.json`; CMake performs no network acquisition. Keep checks enabled.
 
 ## Installed project shell and source tasks
 
@@ -550,3 +576,27 @@ program or implicit acquisition services. Never auto-build or install on launch.
 native exec hosting belongs to beam-erlang and terminates the tool VM/system
 before handing off terminal, streams and status. Scripts are source-only and
 excluded from archives/locks/environments. Preserve GLM's unused test/ directory.
+
+## Preview release boundary
+
+Release qualification uses product-owned fixtures and excludes playground.
+The adopted release identity uses the integrated upstream ERTS version plus an
+Erlangsters distribution revision and an explicit preview designation. The
+[release strategy](../dev-documents/distribution-release-strategy.md) owns version,
+support and public compatibility policy; the
+[sync process](../dev-documents/Upstream-Sync-Process.md) owns product branch
+selection and upstream propagation. Maintenance branches use the product's
+major version, such as BEAM `maint-17`, and start from reviewed product
+checkpoints rather than inherited upstream branch tips. Branch existence alone
+establishes no support promise.
+
+The current identity is `17.0-r1-preview.1`. Preserve the former
+`0.1.0-preview.1` identity in historical evidence. The modern root `OTP_VERSION`
+and `otp_versions.table` are removed; generated OTP reporting remains explicit
+compatibility metadata until separately changed. Exact full release and installed
+SDK build checks remain required under the revised numbering. Current preview APIs remain
+experimental: source compatibility and C binary compatibility require separate
+stabilization decisions and acceptance. Native component descriptors remain a
+private matching-build contract. OTP runtime/application version reporting
+remains owned by the separate OTP product. Missing release inputs and mandatory
+OTP failures block promotion, never become passing no-ops.

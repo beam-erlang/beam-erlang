@@ -196,7 +196,7 @@ install(FILES
     DESTINATION include/beam/nif)
 file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/sdk.toml" CONTENT
 "format = 1
-identity = \"${PROJECT_VERSION}\"
+identity = \"${BEAM_RELEASE_VERSION}\"
 build-id = \"${BEAM_COMPONENT_BUILD_ID}\"
 os = \"${CMAKE_SYSTEM_NAME}\"
 architecture = \"${CMAKE_SYSTEM_PROCESSOR}\"

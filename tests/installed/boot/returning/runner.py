@@ -3,6 +3,7 @@
 from functools import partial
 from pathlib import Path
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
 
 from support.bytecode import BASE_ASSETS, RETURNING_ASSETS, TEST_SUPPORT_DIR, copy_bytecode
@@ -16,14 +17,13 @@ def run(command, env, cwd, status=0, timeout=120):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
-    parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--test-dir", type=Path, required=True)
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--project-source-dir", type=Path, required=True)
-    args = parser.parse_args()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args())
     args.test_dir = args.test_dir.resolve()
     args.source_dir = args.source_dir.resolve()
-    args.build_dir = args.build_dir.resolve()
     if args.test_dir.exists():
         shutil.rmtree(args.test_dir)
     args.test_dir.mkdir(parents=True)
@@ -33,7 +33,7 @@ def main():
     execute = partial(run, env=env, cwd=build_work)
     stage = args.test_dir / "stage"
     prefix = args.test_dir / "relocated returning prefix"
-    execute([args.cmake, "--install", str(args.build_dir), "--prefix", str(stage)])
+    stage_installation(args, stage)
     stage.rename(prefix)
     fixtures = args.test_dir / "fixtures"
     fixtures.mkdir()

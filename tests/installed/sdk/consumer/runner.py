@@ -3,6 +3,7 @@
 from functools import partial
 from pathlib import Path
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
 
 from installed.sdk.layout import check_installation
@@ -39,9 +40,10 @@ def check_runtime_only(execute, cmake, source, prefix, root, phase):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cmake', required=True)
-    for name in ('build-dir', 'test-dir', 'source-dir', 'doc-example-source'):
+    for name in ('test-dir', 'source-dir', 'doc-example-source'):
         parser.add_argument('--' + name, type=Path, required=True)
-    args = parser.parse_args()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args())
     root = args.test_dir.resolve()
     source = args.source_dir.resolve()
     shutil.rmtree(root, ignore_errors=True)
@@ -50,7 +52,7 @@ def main():
     env = isolated_environment(work)
     execute = partial(run, cwd=work, env=env, timeout=30, text=True)
     prefix = root / 'stage'
-    execute([args.cmake, '--install', args.build_dir, '--prefix', prefix])
+    stage_installation(args, prefix)
     for phase in ('fresh', 'relocated'):
         if phase == 'relocated':
             destination = root / 'relocated préfix 日本'
@@ -60,7 +62,7 @@ def main():
         check_runtime_only(execute, args.cmake, source, prefix, root, phase)
         coexistence = root / f'{phase}-native-coexistence'
         execute([args.cmake, '-S', source / 'native_coexistence', '-B', coexistence,
-                 f'-DCMAKE_PREFIX_PATH={prefix}'])
+                 f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}'])
         execute([args.cmake, '--build', coexistence])
         exact(execute([coexistence / 'native_coexistence']), 'Native coexistence OK\n')
         check(not (prefix / 'bin/beam_bootstrap').exists(), 'private compiler host installed')
@@ -69,7 +71,7 @@ def main():
                        'io:format("Installed CLI~n").']), 'Installed CLI\n')
         returning = root / f'{phase}-returning-client'
         execute([args.cmake, '-S', source / 'returning', '-B', returning,
-                 f'-DCMAKE_PREFIX_PATH={prefix}', f'-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}'])
+                 f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}', f'-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}'])
         execute([args.cmake, '--build', returning])
         for language in ('c', 'cxx'):
             exact(execute([returning / f'returning_{language}_host', prefix,
@@ -78,7 +80,7 @@ def main():
             check_bytecode(execute, args.cmake, source / 'returning', prefix, returning, root)
     sample = root / 'first-call'
     execute([args.cmake, '-S', args.doc_example_source, '-B', sample,
-             f'-DCMAKE_PREFIX_PATH={prefix}'])
+             f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}'])
     execute([args.cmake, '--build', sample])
     exact(execute([sample / 'first-call']), '42\n')
 

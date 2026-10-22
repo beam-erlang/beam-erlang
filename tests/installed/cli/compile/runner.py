@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
 
 from support.files import hidden, hidden_paths
@@ -46,18 +47,18 @@ def inactive_and_help(prefix, work):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
-    parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument("--test-dir", required=True, type=Path)
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--project-source-dir", type=Path, required=True)
-    args = parser.parse_args()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args(), private=True)
     build, root = args.build_dir.resolve(), args.test_dir.resolve()
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True)
     env = isolated_environment(root)
     stage = root / "stage"
-    run([args.cmake, "--install", build, "--prefix", stage], root, env, timeout=120)
+    stage_installation(args, stage)
     check_prefix(stage, root / "fresh", args.cmake, build, args.source_dir, args.project_source_dir)
     inactive_and_help(stage, root / "fresh-independent")
     # Reinstallation preserves the independently owned compiler inventory.
@@ -65,7 +66,7 @@ def main():
     owned_expected = {path.relative_to(owned_compiler): path.read_bytes()
                       for path in owned_compiler.rglob("*") if path.is_file()}
     check(owned_expected, "owned compiler installation is empty")
-    run([args.cmake, "--install", build, "--prefix", stage], root, env, timeout=120)
+    stage_installation(args, stage)
     check({path.relative_to(owned_compiler): path.read_bytes()
            for path in owned_compiler.rglob("*") if path.is_file()} == owned_expected,
           "incremental installation changed the owned compiler inventory")

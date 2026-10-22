@@ -6,6 +6,7 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_version.h"
+#include "beam_release_version.h"
 #include "erl_process.h"
 #include "erl_message.h"
 #include "erl_proc_sig_queue.h"
@@ -63,7 +64,7 @@ void beam_release_start(void)
 const char *
 beam_version(void)
 {
-    return "BEAM/Erlang " ERLANG_OTP_VERSION " (erts-" ERLANG_VERSION ")";
+    return "BEAM/Erlang " BEAM_RELEASE_VERSION " (erts-" ERLANG_VERSION ")";
 }
 
 const char *

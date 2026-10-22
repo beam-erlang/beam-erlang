@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import argparse
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import json
 import os
 import re
@@ -378,21 +379,20 @@ def lifecycle(args, prefix, root, env):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
-    parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--test-dir", type=Path, required=True)
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--project-source-dir", type=Path, required=True)
     parser.add_argument("--hello-fixture", type=Path, required=True)
-    args = parser.parse_args()
+    add_installation_arguments(parser)
+    args = resolve_installation(parser, parser.parse_args(), private=True)
     args.test_dir = args.test_dir.resolve()
     args.source_dir = args.source_dir.resolve()
-    args.build_dir = args.build_dir.resolve()
     if args.test_dir.exists():
         shutil.rmtree(args.test_dir)
     args.test_dir.mkdir(parents=True)
     env = isolated_environment(args.test_dir)
     stage = args.test_dir / "stage"
-    run([args.cmake, "--install", args.build_dir, "--prefix", stage], args.test_dir, env)
+    stage_installation(args, stage)
     fixture = args.source_dir / "run_probe.erl"
     prefix_cases(stage, fixture, "fresh", args.test_dir, args.hello_fixture)
     reduce_prefix(stage)

@@ -6,6 +6,7 @@ file(GLOB_RECURSE _component_identity_sources CONFIGURE_DEPENDS LIST_DIRECTORIES
     "${CMAKE_SOURCE_DIR}/cmake/*")
 list(APPEND _component_identity_sources
     "${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+    "${CMAKE_SOURCE_DIR}/BEAM_VERSION"
     ${BEAM_CORE_BEAM_FILES})
 list(REMOVE_DUPLICATES _component_identity_sources)
 list(SORT _component_identity_sources)
@@ -30,7 +31,7 @@ function(_beam_normalize_identity_paths INPUT OUTPUT)
     set(${OUTPUT} "${_normalized}" PARENT_SCOPE)
 endfunction()
 set(_identity "")
-foreach(_setting IN ITEMS PROJECT_VERSION CMAKE_BUILD_TYPE
+foreach(_setting IN ITEMS PROJECT_VERSION BEAM_RELEASE_VERSION CMAKE_BUILD_TYPE
         ERTS_BUILD_FLAVOR ERTS_TARGET_ARCH ERTS_HOST_TRIPLE
         CMAKE_SYSTEM_NAME CMAKE_SYSTEM_PROCESSOR
         CMAKE_C_COMPILER_ID CMAKE_C_COMPILER_VERSION CMAKE_C_COMPILER_TARGET

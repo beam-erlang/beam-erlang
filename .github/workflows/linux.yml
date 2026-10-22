@@ -1,8 +1,3 @@
-# Linux build of the beam executable (interpreter and JIT).
-# Requires BEAM_PACKAGE_SOURCE_DIR. The companion package repository is currently
-# local-only; add a selected source checkout after publication. Missing sources
-# intentionally fail configuration; do not skip acceptance or fetch a floating ref.
-
 name: Linux
 
 on:
@@ -11,6 +6,9 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: linux-${{ github.workflow }}-${{ github.ref }}
@@ -24,27 +22,25 @@ jobs:
         flavor: [emu, jit]
 
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            ninja-build \
-            perl \
-            pkg-config \
-            python3 \
-            libpcre2-dev \
-            libncurses-dev
+      - name: Prepare qualification prerequisites
+        run: bash release/prepare-runner.sh
+
+      - name: Release infrastructure checks
+        run: python3 -m unittest discover -s release -p 'test_*.py'
+
+      - name: Acquire pinned package source
+        run: python3 release/release.py acquire --kind package --destination "$RUNNER_TEMP/inputs"
 
       - name: Configure
-        run: cmake --preset linux-${{ matrix.flavor }}
+        run: cmake --preset linux-${{ matrix.flavor }} -DBEAM_PACKAGE_SOURCE_DIR="$RUNNER_TEMP/inputs/package"
 
       - name: Build
         run: cmake --build --preset linux-${{ matrix.flavor }}
