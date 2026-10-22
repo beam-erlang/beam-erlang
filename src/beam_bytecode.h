@@ -28,6 +28,9 @@ typedef struct beam_bytecode_inventory {
  * Origins are caller-owned provenance labels. Pass these same verified buffers
  * to composition before releasing them. This source helper is compiled into the
  * host; it is not an exported libbeam function or a bytecode authenticity check. */
+/* Pure source-helper digest; no VM initialization or runtime identity check. */
+void beam_bytecode_sha256(beam_bytes bytes, unsigned char digest[32]);
+
 beam_status beam_bytecode_verify(const beam_bytecode_inventory *inventory,
                                 const beam_module_spec *modules, size_t count,
                                 beam_error *error);

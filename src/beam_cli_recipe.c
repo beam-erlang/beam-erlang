@@ -6,9 +6,8 @@
 #include <beam_boot_inventory.h>
 #include <beam_services_inventory.h>
 #include "beam_run_inventory.h"
-#include "beam_pkg_inventory.h"
 #include "beam_cli_inventory.h"
-#include "beam_project_inventory.h"
+#include "beam_cli_core_inventory.h"
 #include "beam_interactive_inventory.h"
 
 #include <errno.h>
@@ -19,7 +18,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef __APPLE__
+#include <pthread.h>
+#else
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 
 #ifndef PATH_MAX
@@ -336,7 +339,11 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
 
     if (error != NULL)
         *error = (beam_error){0};
+#ifdef __APPLE__
+    if (!pthread_main_np())
+#else
     if ((pid_t)syscall(SYS_gettid) != getpid())
+#endif
         return failure(error, BEAM_WRONG_THREAD, 0, "distribution preparation requires the main thread");
     if (options == NULL || out == NULL || *out != NULL ||
         options->struct_size != sizeof(*options) ||
@@ -365,7 +372,7 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
         if (component_services[index] && !(options->services & component_services[index]))
             continue;
         if (snprintf(component_paths[component_count], PATH_MAX,
-                     "%s/lib/libbeam-%s.so", root,
+                     "%s/" BEAM_CLI_COMPONENT_DIRECTORY "/" BEAM_CLI_LIBRARY_PREFIX "beam-%s" BEAM_CLI_LIBRARY_SUFFIX, root,
                      component_names[index]) >= PATH_MAX) {
             status = failure(error, BEAM_INVALID_ARGUMENT, 0, "component path is too long");
             goto done;
@@ -377,7 +384,7 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
         };
         ++component_count;
     }
-    if (options->profile == BEAM_CLI_RUN || options->profile == BEAM_CLI_INTERACTIVE) {
+    if (options->profile == BEAM_CLI_RUN || options->profile == BEAM_CLI_INTERACTIVE || options->profile == BEAM_CLI_APPLICATION) {
         const int interactive = options->profile == BEAM_CLI_INTERACTIVE;
         status = append_cli_modules(&modules, &count, &capacity, root, "runtime/beam/cli",
                                     beam_cli_modules, BEAM_CLI_MODULE_COUNT, error);
@@ -392,7 +399,10 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
             if (status != BEAM_OK)
                 goto done;
         }
-        status = append_cli_modules(&modules, &count, &capacity, root,
+        if (options->profile == BEAM_CLI_APPLICATION) {
+            static const char *const names[] = {"beam_application_run"};
+            status = append_cli_modules(&modules, &count, &capacity, root, "runtime/beam/application", names, 1, error);
+        } else status = append_cli_modules(&modules, &count, &capacity, root,
                                     interactive ? "runtime/beam/interactive" : "runtime/beam/run",
                                     interactive ? beam_interactive_modules : beam_run_modules,
                                     interactive ? BEAM_INTERACTIVE_MODULE_COUNT : BEAM_RUN_MODULE_COUNT,
@@ -400,11 +410,13 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
         if (status != BEAM_OK)
             goto done;
     }
-    if (options->profile == BEAM_CLI_PKG) {
-        status = append_cli_modules(&modules, &count, &capacity, root, "tools/pkg",
-                                    beam_pkg_modules, BEAM_PKG_MODULE_COUNT, error);
-        if (status != BEAM_OK)
-            goto done;
+    for (size_t i = 0; i < options->required_count; ++i) {
+        int found = 0;
+        if (!options->required_modules || !options->required_modules[i]) { status = BEAM_INVALID_ARGUMENT; goto done; }
+        for (size_t j = 0; j < count; ++j) if (!strcmp(options->required_modules[i], modules[j].name)) found = 1;
+        for (size_t j = 0; j < sizeof(beam_cli_core_modules)/sizeof(*beam_cli_core_modules); ++j)
+            if (!strcmp(options->required_modules[i], beam_cli_core_modules[j])) found = 1;
+        if (!found) { status = failure(error, BEAM_INVALID_ARGUMENT, 0, "required host module is absent"); goto done; }
     }
     for (index = 0; index < options->module_count; ++index) {
         const beam_return_module *module = &options->modules[index];
@@ -447,40 +459,10 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
     prepared.input = options->input;
     prepared.input_context = options->input_context;
     prepared.vm = options->vm;
+    prepared.nif_count = options->nif_count;
+    prepared.nifs = options->nifs;
     status = beam_return_prepare(&prepared, out, error);
 done:
     free_return_modules(modules, count);
-    return status;
-}
-
-const char *const *beam_cli_project_reserved(size_t *count)
-{
-    *count = sizeof(beam_project_reserved) / sizeof(*beam_project_reserved);
-    return beam_project_reserved;
-}
-void beam_cli_project_release(beam_return_module *modules, size_t count)
-{
-    free_return_modules(modules, count);
-}
-beam_status beam_cli_project_acquire(const char *root, int shell, beam_return_module **modules,
-                                     size_t *count, beam_error *error)
-{
-    size_t capacity = 0;
-    static const char *const project[] = {"beam_project_run"};
-    char path[PATH_MAX];
-    beam_status status = append_inventory(modules, count, &capacity, root, "base", &beam_base_inventory,
-        BEAM_BASE_MANIFEST_PATH, beam_base_manifest, error);
-    if (status == BEAM_OK) status = append_cli_modules(modules, count, &capacity, root,
-        "runtime/beam/cli", beam_cli_modules, BEAM_CLI_MODULE_COUNT, error);
-    if (status == BEAM_OK) status = append_cli_modules(modules, count, &capacity, root,
-        "runtime/beam/cli", beam_cli_fallback_modules, BEAM_CLI_FALLBACK_MODULE_COUNT, error);
-    if (status == BEAM_OK) status = append_cli_modules(modules, count, &capacity, root,
-        shell ? "runtime/beam/interactive" : "runtime/beam/project",
-        shell ? beam_interactive_modules : project, shell ? BEAM_INTERACTIVE_MODULE_COUNT : 1, error);
-    if (status == BEAM_OK) {
-        if (snprintf(path, sizeof(path), "%s/lib/beam/ebin/beam_host.beam", root) >= sizeof(path))
-            status = BEAM_INVALID_ARGUMENT;
-        else status = append_file(modules, count, &capacity, path, "beam_host", 0, error);
-    }
     return status;
 }

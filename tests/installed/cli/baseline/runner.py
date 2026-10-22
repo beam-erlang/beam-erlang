@@ -70,7 +70,7 @@ def check_beam_prefix(prefix, work, fixture, artifacts):
     out, err = run([*command, "eval", expression], work, env)
     check(out == err == b"", f"unexpected BEAM program output: {out!r}, {err!r}")
     out, err = run([*command, "help", "shell"], work, env)
-    check(out == b"usage: beam shell [--project <directory>]\n\n" and err == b"", "shell help changed")
+    check(out == b"usage: beam shell\n" and err == b"", "shell help changed")
     out, err = run([*command, "help"], work, env)
     check(b"  shell " in out and err == b"", "shell missing from command catalog")
     out, err = run([*command, "shell", "unexpected"], work, env, status=1)

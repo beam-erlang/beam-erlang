@@ -12,11 +12,12 @@ OTP distribution owns `erl`, `erlc` and `escript`.
 | `beam`, `beam shell` | Open the interactive Erlang shell. |
 | `beam eval '<expressions>'` | Evaluate a sequence with fresh bindings; print only requested output. |
 | `beam run file.erl [-- args...]` | Compile in memory and execute `main/1` with Unicode charlist arguments. |
+| `beam run --application descriptor [-- args...]` | Execute an explicit generic application inventory; see [applications](applications.md). |
 | `beam compile [options] [--] files...` | Compile explicit source files into bytecode. |
-| `beam build [directory]` | Build the local package graph; the directory defaults to `.`. |
-| `beam run --project directory [-- args...]` | Run an already installed root package's entry. |
-| `beam shell --project directory` | Open an installed selection, including a library with no entry. |
-| `beam task [--project directory] [name [-- args...]]` | List or execute source-manifest tasks. |
+| `beam-pkg build [directory]` | Build the local package graph; the directory defaults to `.`. |
+| `beam-pkg run --project directory [-- args...]` | Run an already installed root package's entry. |
+| `beam-pkg shell --project directory` | Open an installed selection, including a library with no entry. |
+| `beam-pkg task [--project directory] [name [-- args...]]` | List or execute source-manifest tasks. |
 
 `beam-pkg` supplies package commands, including `beam-pkg install`. See
 [packages and projects](../packaging/README.md) for the workflow and canonical
@@ -102,3 +103,6 @@ Use the [standard library](../stdlib/README.md) and individual
 [component manuals](../components/README.md) for Erlang APIs. Private modules
 used to implement command I/O or compilation do not establish a general public
 OTP standard-library package.
+
+See [installed applications](applications.md) for the generic runner, descriptors,
+continuations and native launcher. Package-aware commands belong to `beam-pkg`.

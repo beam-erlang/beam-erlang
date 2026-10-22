@@ -40,6 +40,7 @@ def check_runtime_only(execute, cmake, source, prefix, root, phase):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cmake', required=True)
+    parser.add_argument('--without-package', action='store_true')
     for name in ('test-dir', 'source-dir', 'doc-example-source'):
         parser.add_argument('--' + name, type=Path, required=True)
     add_installation_arguments(parser)
@@ -58,7 +59,7 @@ def main():
             destination = root / 'relocated préfix 日本'
             prefix.rename(destination)
             prefix = destination
-        check_installation(prefix)
+        check_installation(prefix, bundled=not args.without_package)
         check_runtime_only(execute, args.cmake, source, prefix, root, phase)
         coexistence = root / f'{phase}-native-coexistence'
         execute([args.cmake, '-S', source / 'native_coexistence', '-B', coexistence,

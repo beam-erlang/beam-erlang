@@ -21,21 +21,10 @@
 #include <unistd.h>
 #include <wchar.h>
 
-#define ETF_VERSION 131
-#define ETF_SMALL_TUPLE 104
-#define ETF_INTEGER 98
-#define ETF_NIL 106
-#define ETF_STRING 107
-#define ETF_LIST 108
-#define ETF_BINARY 109
-#define ETF_ATOM_UTF8 118
-#define ETF_SMALL_ATOM_UTF8 119
-
-typedef struct byte_buffer {
-    unsigned char *data;
-    size_t size;
-    size_t capacity;
-} byte_buffer;
+#include "../cli/beam_cli_etf.h"
+#ifndef _NSIG
+#define _NSIG NSIG
+#endif
 
 typedef struct cli_input_state {
     byte_buffer line;
@@ -55,87 +44,6 @@ typedef struct cli_input_state {
     char *draft;
     locale_t locale;
 } cli_input_state;
-
-static int buffer_reserve(byte_buffer *buffer, size_t extra)
-{
-    unsigned char *grown;
-    size_t needed = buffer->size + extra;
-    size_t capacity = buffer->capacity;
-    if (extra > (size_t)-1 - buffer->size)
-        return 0;
-    if (needed <= buffer->capacity)
-        return 1;
-    if (!capacity)
-        capacity = 64;
-    while (capacity < needed) {
-        if (capacity > (size_t)-1 / 2)
-            return 0;
-        capacity *= 2;
-    }
-    grown = realloc(buffer->data, capacity);
-    if (!grown)
-        return 0;
-    buffer->data = grown;
-    buffer->capacity = capacity;
-    return 1;
-}
-
-static int buffer_bytes(byte_buffer *buffer, const void *bytes, size_t size)
-{
-    if (!buffer_reserve(buffer, size))
-        return 0;
-    if (size)
-        memcpy(buffer->data + buffer->size, bytes, size);
-    buffer->size += size;
-    return 1;
-}
-
-static int buffer_u8(byte_buffer *buffer, unsigned value)
-{
-    unsigned char byte = (unsigned char)value;
-    return buffer_bytes(buffer, &byte, 1);
-}
-
-static int buffer_u16(byte_buffer *buffer, unsigned value)
-{
-    unsigned char bytes[2] = {(unsigned char)(value >> 8), (unsigned char)value};
-    return buffer_bytes(buffer, bytes, 2);
-}
-
-static int buffer_u32(byte_buffer *buffer, unsigned value)
-{
-    unsigned char bytes[4] = {
-        (unsigned char)(value >> 24), (unsigned char)(value >> 16),
-        (unsigned char)(value >> 8), (unsigned char)value
-    };
-    return buffer_bytes(buffer, bytes, 4);
-}
-
-static int buffer_atom(byte_buffer *buffer, const char *name)
-{
-    size_t length = strlen(name);
-    if (length < 256)
-        return buffer_u8(buffer, ETF_SMALL_ATOM_UTF8) &&
-               buffer_u8(buffer, (unsigned)length) && buffer_bytes(buffer, name, length);
-    return length <= 1020 && buffer_u8(buffer, ETF_ATOM_UTF8) &&
-           buffer_u16(buffer, (unsigned)length) && buffer_bytes(buffer, name, length);
-}
-
-static int buffer_binary(byte_buffer *buffer, const char *text)
-{
-    size_t length = strlen(text);
-    return buffer_u8(buffer, ETF_BINARY) && buffer_u32(buffer, (unsigned)length) &&
-           buffer_bytes(buffer, text, length);
-}
-
-static int buffer_charlist(byte_buffer *buffer, const char *text)
-{
-    size_t length = strlen(text);
-    if (length > 65535)
-        return 0;
-    return buffer_u8(buffer, ETF_STRING) && buffer_u16(buffer, (unsigned)length) &&
-           buffer_bytes(buffer, text, length);
-}
 
 static beam_output_status cli_output(void *context, beam_bytes destination, beam_bytes bytes)
 {
@@ -657,6 +565,8 @@ static int input_initialize(cli_input_state *input, int shell)
         return 0;
     input->saved_terminal = 1;
     input->locale = newlocale(LC_CTYPE_MASK, "C.UTF-8", (locale_t)0);
+    if (!input->locale)
+        input->locale = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", (locale_t)0);
     return 1;
 }
 
@@ -904,409 +814,358 @@ cleanup:
     return exit_status;
 }
 
-/* Package policy stays in Erlang; build selects explicit host capabilities. */
-static int package_main(int argc, char **argv, const char *entry)
-{
-    byte_buffer arguments = {0};
-    beam_system *system = NULL;
-    beam_return_boot *boot = NULL;
-    beam_cli_recipe_return_options options = {0};
-    beam_outcome outcome = {.struct_size = sizeof(outcome)};
-    beam_error error = {0};
-    beam_status status;
-    int index, result = 1;
+/* General installed application execution. No package formats or policy. */
+#include "beam_bytecode.h"
+#define APP_LIMIT (256u * 1024u * 1024u)
+#define APP_MODULE_LIMIT 4096u
 
-    char root[PATH_MAX], cwd[PATH_MAX];
-    const char *search_path = getenv("PATH");
-    if (!getcwd(cwd, sizeof(cwd)) || !discover_root(root, &error)) {
-        fputs("beam-pkg: cannot discover working directory or installed prefix\n", stderr);
-        goto cleanup;
-    }
-    /* Private context and literal arguments; paths never select package policy. */
-    if (!buffer_u8(&arguments, ETF_VERSION) || !buffer_u8(&arguments, ETF_LIST) ||
-        !buffer_u32(&arguments, 1) || !buffer_u8(&arguments, ETF_SMALL_TUPLE) ||
-        !buffer_u8(&arguments, 2) ||
-        !buffer_u8(&arguments, ETF_SMALL_TUPLE) || !buffer_u8(&arguments, 4) ||
-        !buffer_binary(&arguments, beam_version()) || !buffer_binary(&arguments, root) ||
-        !buffer_binary(&arguments, cwd) || !buffer_binary(&arguments, search_path ? search_path : "") ||
-        !buffer_u8(&arguments, ETF_LIST) || !buffer_u32(&arguments, (unsigned)argc))
-        goto memory_error;
-    for (index = 0; index < argc; ++index)
-        if (!buffer_binary(&arguments, argv[index]))
-            goto memory_error;
-    if (!buffer_u8(&arguments, ETF_NIL) || !buffer_u8(&arguments, ETF_NIL))
-        goto memory_error;
-    options.struct_size = sizeof(options);
-    options.services = BEAM_SERVICE_OUTPUT;
-    if (argc > 0 && (!strcmp(argv[0], "build") || !strcmp(argv[0], "install")))
-        options.services |= BEAM_SERVICE_FILE | BEAM_SERVICE_PROGRAM | BEAM_SERVICE_ZLIB;
-    options.profile = BEAM_CLI_PKG;
-    options.entry_module = "beam_pkg";
-    options.entry_function = entry;
-    options.arguments = (beam_bytes){arguments.data, arguments.size};
-    options.output = cli_output;
-    status = beam_cli_recipe_return_prepare(&options, &boot, &error);
-    if (status == BEAM_OK)
-        status = beam_init(&system, &error);
-    if (status == BEAM_OK)
-        status = beam_return_run(system, &boot, &outcome, &error);
-    if (status != BEAM_OK) {
-        fprintf(stderr, "beam-pkg: %s\n", error.message[0] ? error.message : beam_status_message(status));
-    } else if (outcome.kind == BEAM_OUTCOME_FINISH && !outcome.has_cleanup_error) {
-        result = outcome_status(&outcome);
-    } else {
-        fputs("beam-pkg: package tool failed\n", stderr);
-    }
-    goto cleanup;
-memory_error:
-    fputs("beam-pkg: out of memory\n", stderr);
-cleanup:
-    beam_outcome_release(&outcome);
-    if (boot)
-        (void)beam_return_discard(&boot);
-    if (system)
-        (void)beam_terminate(&system);
-    free(arguments.data);
-    return result;
-}
+typedef struct application {
+    char *root, *module, *function;
+    char contract[24];
+    unsigned services;
+    beam_return_module *modules;
+    size_t count;
+    beam_nif_spec *nifs;
+    size_t nif_count;
+    char **required;
+    size_t required_count;
+    beam_bytes descriptor;
+} application;
 
-/* A bounded private result protocol, not a public package/plugin API. */
-typedef struct project_cursor { const unsigned char *p, *end; } project_cursor;
-static int project_tag(project_cursor *c, unsigned tag)
-{ return c->p < c->end && *c->p++ == tag; }
-static int project_u32(project_cursor *c, size_t *n)
+static int etf_number(etf_cursor *c, size_t *n)
 {
-    if (c->end - c->p < 4) return 0;
-    *n = ((size_t)c->p[0] << 24) | ((size_t)c->p[1] << 16) | ((size_t)c->p[2] << 8) | c->p[3];
-    c->p += 4; return 1;
-}
-static int project_tuple(project_cursor *c, unsigned n)
-{ return project_tag(c, ETF_SMALL_TUPLE) && project_tag(c, n); }
-static int project_list(project_cursor *c, size_t *n)
-{
-    if (c->p < c->end && *c->p == ETF_NIL) { ++c->p; *n = 0; return 1; }
-    return project_tag(c, ETF_LIST) && project_u32(c, n);
-}
-static int project_binary(project_cursor *c, beam_bytes *b)
-{
-    if (!project_tag(c, ETF_BINARY) || !project_u32(c, &b->size) || b->size > (size_t)(c->end-c->p)) return 0;
-    b->data = c->p; c->p += b->size; return 1;
-}
-static char *project_string(project_cursor *c)
-{
-    beam_bytes b; char *s;
-    if (!project_binary(c, &b) || !b.size || b.size > 16384 || memchr(b.data, 0, b.size)) return NULL;
-    s = malloc(b.size + 1);
-    if (s) { memcpy(s, b.data, b.size); s[b.size] = 0; }
-    return s;
-}
-static int project_atom(project_cursor *c, char *s, size_t capacity)
-{
-    size_t n;
-    if (c->p == c->end) return 0;
-    if (*c->p++ == ETF_SMALL_ATOM_UTF8) {
-        if (c->p == c->end) return 0;
-        n = *c->p++;
-    } else {
-        --c->p;
-        if (!project_tag(c, ETF_ATOM_UTF8) || c->end-c->p < 2) return 0;
-        n = ((size_t)c->p[0] << 8) | c->p[1]; c->p += 2;
+    if (c->p < c->end && *c->p == 97) {
+        ++c->p; if (c->p == c->end) return 0; *n = *c->p++; return 1;
     }
-    if (n >= capacity || n > (size_t)(c->end-c->p)) return 0;
-    memcpy(s, c->p, n); s[n] = 0; c->p += n; return 1;
+    return etf_tag(c, ETF_INTEGER) && etf_u32(c, n) && *n <= 0x7fffffff;
 }
-static beam_status project_io(void *context, beam_bytes argument, beam_host_reply *reply)
+static int etf_named(etf_cursor *c, const char *name)
+{ char atom[64]; return etf_atom(c, atom, sizeof(atom)) && !strcmp(atom, name); }
+static int etf_end_list(etf_cursor *c, size_t count)
+{ return !count || etf_tag(c, ETF_NIL); }
+static void application_release(application *app)
 {
-    project_cursor c = {argument.data, argument.data + argument.size};
-    byte_buffer out = {0}; char operation[32], destination[32];
-    beam_bytes bytes; beam_status status = BEAM_INVALID_TERM;
-    if (!project_tag(&c, ETF_VERSION) || !buffer_u8(&out, ETF_VERSION)) goto done;
-    if (c.p < c.end && *c.p == ETF_SMALL_TUPLE) {
-        if (!project_tuple(&c, 3) || !project_atom(&c, operation, sizeof(operation)) ||
-            strcmp(operation, "output") || !project_atom(&c, destination, sizeof(destination)) ||
-            !project_binary(&c, &bytes) || c.p != c.end) goto done;
-        if (cli_output(NULL, (beam_bytes){(const unsigned char *)destination, strlen(destination)}, bytes) == BEAM_OUTPUT_OK) {
-            if (!buffer_atom(&out, "ok")) goto done;
+    for (size_t i = 0; app->modules && i < app->count; ++i) {
+        free((void *)app->modules[i].name); free((void *)app->modules[i].origin);
+        free((void *)app->modules[i].bytes.data);
+    }
+    for (size_t i = 0; app->nifs && i < app->nif_count; ++i) {
+        free((void *)app->nifs[i].module); free((void *)app->nifs[i].path);
+    }
+    for (size_t i = 0; app->required && i < app->required_count; ++i) free(app->required[i]);
+    free(app->modules); free(app->nifs); free(app->required);
+    free(app->root); free(app->module); free(app->function);
+    free((void *)app->descriptor.data); memset(app, 0, sizeof(*app));
+}
+static int application_file(const char *path, size_t limit, beam_bytes *bytes)
+{
+    struct stat st; FILE *f; unsigned char *data; int valid;
+    if (stat(path, &st) || !S_ISREG(st.st_mode) || st.st_size < 0 || (uintmax_t)st.st_size > limit) return 0;
+    data = malloc((size_t)st.st_size + 1); if (!data) return 0;
+    f = fopen(path, "rb"); if (!f) { free(data); return 0; }
+    valid = fread(data, 1, (size_t)st.st_size, f) == (size_t)st.st_size && fgetc(f) == EOF && !ferror(f);
+    if (fclose(f)) valid = 0;
+    if (!valid) { free(data); return 0; }
+    *bytes = (beam_bytes){data, (size_t)st.st_size}; return 1;
+}
+static char *application_path(const char *root, const char *relative)
+{
+    char path[PATH_MAX], resolved[PATH_MAX];
+    size_t n = strlen(root);
+    if (!relative || !*relative || relative[0] == '/' || strchr(relative, '\\') || strchr(relative, ':') ||
+        snprintf(path, sizeof(path), "%s/%s", root, relative) >= sizeof(path) ||
+        !realpath(path, resolved) || strncmp(root, resolved, n) ||
+        (n > 1 && resolved[n] && resolved[n] != '/')) return NULL;
+    return strdup(resolved);
+}
+static int application_parse(etf_cursor *c, const char *base, int continuation, application *app)
+{
+    const unsigned char *start = c->p;
+    size_t version, count, total = 0; char *id = NULL, *release = NULL, *root = NULL;
+    char canonical[PATH_MAX]; int ok = 0;
+    if (!etf_tuple(c, 12) || !etf_named(c, "beam_application") || !etf_number(c, &version) || version != 1 ||
+        !(id = etf_string(c)) || !(release = etf_string(c)) || !(root = etf_string(c))) goto done;
+    if (continuation && root[0] == '/') {
+        if (!realpath(root, canonical)) goto done;
+        app->root = strdup(canonical);
+    } else app->root = application_path(base, root);
+    if (!app->root || !etf_tuple(c, 3) || !etf_atom(c, app->contract, sizeof(app->contract)) ||
+        (strcmp(app->contract,"main") && strcmp(app->contract,"command") && strcmp(app->contract,"shell")) ||
+        !(app->module = etf_string(c)) || !(app->function = etf_string(c))) goto done;
+    if (!etf_list(c, &count) || count > 16) goto done;
+    for (size_t i = 0; i < count; ++i) {
+        char feature[32];
+        if (!etf_atom(c, feature, sizeof(feature)) ||
+            (strcmp(feature,"application_v1") && strcmp(feature,"command_v1") && strcmp(feature,"native_v1"))) goto done;
+    }
+    if (!etf_end_list(c,count) || !etf_list(c, &count) || count > 6) goto done;
+    for (size_t i = 0; i < count; ++i) {
+        char service[24]; unsigned bit = 0;
+        if (!etf_atom(c, service, sizeof(service))) goto done;
+        if (!strcmp(service,"output")) bit = BEAM_SERVICE_OUTPUT;
+        else if (!strcmp(service,"code")) bit = BEAM_SERVICE_CODE;
+        else if (!strcmp(service,"file")) bit = BEAM_SERVICE_FILE;
+        else if (!strcmp(service,"network")) bit = BEAM_SERVICE_SOCKET;
+        else if (!strcmp(service,"zlib")) bit = BEAM_SERVICE_ZLIB;
+        else if (!strcmp(service,"program")) bit = BEAM_SERVICE_PROGRAM;
+        if (!bit || (app->services & bit)) goto done;
+        app->services |= bit;
+    }
+    if (!etf_end_list(c,count) || !etf_list(c, &app->count) || app->count > APP_MODULE_LIMIT) goto done;
+    app->modules = calloc(app->count ? app->count : 1, sizeof(*app->modules));
+    if (!app->modules) { app->count = 0; goto done; }
+    for (size_t i = 0; i < app->count; ++i) {
+        size_t arity; char kind[16]; beam_return_module *m = &app->modules[i];
+        if (!etf_tag(c, ETF_SMALL_TUPLE) || c->p == c->end) goto done;
+        arity = *c->p++;
+        if (!etf_atom(c, kind, sizeof(kind)) || !(m->name = etf_string(c))) goto done;
+        for (size_t j = 0; j < i; ++j) if (!strcmp(m->name, app->modules[j].name)) goto done;
+        if (arity == 5 && !strcmp(kind,"file")) {
+            char *relative = etf_string(c); size_t size; beam_bytes digest; unsigned char actual[32];
+            if (!relative) goto done;
+            m->origin = application_path(app->root, relative); free(relative);
+            if (!m->origin || !etf_number(c, &size) || size > APP_LIMIT - total ||
+                !etf_binary(c, &digest) || digest.size != 32 ||
+                !application_file(m->origin, size, &m->bytes) || m->bytes.size != size) goto done;
+            beam_bytecode_sha256(m->bytes, actual);
+            if (memcmp(actual, digest.data, 32)) goto done;
+        } else if (continuation && arity == 4 && !strcmp(kind,"memory")) {
+            beam_bytes bytes;
+            if (!etf_binary(c, &bytes) || bytes.size > APP_LIMIT - total || !(m->origin = etf_string(c))) goto done;
+            unsigned char *copy = malloc(bytes.size ? bytes.size : 1); if (!copy) goto done;
+            memcpy(copy, bytes.data, bytes.size); m->bytes = (beam_bytes){copy, bytes.size};
+        } else goto done;
+        total += m->bytes.size;
+    }
+    if (!etf_end_list(c,app->count) || !etf_list(c, &app->nif_count) || app->nif_count > 1024) goto done;
+    app->nifs = calloc(app->nif_count ? app->nif_count : 1, sizeof(*app->nifs));
+    if (!app->nifs) { app->nif_count = 0; goto done; }
+    for (size_t i = 0; i < app->nif_count; ++i) {
+        char *relative;
+        app->nifs[i].struct_size = sizeof(beam_nif_spec);
+        if (!etf_tuple(c,2) || !(app->nifs[i].module = etf_string(c)) || !(relative = etf_string(c))) goto done;
+        app->nifs[i].path = application_path(app->root, relative); free(relative);
+        if (!app->nifs[i].path) goto done;
+    }
+    if (!etf_end_list(c,app->nif_count) || !etf_list(c,&count) || count > 256) goto done;
+    int compatible = count == 0;
+    for (size_t i = 0; i < count; ++i) {
+        char *identity = etf_string(c); if (!identity) goto done;
+        if (!strcmp(identity, beam_build_id())) compatible = 1;
+        free(identity);
+    }
+    if (!compatible || !etf_end_list(c,count) || !etf_list(c,&app->required_count) || app->required_count > 4096) goto done;
+    app->required = calloc(app->required_count ? app->required_count : 1, sizeof(char *));
+    if (!app->required) { app->required_count = 0; goto done; }
+    for (size_t i = 0; i < app->required_count; ++i) if (!(app->required[i] = etf_string(c))) goto done;
+    if (!etf_end_list(c,app->required_count)) goto done;
+    size_t length = (size_t)(c->p - start);
+    unsigned char *copy = malloc(length + 1); if (!copy) goto done;
+    copy[0] = ETF_VERSION; memcpy(copy + 1, start, length);
+    app->descriptor = (beam_bytes){copy, length + 1}; ok = 1;
+done:
+    free(id); free(release); free(root);
+    return ok;
+}
+static int application_unicode(byte_buffer *b, const char *text)
+{
+    byte_buffer points = {0}; size_t count = 0; const unsigned char *p = (const unsigned char *)text;
+    while (*p) {
+        unsigned ch = *p++, needed = 0, minimum = 0;
+        if (ch >= 0xc2 && ch <= 0xdf) { ch &= 31; needed=1; minimum=0x80; }
+        else if (ch >= 0xe0 && ch <= 0xef) { ch &= 15; needed=2; minimum=0x800; }
+        else if (ch >= 0xf0 && ch <= 0xf4) { ch &= 7; needed=3; minimum=0x10000; }
+        else if (ch >= 0x80) goto invalid;
+        for (unsigned i=0; i<needed; ++i) { if ((*p & 0xc0) != 0x80) goto invalid; ch=(ch<<6)|(*p++ & 63); }
+        if (ch < minimum || ch > 0x10ffff || (ch >= 0xd800 && ch <= 0xdfff) ||
+            !buffer_u8(&points, ETF_INTEGER) || !buffer_u32(&points,ch)) goto invalid;
+        ++count;
+    }
+    int ok = count ? buffer_u8(b,ETF_LIST) && buffer_u32(b,(unsigned)count) &&
+        buffer_bytes(b,points.data,points.size) && buffer_u8(b,ETF_NIL) : buffer_u8(b,ETF_NIL);
+    free(points.data); return ok;
+invalid: free(points.data); return 0;
+}
+static int application_argv(byte_buffer *b, int argc, char **argv)
+{
+    if (!argc) return buffer_u8(b,ETF_NIL);
+    if (!buffer_u8(b,ETF_LIST) || !buffer_u32(b,(unsigned)argc)) return 0;
+    for (int i=0; i<argc; ++i) if (!application_unicode(b,argv[i])) return 0;
+    return buffer_u8(b,ETF_NIL);
+}
+/* Continuations carry one bounded, proper list of Unicode character lists.
+ * Do not allow command applications to smuggle arbitrary entry arguments. */
+static int application_arguments(beam_bytes bytes)
+{
+    size_t count, length, point;
+    if (!bytes.data || bytes.size < 2 || bytes.size > 1024*1024) return 0;
+    etf_cursor c={bytes.data,bytes.data+bytes.size};
+    if (!etf_tag(&c,ETF_VERSION) || !etf_list(&c,&count) || count > 4096) return 0;
+    for (size_t i=0; i<count; ++i) {
+        if (c.p<c.end && *c.p==ETF_STRING) {
+            ++c.p;
+            if(c.end-c.p<2) return 0;
+            length=((size_t)c.p[0]<<8)|c.p[1]; c.p+=2;
+            if(length>(size_t)(c.end-c.p) || memchr(c.p,0,length)) return 0;
+            c.p+=length;
         } else {
-            ((cli_input_state *)context)->error = 1;
-            if (!buffer_u8(&out, ETF_SMALL_TUPLE) || !buffer_u8(&out, 2) ||
-                !buffer_atom(&out, "error") || !buffer_atom(&out, "io")) goto done;
+            if(!etf_list(&c,&length) || length>65536) return 0;
+            for(size_t j=0;j<length;++j)
+                if(!etf_number(&c,&point) || !point || point>0x10ffff || (point>=0xd800 && point<=0xdfff)) return 0;
+            if(!etf_end_list(&c,length)) return 0;
         }
-    } else {
-        const unsigned char *line = NULL; size_t size = 0;
-        if (!project_atom(&c, operation, sizeof(operation)) || strcmp(operation, "read_line") || c.p != c.end) goto done;
-        beam_input_status input = ((cli_input_state *)context)->tty
-            ? cli_input(context, &line, &size) : cli_run_input(context, &line, &size);
-        if (input == BEAM_INPUT_LINE) {
-            if (!buffer_u8(&out, ETF_SMALL_TUPLE) || !buffer_u8(&out, 2) || !buffer_atom(&out, "ok") ||
-                !buffer_u8(&out, ETF_BINARY) || !buffer_u32(&out, (unsigned)size) || !buffer_bytes(&out, line, size)) goto done;
-        } else if (!buffer_atom(&out, input == BEAM_INPUT_PENDING ? "pending" : "eof")) goto done;
     }
-    status = beam_host_reply_copy(reply, (beam_bytes){out.data, out.size});
-done:
-    free(out.data); return status;
+    return etf_end_list(&c,count) && c.p==c.end;
 }
-
-int beam_project_main(const char *directory, int argc, char **argv, int shell)
-{
-    char root[PATH_MAX], cwd[PATH_MAX], tag[32];
-    struct sigaction saved_pipe, ignored_pipe = {0};
-    ignored_pipe.sa_handler = SIG_IGN;
-    sigemptyset(&ignored_pipe.sa_mask);
-    if (sigaction(SIGPIPE, &ignored_pipe, &saved_pipe) != 0) {
-        fputs("beam: cannot configure project output handling\n", stderr); return 1;
-    }
-    const char *search = getenv("PATH");
-    size_t reserved_count, host_count = 0, module_count = 0, nif_count = 0;
-    const char *const *reserved = beam_cli_project_reserved(&reserved_count);
-    beam_return_module *host = NULL;
-    beam_module_spec *modules = NULL;
-    beam_nif_spec *nifs = NULL;
-    beam_system *system = NULL; beam_vm *vm = NULL;
-    beam_composition *composition = NULL;
-    beam_return_boot *tool = NULL;
-    beam_cli_recipe_return_options preparation = {0};
-    beam_outcome selection = {.struct_size = sizeof(selection)};
-    beam_result outcome = {0}; beam_error error = {0};
-    beam_status status = BEAM_INVALID_TERM;
-    byte_buffer arguments = {0}, call = {0}; cli_input_state input = {0};
-    char *entry = NULL; int result = 1;
-    if (!getcwd(cwd, sizeof(cwd)) || !discover_root(root, &error)) goto done;
-    status = beam_cli_project_acquire(root, shell, &host, &host_count, &error);
-    if (status != BEAM_OK) goto done;
-    if (!buffer_u8(&arguments, ETF_VERSION) || !buffer_u8(&arguments, ETF_LIST) || !buffer_u32(&arguments, 1) ||
-        !buffer_u8(&arguments, ETF_SMALL_TUPLE) || !buffer_u8(&arguments, 4) ||
-        !buffer_u8(&arguments, ETF_SMALL_TUPLE) || !buffer_u8(&arguments, 4) ||
-        !buffer_binary(&arguments, beam_version()) || !buffer_binary(&arguments, root) ||
-        !buffer_binary(&arguments, cwd) || !buffer_binary(&arguments, search ? search : "") ||
-        !buffer_binary(&arguments, directory) || !buffer_u8(&arguments, ETF_LIST) ||
-        !buffer_u32(&arguments, (unsigned)(reserved_count + host_count))) goto malformed;
-    for (size_t i = 0; i < reserved_count; ++i)
-        if (!buffer_binary(&arguments, reserved[i])) goto malformed;
-    for (size_t i = 0; i < host_count; ++i)
-        if (!buffer_binary(&arguments, host[i].name)) goto malformed;
-    if (!buffer_u8(&arguments, ETF_NIL) || !buffer_atom(&arguments, shell ? "shell" : "run") ||
-        !buffer_u8(&arguments, ETF_NIL)) goto malformed;
-    preparation.struct_size = sizeof(preparation);
-    preparation.profile = BEAM_CLI_PKG;
-    preparation.services = BEAM_SERVICE_OUTPUT | BEAM_SERVICE_FILE;
-    preparation.entry_module = "beam_pkg_environment"; preparation.entry_function = "prepare";
-    preparation.arguments = (beam_bytes){arguments.data, arguments.size}; preparation.output = cli_output;
-    status = beam_cli_recipe_return_prepare(&preparation, &tool, &error);
-    if (status == BEAM_OK) status = beam_init(&system, &error);
-    if (status == BEAM_OK) status = beam_return_run(system, &tool, &selection, &error);
-    if (status != BEAM_OK) goto done;
-    if (selection.kind != BEAM_OUTCOME_RETURN || selection.has_cleanup_error ||
-        !selection.term.data || selection.term.size > 270000000) goto malformed;
-    project_cursor c = {selection.term.data, selection.term.data + selection.term.size};
-    if (!project_tag(&c, ETF_VERSION) || !project_tuple(&c, 2) || !project_atom(&c, tag, sizeof(tag))) goto malformed;
-    if (!strcmp(tag, "error")) {
-        beam_bytes message;
-        if (!project_binary(&c, &message) || c.p != c.end) goto malformed;
-        fputs("beam: ", stderr); fwrite(message.data, 1, message.size, stderr); fputc('\n', stderr);
-        goto done;
-    }
-    if (strcmp(tag, "ok") || !project_tuple(&c, 3) || !(entry = project_string(&c)) ||
-        !project_list(&c, &module_count) || module_count > 4096) goto malformed;
-    modules = calloc(host_count + module_count, sizeof(*modules));
-    if (!modules) goto malformed;
-    for (size_t i = 0; i < host_count; ++i)
-        modules[i] = (beam_module_spec){host[i].name, host[i].bytes, host[i].origin};
-    for (size_t i = 0; i < module_count; ++i) {
-        beam_module_spec *m = &modules[host_count+i];
-        if (!project_tuple(&c, 3) || !(m->name = project_string(&c)) ||
-            !project_binary(&c, &m->bytes) || !(m->origin = project_string(&c))) goto malformed;
-    }
-    if (module_count && !project_tag(&c, ETF_NIL)) goto malformed;
-    if (!project_list(&c, &nif_count) || nif_count > 1024) goto malformed;
-    nifs = calloc(nif_count ? nif_count : 1, sizeof(*nifs));
-    if (!nifs) goto malformed;
-    for (size_t i = 0; i < nif_count; ++i) {
-        nifs[i].struct_size = sizeof(*nifs);
-        if (!project_tuple(&c, 2) || !(nifs[i].module = project_string(&c)) || !(nifs[i].path = project_string(&c))) goto malformed;
-    }
-    if ((nif_count && !project_tag(&c, ETF_NIL)) || c.p != c.end) goto malformed;
-    beam_composition_options options = {.struct_size = sizeof(options),
-        .modules = modules, .module_count = host_count + module_count, .nifs = nifs, .nif_count = nif_count};
-    status = beam_composition_prepare(&options, &composition, &error);
-    if (status != BEAM_OK) goto done;
-    beam_vm_options vm_options; beam_vm_options_init(&vm_options);
-    vm_options.composition = composition;
-    status = beam_vm_init(system, &vm_options, &vm, &error);
-    if (status == BEAM_OK) status = beam_vm_set_host_handler(vm, project_io, &input);
-    if (status == BEAM_OK) status = beam_vm_start(vm, &error);
-    if (status == BEAM_OK) status = beam_vm_activate(vm, &error);
-    if (status != BEAM_OK) goto done;
-    if (shell) {
-        unsigned columns = 80, rows = 24;
-        struct winsize geometry;
-        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &geometry) == 0) {
-            if (geometry.ws_col) columns = geometry.ws_col;
-            if (geometry.ws_row) rows = geometry.ws_row;
-        }
-        if (!input_initialize(&input, 1)) { status = BEAM_INVALID_ARGUMENT; goto done; }
-        if (!encode_arguments(&call, root, 0, NULL, "shell", NULL, columns, rows, input.tty, NULL)) goto malformed;
-    } else {
-        if (!buffer_u8(&call, ETF_VERSION) || !buffer_u8(&call, ETF_LIST) || !buffer_u32(&call, 1) ||
-            !buffer_u8(&call, ETF_SMALL_TUPLE) || !buffer_u8(&call, 2) || !buffer_binary(&call, entry) ||
-            !buffer_u8(&call, ETF_LIST) || !buffer_u32(&call, (unsigned)argc)) goto malformed;
-        for (int i = 0; i < argc; ++i) if (!buffer_binary(&call, argv[i])) goto malformed;
-        if (!buffer_u8(&call, ETF_NIL) || !buffer_u8(&call, ETF_NIL)) goto malformed;
-    }
-    status = beam_vm_call(vm, shell ? "beam_interactive" : "beam_project_run", shell ? "project" : "main", (beam_bytes){call.data, call.size}, &outcome);
-    if (status == BEAM_OK) {
-        if (outcome.kind == BEAM_RETURN) result = 0;
-        else if (outcome.kind == BEAM_HALT) result = outcome.halt_status;
-        else fputs("beam: project entry failed\n", stderr);
-    }
-    goto done;
-malformed:
-    status = BEAM_INVALID_TERM;
-    snprintf(error.message, sizeof(error.message), "invalid or oversized project preparation result");
-done:
-    if (status != BEAM_OK) fprintf(stderr, "beam: %s\n", error.message[0] ? error.message : beam_status_message(status));
-    beam_result_release(&outcome);
-    if (vm && beam_vm_terminate(&vm, NULL) != BEAM_OK) result = 1;
-    beam_composition_release(&composition);
-    if (tool) beam_return_discard(&tool);
-    if (system) beam_terminate(&system);
-    if (modules) for (size_t i = 0; i < module_count; ++i) {
-        free((void *)modules[host_count+i].name); free((void *)modules[host_count+i].origin);
-    }
-    if (nifs) for (size_t i = 0; i < nif_count; ++i) { free((void *)nifs[i].module); free((void *)nifs[i].path); }
-    free(modules); free(nifs); free(entry);
-    beam_cli_project_release(host, host_count);
-    beam_outcome_release(&selection);
-    free(arguments.data); free(call.data);
-    if (!input_destroy(&input)) { fputs("beam: cannot restore terminal\n", stderr); result = 1; }
-    if (input.error) result = 1;
-    /* Complete buffered writes before restoring the caller's disposition. */
-    if (fflush(stdout) != 0) result = 1;
-    if (fflush(stderr) != 0) result = 1;
-    if (sigaction(SIGPIPE, &saved_pipe, NULL) != 0) result = 1;
-    return result;
-}
-
-int beam_pkg_main(int argc, char **argv) { return package_main(argc, argv, "main"); }
-int beam_build_main(int argc, char **argv) { return package_main(argc, argv, "beam_main"); }
-
-/* execve deliberately has no ENOEXEC shell fallback. The VM has already gone. */
 extern char **environ;
-static void task_exec(const char *root, char **argv)
+static void application_exec(char **argv)
 {
-    char candidate[PATH_MAX];
-    const char *name = argv[0];
-    if (!strcmp(name, "beam") || !strcmp(name, "beam-pkg")) {
-        if (snprintf(candidate, sizeof(candidate), "%s/bin/%s", root, name) >= sizeof(candidate)) {
-            errno = ENAMETOOLONG; return;
-        }
-        execve(candidate, argv, environ); return;
-    }
-    if (strchr(name, '/')) { execve(name, argv, environ); return; }
-    const char *path = getenv("PATH");
-    if (!path) path = "/bin:/usr/bin";
-    int denied = 0;
+    if (strchr(argv[0],'/')) { execve(argv[0],argv,environ); return; }
+    const char *path = getenv("PATH"); if (!path) { errno=ENOENT; return; }
+    int denied=0; char candidate[PATH_MAX];
     for (;;) {
-        const char *end = strchr(path, ':');
-        size_t size = end ? (size_t)(end - path) : strlen(path);
-        if (size + strlen(name) + 2 < sizeof(candidate)) {
-            if (size) snprintf(candidate, sizeof(candidate), "%.*s/%s", (int)size, path, name);
-            else snprintf(candidate, sizeof(candidate), "%s", name);
-            execve(candidate, argv, environ);
-            if (errno == EACCES) denied = 1;
-            else if (errno != ENOENT && errno != ENOTDIR) return;
+        const char *end=strchr(path,':'); size_t length=end ? (size_t)(end-path) : strlen(path);
+        if (length+strlen(argv[0])+2 < sizeof(candidate)) {
+            if (length) snprintf(candidate,sizeof(candidate),"%.*s/%s",(int)length,path,argv[0]);
+            else snprintf(candidate,sizeof(candidate),"%s",argv[0]);
+            execve(candidate,argv,environ);
+            if (errno==EACCES) denied=1;
+            else if (errno!=ENOENT && errno!=ENOTDIR) return;
         }
         if (!end) break;
-        path = end + 1;
+        path=end+1;
     }
-    errno = denied ? EACCES : ENOENT;
+    errno=denied ? EACCES : ENOENT;
 }
 
-int beam_task_main(int argc, char **argv)
+int beam_application_main(const char *descriptor, int argc, char **argv)
 {
-    char root[PATH_MAX], cwd[PATH_MAX], tag[32];
-    sigset_t saved_mask;
-    struct sigaction saved_signals[_NSIG];
-    unsigned char saved_valid[_NSIG] = {0};
-    if (sigprocmask(SIG_SETMASK, NULL, &saved_mask) != 0) return 1;
-    for (int sig = 1; sig < _NSIG; ++sig)
-        saved_valid[sig] = sig != SIGKILL && sig != SIGSTOP && sigaction(sig, NULL, &saved_signals[sig]) == 0;
-    byte_buffer arguments = {0};
-    beam_system *system = NULL;
-    beam_return_boot *tool = NULL;
-    beam_outcome selection = {.struct_size = sizeof(selection)};
-    beam_cli_recipe_return_options options = {0};
-    beam_error error = {0}; beam_status status = BEAM_INVALID_ARGUMENT;
-    char *directory = NULL, **command = NULL;
-    size_t count = 0; int result = 1, execute = 0, cleanup_failed;
-    if (!getcwd(cwd, sizeof(cwd)) || !discover_root(root, &error)) goto done;
-    if (!buffer_u8(&arguments, ETF_VERSION) || !buffer_u8(&arguments, ETF_LIST) ||
-        !buffer_u32(&arguments, 1) || !buffer_u8(&arguments, ETF_SMALL_TUPLE) ||
-        !buffer_u8(&arguments, 2) || !buffer_u8(&arguments, ETF_SMALL_TUPLE) || !buffer_u8(&arguments, 4) ||
-        !buffer_binary(&arguments, beam_version()) || !buffer_binary(&arguments, root) ||
-        !buffer_binary(&arguments, cwd) || !buffer_binary(&arguments, getenv("PATH") ? getenv("PATH") : "") ||
-        !buffer_u8(&arguments, ETF_LIST) || !buffer_u32(&arguments, argc)) goto malformed;
-    for (int i = 0; i < argc; ++i) if (!buffer_binary(&arguments, argv[i])) goto malformed;
-    if (!buffer_u8(&arguments, ETF_NIL) || !buffer_u8(&arguments, ETF_NIL)) goto malformed;
-    options.struct_size = sizeof(options); options.profile = BEAM_CLI_PKG;
-    options.services = BEAM_SERVICE_OUTPUT | (argc == 1 && !strcmp(argv[0], "--help") ? 0 : BEAM_SERVICE_FILE);
-    options.entry_module = "beam_pkg_task"; options.entry_function = "prepare";
-    options.arguments = (beam_bytes){arguments.data, arguments.size}; options.output = cli_output;
-    status = beam_cli_recipe_return_prepare(&options, &tool, &error);
-    if (status == BEAM_OK) status = beam_init(&system, &error);
-    if (status == BEAM_OK) status = beam_return_run(system, &tool, &selection, &error);
-    if (status != BEAM_OK) goto done;
-    if (selection.kind != BEAM_OUTCOME_RETURN || selection.has_cleanup_error ||
-        !selection.term.data || selection.term.size > 1100000) goto malformed;
-    project_cursor c = {selection.term.data, selection.term.data + selection.term.size};
-    if (!project_tag(&c, ETF_VERSION) || !project_tuple(&c, 2) || !project_atom(&c, tag, sizeof(tag))) goto malformed;
-    if (!strcmp(tag, "list") || !strcmp(tag, "error")) {
-        beam_bytes message;
-        if (!project_binary(&c, &message) || c.p != c.end) goto malformed;
-        FILE *out = !strcmp(tag, "list") ? stdout : stderr;
-        if (out == stderr) fputs("beam: ", out);
-        if (fwrite(message.data, 1, message.size, out) != message.size) goto done;
-        if (out == stderr) fputc('\n', out);
-        result = out == stdout ? 0 : 1; goto done;
-    }
-    if (strcmp(tag, "exec") || !project_tuple(&c, 2) || !(directory = project_string(&c)) ||
-        !project_list(&c, &count) || !count || count > 1024) goto malformed;
-    command = calloc(count + 1, sizeof(*command));
-    if (!command) goto malformed;
-    for (size_t i = 0; i < count; ++i) {
-        beam_bytes b;
-        if (!project_binary(&c, &b) || b.size > 16384 || (!i && !b.size) || memchr(b.data, 0, b.size)) goto malformed;
-        command[i] = malloc(b.size + 1);
-        if (!command[i]) goto malformed;
-        memcpy(command[i], b.data, b.size); command[i][b.size] = 0;
-    }
-    if (!project_tag(&c, ETF_NIL) || c.p != c.end) goto malformed;
-    execute = 1; goto done;
-malformed:
-    status = BEAM_INVALID_TERM;
-    snprintf(error.message, sizeof(error.message), "invalid or oversized task preparation result");
-done:
-    cleanup_failed = tool && beam_return_discard(&tool) != BEAM_OK;
-    if (system && beam_terminate(&system) != BEAM_OK) cleanup_failed = 1;
-    if (cleanup_failed) {
-        fputs("beam: task preparation cleanup failed\n", stderr);
-        execute = 0; result = 1;
-    }
-    beam_outcome_release(&selection); free(arguments.data);
-    if (status != BEAM_OK) fprintf(stderr, "beam: %s\n", error.message[0] ? error.message : beam_status_message(status));
-    if (execute) {
-        for (int sig = 1; sig < _NSIG; ++sig)
-            if (saved_valid[sig] && sigaction(sig, &saved_signals[sig], NULL) != 0) {
-                fputs("beam: cannot restore task signal disposition\n", stderr); execute = 0; break;
+    char path[PATH_MAX], base[PATH_MAX], root[PATH_MAX], cwd[PATH_MAX], executable[PATH_MAX];
+    beam_bytes bytes={0}; application app={0}; beam_error error={0};
+    beam_system *system=NULL; int result=1;
+    sigset_t saved_mask; struct sigaction saved_signals[_NSIG]; unsigned char saved_valid[_NSIG]={0};
+    if (sigprocmask(SIG_SETMASK,NULL,&saved_mask)) return 1;
+    for (int sig=1; sig<_NSIG; ++sig) saved_valid[sig]=sig!=SIGKILL && sig!=SIGSTOP && !sigaction(sig,NULL,&saved_signals[sig]);
+    struct sigaction ignored_pipe = {0};
+    ignored_pipe.sa_handler=SIG_IGN; sigemptyset(&ignored_pipe.sa_mask);
+    if (!saved_valid[SIGPIPE] || sigaction(SIGPIPE,&ignored_pipe,NULL)) return 1;
+    if (!realpath(descriptor,path) || !getcwd(cwd,sizeof(cwd)) || !discover_root(root,&error) ||
+        snprintf(executable,sizeof(executable),"%s/bin/beam",root) >= sizeof(executable) ||
+        !application_file(path,2*1024*1024,&bytes)) goto invalid;
+    strcpy(base,path); char *slash=strrchr(base,'/'); if (!slash) goto invalid; *slash=0;
+    etf_cursor c={bytes.data,bytes.data+bytes.size};
+    if (!etf_tag(&c,ETF_VERSION) || !application_parse(&c,base,0,&app) || c.p!=c.end) goto invalid;
+    free((void *)bytes.data); bytes=(beam_bytes){0};
+    byte_buffer next_args={0};
+    if (!application_argv(&next_args,argc,argv)) { free(next_args.data); goto invalid; }
+    for (unsigned iteration=0; iteration<64; ++iteration) {
+        beam_cli_recipe_return_options options={.struct_size=sizeof(options)};
+        beam_return_boot *boot=NULL; beam_outcome outcome={.struct_size=sizeof(outcome)};
+        byte_buffer args={0}, code={0}; cli_input_state input={0}; beam_status status=BEAM_INVALID_ARGUMENT;
+        int command=!strcmp(app.contract,"command"), shell=!strcmp(app.contract,"shell");
+        if (shell) {
+            struct winsize geometry; unsigned columns=80,rows=24;
+            if (!ioctl(STDOUT_FILENO,TIOCGWINSZ,&geometry)) { if(geometry.ws_col)columns=geometry.ws_col;if(geometry.ws_row)rows=geometry.ws_row; }
+            if (!input_initialize(&input,1) || !encode_arguments(&args,root,0,NULL,"shell",NULL,columns,rows,input.tty,NULL)) goto failed;
+            options.profile=BEAM_CLI_INTERACTIVE; options.entry_module="beam_interactive"; options.entry_function="main";
+        } else {
+            if (!buffer_u8(&args,ETF_VERSION) || !buffer_u8(&args,ETF_LIST) || !buffer_u32(&args,command ? 2 : 1)) goto failed;
+            if (command) {
+                if (!buffer_u8(&args,ETF_SMALL_TUPLE) || !buffer_u8(&args,11) || !buffer_atom(&args,"beam_context") ||
+                    !buffer_u8(&args,97) || !buffer_u8(&args,1) || !buffer_binary(&args,executable) ||
+                    !buffer_binary(&args,root) || !buffer_binary(&args,beam_version()) || !buffer_binary(&args,beam_build_id()) ||
+                    !buffer_binary(&args,app.root) || !buffer_binary(&args,cwd) || !buffer_binary(&args,getenv("PATH") ? getenv("PATH") : "") ||
+                    !buffer_binary(&args,"posix") || !buffer_u8(&args,ETF_BINARY) || !buffer_u32(&args,(unsigned)app.descriptor.size) ||
+                    !buffer_bytes(&args,app.descriptor.data,app.descriptor.size)) goto failed;
+                options.profile=BEAM_CLI_NONE; options.entry_module=app.module; options.entry_function=app.function;
+            } else {
+                if (!buffer_u8(&args,ETF_SMALL_TUPLE) || !buffer_u8(&args,3) || !buffer_binary(&args,app.module) || !buffer_binary(&args,app.function)) goto failed;
+                options.profile=BEAM_CLI_APPLICATION; options.entry_module="beam_application_run"; options.entry_function="main";
             }
-        if (sigprocmask(SIG_SETMASK, &saved_mask, NULL) != 0) {
-            fputs("beam: cannot restore task signal mask\n", stderr); execute = 0;
+            if (!buffer_bytes(&args,next_args.data,next_args.size) || !buffer_u8(&args,ETF_NIL)) goto failed;
         }
+        options.services=app.services; options.modules=app.modules; options.module_count=app.count;
+        options.nifs=app.nifs; options.nif_count=app.nif_count;
+        options.required_modules=(const char *const *)app.required; options.required_count=app.required_count;
+        options.arguments=(beam_bytes){args.data,args.size}; options.output=cli_output;
+        options.input=shell ? cli_input : cli_run_input; options.input_context=&input;
+        options.code=cli_code; options.code_context=&code;
+        status=beam_cli_recipe_return_prepare(&options,&boot,&error);
+        if(status==BEAM_OK && !system) status=beam_init(&system,&error);
+        if(status==BEAM_OK) status=beam_return_run(system,&boot,&outcome,&error);
+failed:
+        free(args.data);
+        free(code.data);
+        if(boot && beam_return_discard(&boot)!=BEAM_OK) status=BEAM_SYSTEM_ERROR;
+        if(!input_destroy(&input) || input.error || outcome.has_cleanup_error) status=BEAM_SYSTEM_ERROR;
+        if(status!=BEAM_OK) {
+            fprintf(stderr,"beam: application failed: %s\n",error.message[0] ? error.message : beam_status_message(status));
+            beam_outcome_release(&outcome); break;
+        }
+        if(!command || outcome.kind!=BEAM_OUTCOME_RETURN) {
+            if(outcome.kind!=BEAM_OUTCOME_RETURN && outcome.kind!=BEAM_OUTCOME_HALT && outcome.kind!=BEAM_OUTCOME_FINISH)
+                fprintf(stderr,"beam: application execution failed (outcome %d, service %s)\n",
+                        (int)outcome.kind,outcome.service[0] ? outcome.service : "none");
+            result=outcome_status(&outcome); beam_outcome_release(&outcome); break;
+        }
+        etf_cursor action={0};
+        char tag[16]; size_t version,arity;
+        if(!outcome.term.data || outcome.term.size>APP_LIMIT+2*1024*1024) goto bad_action;
+        action=(etf_cursor){outcome.term.data,outcome.term.data+outcome.term.size};
+        if(!etf_tag(&action,ETF_VERSION) ||
+           !etf_tuple(&action,3) || !etf_named(&action,"beam_command") || !etf_number(&action,&version) || version!=1 ||
+           !etf_tag(&action,ETF_SMALL_TUPLE) || action.p==action.end) goto bad_action;
+        arity=*action.p++;
+        if(!etf_atom(&action,tag,sizeof(tag))) goto bad_action;
+        if(arity==2 && !strcmp(tag,"exit")) {
+            size_t code; if(!etf_number(&action,&code) || code>255 || action.p!=action.end) goto bad_action;
+            result=(int)code; beam_outcome_release(&outcome); break;
+        }
+        if(arity==3 && !strcmp(tag,"run")) {
+            application next={0}; beam_bytes arguments;
+            if(!application_parse(&action,app.root,1,&next) || !etf_binary(&action,&arguments) ||
+                !application_arguments(arguments) || action.p!=action.end) {
+                application_release(&next); goto bad_action;
+            }
+            free(next_args.data); next_args=(byte_buffer){0};
+            if(!buffer_bytes(&next_args,arguments.data+1,arguments.size-1)) { application_release(&next); goto bad_action; }
+            application_release(&app); app=next; beam_outcome_release(&outcome); continue;
+        }
+        if(arity==3 && !strcmp(tag,"exec")) {
+            char *directory=etf_string(&action); char **command_args=NULL; size_t count=0,filled=0;
+            int valid=directory && etf_list(&action,&count) && count>0 && count<=1024 && outcome.term.size<=1100000;
+            if(valid) command_args=calloc(count+1,sizeof(char *));
+            if(!command_args) valid=0;
+            while(valid && filled<count) {
+                beam_bytes arg;
+                valid=etf_binary(&action,&arg) && arg.size<=16384 && (filled || arg.size) && !memchr(arg.data,0,arg.size);
+                if(!valid) break;
+                command_args[filled]=malloc(arg.size+1); if(!command_args[filled]) { valid=0; break; }
+                memcpy(command_args[filled],arg.data,arg.size); command_args[filled++][arg.size]=0;
+            }
+            valid=valid && etf_tag(&action,ETF_NIL) && action.p==action.end;
+            if(system && beam_terminate(&system)!=BEAM_OK) valid=0;
+            beam_outcome_release(&outcome);
+            if(fflush(stdout)) valid=0;
+            if(fflush(stderr)) valid=0;
+            if(valid) {
+                for(int sig=1;sig<_NSIG;++sig) if(saved_valid[sig] && sigaction(sig,&saved_signals[sig],NULL)) valid=0;
+                if(sigprocmask(SIG_SETMASK,&saved_mask,NULL)) valid=0;
+                if(valid && !chdir(directory)) application_exec(command_args);
+                fprintf(stderr,"beam: cannot execute application command: %s\n",strerror(errno));
+            } else fputs("beam: invalid command action or cleanup failure\n",stderr);
+            for(size_t i=0;i<filled;++i) free(command_args[i]); free(command_args); free(directory); break;
+        }
+bad_action:
+        fputs("beam: invalid or unsupported command action\n",stderr); beam_outcome_release(&outcome); break;
     }
-    if (execute) {
-        if (chdir(directory) == 0) task_exec(root, command);
-        fprintf(stderr, "beam: cannot execute task '%s': %s\n", command[0], strerror(errno));
-    }
-    if (command) { for (size_t i = 0; i < count; ++i) free(command[i]); free(command); }
-    free(directory); return result;
+    free(next_args.data); goto done;
+invalid:
+    fputs("beam: invalid application descriptor, incompatible runtime, or missing/corrupt application inputs\n",stderr);
+done:
+    if(system && beam_terminate(&system)!=BEAM_OK) result=1;
+    if(fflush(stdout)) result=1;
+    if(fflush(stderr)) result=1;
+    if(sigaction(SIGPIPE,&saved_signals[SIGPIPE],NULL)) result=1;
+    application_release(&app); free((void *)bytes.data); return result;
 }

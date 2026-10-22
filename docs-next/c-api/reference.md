@@ -574,6 +574,7 @@ diagnostics remain observable even if startup prevented an application outcome.
 | `entry_module`, `entry_function` | Required export; argument list determines arity. |
 | `arguments` | Uncompressed ETF proper list; unlike `beam_vm_call`, empty bytes select `[]`. |
 | `module_count`, `modules` | Copied `beam_return_module` entries with name, bytes, service flag and origin. |
+| `nif_count`, `nifs` | Copied explicit matching-SDK native bindings to supplied ordinary modules; admitted before entry and activated through public composition. |
 | `component_count`, `components` | Only FILE/NETWORK/ZLIB, matching their service bits exactly; zero is valid. |
 | `bindir` | Absolute directory containing `erl_child_setup` for PROGRAM; translated to copied helper configuration. |
 | `output`, `output_context` | Host byte-output handler and borrowed state. |

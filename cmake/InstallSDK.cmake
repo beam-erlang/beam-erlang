@@ -7,9 +7,12 @@ install(TARGETS libbeam_static beam_runtime_static EXPORT BEAMStaticTargets ARCH
 install(FILES "${CMAKE_SOURCE_DIR}/cmake/RuntimeExports.list" DESTINATION lib/cmake/BEAM)
 if(BEAM_BUILD_CLI)
     install(TARGETS beam EXPORT BEAMCLITargets RUNTIME DESTINATION bin)
-    if(NOT WIN32)
-        install(CODE "file(CREATE_LINK beam \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/beam-pkg\" SYMBOLIC)")
+    add_executable(beam_launch "${CMAKE_SOURCE_DIR}/src/beam_launcher.c")
+    set_target_properties(beam_launch PROPERTIES OUTPUT_NAME beam-launch)
+    if(MINGW)
+        target_link_options(beam_launch PRIVATE -municode)
     endif()
+    install(TARGETS beam_launch RUNTIME DESTINATION bin)
 endif()
 install(FILES "${CMAKE_SOURCE_DIR}/src/beam.h"
     "${CMAKE_SOURCE_DIR}/src/beam_bytecode.h" "${_base_header}" DESTINATION include)
@@ -52,6 +55,7 @@ triple = \"${ERTS_HOST_TRIPLE}\"
 flavor = \"${ERTS_BUILD_FLAVOR}\"
 " @ONLY)
 install(FILES "${CMAKE_BINARY_DIR}/sdk.toml" DESTINATION lib/beam)
+include("${CMAKE_SOURCE_DIR}/cmake/SDKTarget.cmake")
 
 set(BEAM_RUNTIME_RELATIVE "lib/${CMAKE_SHARED_LIBRARY_PREFIX}beam${CMAKE_SHARED_LIBRARY_SUFFIX}")
 set(BEAM_STATIC_RELATIVE "lib/${CMAKE_STATIC_LIBRARY_PREFIX}beam${CMAKE_STATIC_LIBRARY_SUFFIX}")
@@ -97,12 +101,19 @@ install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMNif.cmake" DESTINATION lib/cmake/BE
 
 # VM, public native headers, generic process helper and core inspection bytes.
 set(BEAM_RUNTIME_ARTIFACT_RECORDS
+    "sdk.target|target-metadata|lib/beam/target.toml|compiler.generation"
+    "compiler.generation|compiler-provenance|lib/beam/compiler-generation.json|-"
     "runtime|runtime|${BEAM_RUNTIME_RELATIVE}|-"
     "runtime.static|runtime-static|${BEAM_STATIC_RELATIVE}|link.static,link.static.configuration,link.static.exports"
     "link.static|link-support|lib/cmake/BEAM/BEAMStaticTargets.cmake|-"
     "link.static.configuration|link-support|lib/cmake/BEAM/BEAMStaticTargets-%CONFIG%.cmake|-"
     "link.static.exports|link-support|lib/cmake/BEAM/RuntimeExports.list|-"
 )
+if(BEAM_BUILD_CLI)
+    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
+        "command.beam|executable-helper|bin/beam${CMAKE_EXECUTABLE_SUFFIX}|runtime"
+        "command.launcher|executable-helper|bin/beam-launch${CMAKE_EXECUTABLE_SUFFIX}|-")
+endif()
 if(TARGET erl_child_setup)
     list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS "helper.child_setup|executable-helper|libexec/beam/erl_child_setup|-")
 endif()
@@ -152,3 +163,5 @@ if(MSVC AND BEAM_RELEASE_DEBUG_INFO)
         endif()
     endforeach()
 endif()
+
+install(PROGRAMS "${CMAKE_SOURCE_DIR}/tools/beam-application.py" DESTINATION share/beam/tools)

@@ -26,8 +26,11 @@ add_custom_command(
 add_custom_target(beam_service_artifacts DEPENDS ${_beam_seed_outputs})
 add_custom_target(beam_run ALL)
 add_dependencies(beam_run beam_host_artifact
-    beam_service_artifacts beam_pkg_support beam_compiler_tooling beam_cli_support beam_run_support beam_interactive_support ${BEAM_COMPONENT_TARGETS}
+    beam_service_artifacts beam_compiler_tooling beam_cli_support beam_run_support beam_interactive_support ${BEAM_COMPONENT_TARGETS}
     ${BEAM_DYNAMIC_NIF_TARGETS} ${BEAM_DYNAMIC_DRIVER_TARGETS})
+if(TARGET beam_pkg_support)
+    add_dependencies(beam_run beam_pkg_support)
+endif()
 set(_base_check_stamp "${CMAKE_BINARY_DIR}/base-verification/verified.stamp")
 set(_base_ebin "${CMAKE_BINARY_DIR}/lib/beam/library/ebin")
 set(_base_outputs)

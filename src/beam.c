@@ -39,8 +39,12 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#else
 #include <sys/syscall.h>
 #include <sys/auxv.h>
+#endif
 #include <unistd.h>
 
 static atomic_int start_claimed;
@@ -355,7 +359,11 @@ beam_status beam_init(beam_system **out, beam_error *error)
     clear_error(error);
     if (!out)
         return diagnostic(error, BEAM_INVALID_ARGUMENT, 0, "system output is NULL");
+#ifdef __APPLE__
+    if (!pthread_main_np())
+#else
     if (syscall(SYS_gettid) != getpid())
+#endif
         return diagnostic(error, BEAM_WRONG_THREAD, 0,
                           "system initialization requires the main thread");
     if (system_initialized)
@@ -1990,11 +1998,21 @@ beam_library_path(char *buffer, size_t capacity, size_t *required, beam_error *e
     /* dladdr may report argv[0] for the executable, which can be relative to
      * a working directory the host has since left. Identify the main image by
      * its ELF entry point and resolve the kernel's executable link instead. */
-    Dl_info executable;
     const char *image = info.dli_fname;
+#ifdef __APPLE__
+    char main_image[PATH_MAX];
+    uint32_t main_capacity=sizeof(main_image);
+    if (info.dli_fbase == (void *)_dyld_get_image_header(0)) {
+        if (_NSGetExecutablePath(main_image,&main_capacity))
+            return diagnostic(error, BEAM_RUNTIME_NOT_FOUND, 0, "executable path exceeds buffer");
+        image=main_image;
+    }
+#else
+    Dl_info executable;
     if (dladdr((void *)getauxval(AT_ENTRY), &executable) &&
         executable.dli_fbase == info.dli_fbase)
         image = "/proc/self/exe";
+#endif
     path = realpath(image, NULL);
     if (!path) {
         int saved_errno = errno;

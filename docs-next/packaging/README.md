@@ -10,9 +10,9 @@ revisable.
 For a project with a `beam.toml` source manifest:
 
 ```sh
-beam build .
+beam-pkg build .
 beam-pkg install .
-beam run --project . -- first second
+beam-pkg run --project . -- first second
 ```
 
 These are separate steps:
@@ -24,7 +24,7 @@ These are separate steps:
 3. **Run** executes the installed root's declared `main/1` in a fresh VM.
    It does not rebuild, install or resolve missing sources.
 
-Use `beam shell --project .` to explore the installed selection; library roots
+Use `beam-pkg shell --project .` to explore the installed selection; library roots
 need no entry for this command. Project execution supplies standard I/O and
 selected package/native bindings. It does not implicitly add the services
 available to plain source execution; see [execution profiles](../cli/README.md#execution-profiles).
@@ -47,7 +47,7 @@ references rather than treating this introduction as another schema:
 These links require the companion `beam-erlang-package` checkout in the workspace.
 The publication location for these cross-repository references is not yet set.
 
-`beam task` executes root-manifest `[scripts]` as literal argument arrays. Tasks
+`beam-pkg task` executes root-manifest `[scripts]` as literal argument arrays. Tasks
 belong to the source checkout and are excluded from archives, locks and installed
 environments. They do not become automatic build or installation hooks.
 

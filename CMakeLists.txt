@@ -36,7 +36,6 @@ set(BEAM_DYNAMIC_DRIVER_TARGETS ${BEAM_DRIVER_TARGETS})
 add_subdirectory(src/core/shared_data)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RuntimeModules.cmake)
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/PackageTool.cmake)
 # Keep generated headers and object outputs at their established build paths.
 add_library(beam_erts_headers INTERFACE)
 add_library(beam-erlang::erts_headers ALIAS beam_erts_headers)
@@ -46,6 +45,7 @@ target_include_directories(beam_erts_headers INTERFACE
     ${CMAKE_BINARY_DIR}/erts/include/internal
 )
 add_subdirectory(emulator erts/emulator)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/PackageTool.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Runtime.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallSDK.cmake)
 beam_register_host_tools_manifest()

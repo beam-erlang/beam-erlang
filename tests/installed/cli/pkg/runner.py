@@ -5,6 +5,18 @@ from support.installation import add_installation_arguments, resolve_installatio
 import hashlib
 import os
 import shutil
+import tomllib
+
+
+def payload(prefix):
+    config=(prefix/"bin/beam-pkg.beam-launcher").read_text().splitlines()
+    return (prefix/"bin"/config[3]).resolve().parent
+
+
+def pointer(work,prefix):
+    build=tomllib.loads((prefix/"lib/beam/sdk.toml").read_text())["build-id"]
+    return work/".beam"/f"current-{build}.toml"
+
 
 from support.files import hidden
 from support.process import check, isolated_environment, run
@@ -24,7 +36,7 @@ def cases(prefix, work):
     env['PATH'] = str(prefix / 'bin')  # Discover the alias without external commands.
     pkg = prefix / 'bin/beam-pkg'
     beam = prefix / 'bin/beam'
-    check(pkg.is_symlink() and os.readlink(pkg) == 'beam', 'alias is not relative')
+    check(pkg.is_file() and not pkg.is_symlink(), 'package command is not a native launcher')
     identity = run([beam, 'version'], cwd=work, env=env, timeout=20, text=True).stdout.strip()
     check(identity.startswith('BEAM/Erlang ' + expected_version() + ' '), 'full preview version missing')
     before = snapshot(work)
@@ -53,7 +65,7 @@ def cases(prefix, work):
     for selector in ([],):
         for tail in (['--project'], ['--project', ''], ['--project', '--'],
                      ['--project', '.', 'extra'], ['--project', '--runtime=otp']):
-            invoke([*selector, 'run', *tail], 1, 'usage:', str(beam))
+            invoke([*selector, 'run', *tail], 1, 'beam:', str(beam))
     check(snapshot(work) == before, 'package scaffold changed project or home files')
 
 
@@ -64,9 +76,9 @@ def build_cases(prefix, root, cmake):
     env = isolated_environment(work)
     env['PATH'] = str(Path(cmake).parent) + os.pathsep + os.environ.get('PATH', '')
     manifest = work / 'beam.toml'
-    manifest.write_text('format = 1\n[package]\nname = "acceptance/native"\nversion = "1"\n'
+    manifest.write_text('format = 2\n[package]\nname = "acceptance/native"\nversion = "1"\n'
                         '[build]\nsources = ["pkg_acceptance.erl"]\n'
-                        '[build.native]\ncmake = "."\noutputs = ["priv/acceptance.so"]\n')
+                        '[build.native]\ncmake = "."\noutputs = ["acceptance"]\n')
     source = work / 'pkg_acceptance.erl'
     source.write_text('-module(pkg_acceptance).\n-export([load/1, value/0]).\n'
                       'load(P)->erlang:load_nif(P,0).\nvalue()->erlang:nif_error(unloaded).\n')
@@ -77,17 +89,19 @@ def build_cases(prefix, root, cmake):
         'project(acceptance LANGUAGES C)\nfind_package(BEAM CONFIG REQUIRED)\n'
         'add_library(acceptance MODULE native.c)\nbeam_target_nif(acceptance)\n'
         'set_target_properties(acceptance PROPERTIES PREFIX "")\n'
-        'install(TARGETS acceptance LIBRARY DESTINATION priv)\n')
+        'beam_package_native_output(acceptance NAME acceptance)\n')
     pkg = prefix / 'bin/beam-pkg'
     # Building needs no installed OTP applications.
-    check(not (prefix / 'lib/beam/apps').exists() and not (prefix / 'lib/beam/runtime/otp').exists(),
+    check({p.name for p in (prefix / 'lib/beam/apps').iterdir()} == {'beam-pkg'} and not (prefix / 'lib/beam/runtime/otp').exists(),
           'OTP product assets remain installed')
     result = run([pkg, 'build', work], cwd=root, env=env, timeout=120, text=True)
     check('Built ' in result.stdout, 'build did not report an artifact')
     import io
     import re
     import tarfile
-    digest = re.search(r'^"root" = "([a-f0-9]{64})"$', (work / 'beam.lock').read_text(), re.M).group(1)
+    selections = tomllib.loads((work / 'beam.lock').read_text())['selections']
+    check(len(selections)==1,'unexpected target selection count')
+    digest = next(iter(selections.values()))['root']
     artifact = work / 'build/beam-pkg/artifacts' / (digest + '.bpkg.tar.gz')
     check(hashlib.sha256(artifact.read_bytes()).hexdigest() == digest, 'wrong artifact digest')
     extracted = root / 'native artifact λ'
@@ -109,9 +123,10 @@ def build_cases(prefix, root, cmake):
     run([pkg, 'build', work], cwd=root, env=env, timeout=30, status=1)
     check((work / 'beam.lock').read_bytes() == saved, 'failed build replaced selected lock')
     check(not (work / '.beam').exists(), 'build created an installed environment')
-    for tail in ([''], ['--bad'], ['one', 'two']):
+    for tail, diagnostic in (([''], 'invalid directory'), (['--bad'], 'invalid build/install option'),
+                             (['one', 'two'], 'invalid arguments')):
         result = run([pkg, 'build', *tail], cwd=root, env=env, timeout=20, status=1, text=True)
-        check('invalid arguments' in result.stderr, 'malformed build was accepted')
+        check(diagnostic in result.stderr, 'malformed build was accepted')
 
 
 def project_shell_cases(prefix, root, env):
@@ -123,32 +138,32 @@ def project_shell_cases(prefix, root, env):
     beam = prefix / 'bin/beam'
     pkg = prefix / 'bin/beam-pkg'
     manifest = work / 'beam.toml'
-    base = 'format = 1\n[package]\nname = "acceptance/library"\nversion = "1"\n'
+    base = 'format = 2\n[package]\nname = "acceptance/library"\nversion = "1"\n'
     manifest.write_text(base + '[build]\nsources = ["library.erl"]\n'
                         '[scripts]\nversion = ["beam", "version"]\n')
     (work / 'library.erl').write_text('-module(library).\n-export([value/0]).\nvalue()->42.\n')
-    invoke([beam, 'build', work], cwd=root, env=env, timeout=60)
+    invoke([pkg, 'build', work], cwd=root, env=env, timeout=60)
     invoke([pkg, 'install', work], cwd=root, env=env, timeout=60)
-    assert invoke([beam, 'task', '--project', work], cwd=root, env=env, text=True).stdout == 'version\n'
-    assert invoke([beam, 'task', '--project', work, 'version'], cwd=root, env=env, text=True).stdout == invoke([beam, 'version'], cwd=root, env=env, text=True).stdout
-    shell = [beam, 'shell', '--project', work]
+    assert invoke([pkg, 'task', '--project', work], cwd=root, env=env, text=True).stdout == 'version\n'
+    assert invoke([pkg, 'task', '--project', work, 'version'], cwd=root, env=env, text=True).stdout == invoke([beam, 'version'], cwd=root, env=env, text=True).stdout
+    shell = [pkg, 'shell', '--project', work]
     result = invoke(shell, cwd=root, env=env, input_data=b'library:value().\nq().\n', text=True)
     assert '42' in result.stdout and not result.stderr
-    invoke([beam, 'run', '--project', work], cwd=root, env=env, status=1)
+    invoke([pkg, 'run', '--project', work], cwd=root, env=env, status=1)
     invoke([beam, '--runtime=otp', 'shell', '--project', work], cwd=root, env=env, status=1)
     invoke(shell + ['--'], cwd=root, env=env, status=1)
-    current = work / '.beam/current.toml'
+    current = pointer(work,prefix)
     saved = current.read_bytes()
-    current.write_text('format = 1\ngeneration = "../escape"\n')
+    current.write_text('format = 2\ngeneration = "../escape"\n')
     invoke(shell, cwd=root, env=env, status=1)
     current.write_bytes(saved)
     # An interactive helper is an actual provider, even though run does not load it.
     manifest.write_text(base + '[build]\nsources = ["sets.erl"]\n')
     (work / 'sets.erl').write_text('-module(sets).\n-export([value/0]).\nvalue()->42.\n')
-    invoke([beam, 'build', work], cwd=root, env=env, timeout=60)
+    invoke([pkg, 'build', work], cwd=root, env=env, timeout=60)
     invoke([pkg, 'install', work], cwd=root, env=env, timeout=60)
     result = invoke(shell, cwd=root, env=env, status=1, text=True)
-    assert 'conflicts with host module: sets' in result.stderr
+    assert 'conflicting composition module names' in result.stderr
 
 
 def main():
@@ -183,20 +198,20 @@ def main():
                 shutil.rmtree(path)
             else:
                 path.unlink()
-    check(not (relocated / 'lib/beam/apps').exists(), 'OTP applications remain installed')
+    check({p.name for p in (relocated / 'lib/beam/apps').iterdir()} == {'beam-pkg'}, 'unexpected bundled applications')
     for name in ['runtime', 'ebin', 'tools/compiler']:
         shutil.rmtree(relocated / 'lib/beam' / name)
     shutil.rmtree(relocated / 'libexec')
     cases(relocated, work)
-    module = relocated / 'lib/beam/tools/pkg/ebin/beam_pkg.beam'
+    module = payload(relocated) / 'ebin/beam_pkg.beam'
     with hidden(module):
         result = run([relocated / 'bin/beam-pkg', 'help'], cwd=work, env=env,
                      timeout=20, status=1, text=True)
-        check('beam_pkg' in result.stderr and not result.stdout, 'missing policy was ignored')
+        check('application inputs' in result.stderr and not result.stdout, 'missing policy was ignored')
     with hidden(relocated / 'lib/beam/boot'):
-        run([relocated / 'bin/beam', 'run', '--project', 'missing'],
+        run([relocated / 'bin/beam-pkg', 'run', '--project', 'missing'],
             cwd=work, env=env, timeout=20, status=1)
-    print('installed package commands: alias, syntax, side effects, relocation and minimal assets passed')
+    print('installed package commands: launcher, syntax, side effects, relocation and minimal assets passed')
 
 
 if __name__ == '__main__':

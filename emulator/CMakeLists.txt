@@ -183,8 +183,16 @@ endforeach()
 # The support archive uses only the public runtime API and is not linked into it.
 add_library(beam_cli_recipe STATIC
     "${CMAKE_SOURCE_DIR}/src/beam_cli_recipe.c")
-target_include_directories(beam_cli_recipe PRIVATE ${BEAM_PKG_INCLUDE_DIRECTORY} ${BEAM_RUN_INCLUDE_DIRECTORY} ${BEAM_CLI_INCLUDE_DIRECTORY} ${BEAM_INTERACTIVE_INCLUDE_DIRECTORY})
+target_include_directories(beam_cli_recipe PRIVATE ${BEAM_RUN_INCLUDE_DIRECTORY} ${BEAM_CLI_INCLUDE_DIRECTORY} ${BEAM_INTERACTIVE_INCLUDE_DIRECTORY})
 target_link_libraries(beam_cli_recipe PUBLIC BEAM::Runtime)
+set(_cli_component_directory lib)
+if(WIN32)
+    set(_cli_component_directory bin)
+endif()
+target_compile_definitions(beam_cli_recipe PRIVATE
+    BEAM_CLI_COMPONENT_DIRECTORY="${_cli_component_directory}"
+    BEAM_CLI_LIBRARY_PREFIX="${CMAKE_SHARED_LIBRARY_PREFIX}"
+    BEAM_CLI_LIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}")
 set_target_properties(beam_cli_recipe PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 

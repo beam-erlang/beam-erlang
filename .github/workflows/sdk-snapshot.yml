@@ -1,0 +1,86 @@
+name: CI SDK snapshots
+'on':
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: ci-sdk-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    environment: ci-sdk-snapshots
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - id: select
+      run: echo "matrix=$(python3 ci/sdk_snapshot.py matrix)" >> "$GITHUB_OUTPUT"
+  build:
+    needs: matrix
+    runs-on: ${{ matrix.runner }}
+    environment: ci-sdk-snapshots
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Prepare native or cross compiler
+      run: python ci/provision.py --target "$TARGET"
+      shell: bash
+      env:
+        TARGET: ${{ matrix.id }}
+    - name: Produce SDK without the package tool
+      run: python ci/sdk_snapshot.py build --target "$TARGET" --work "$RUNNER_TEMP/sdk"
+      shell: bash
+      env:
+        TARGET: ${{ matrix.id }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: ci-sdk-${{ matrix.id }}
+        path: ${{ runner.temp }}/sdk/payload/
+        if-no-files-found: error
+  assemble:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: ci-sdk-snapshots
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: ci-sdk-*
+        path: ${{ runner.temp }}/inputs
+    - run: python3 ci/sdk_snapshot.py assemble --inputs "$RUNNER_TEMP/inputs" --output "$RUNNER_TEMP/snapshot"
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: ci-sdk-snapshot
+        path: ${{ runner.temp }}/snapshot/
+        if-no-files-found: error
+  publish:
+    needs: assemble
+    runs-on: ubuntu-24.04
+    environment: ci-sdk-publication
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: ci-sdk-snapshot
+        path: ${{ runner.temp }}/snapshot
+    - name: Enforce publication policy and immutable bytes
+      run: python3 ci/sdk_snapshot.py publish --input "$RUNNER_TEMP/snapshot"
+      env:
+        GH_TOKEN: ${{ github.token }}

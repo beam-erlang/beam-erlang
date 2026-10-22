@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# Read-only installed SDK verification, usable without executing target binaries.
+cmake_minimum_required(VERSION 3.25)
+include("${CMAKE_CURRENT_LIST_DIR}/BEAMRuntimeArtifacts.cmake")
+beam_get_runtime_artifact(_target NAME sdk.target KIND target-metadata)
+beam_get_runtime_artifact(_compiler NAME compiler.generation KIND compiler-provenance)
+file(STRINGS "${_target}" _build REGEX "^sdk-build-id = ")
+if(NOT _build STREQUAL "sdk-build-id = \"${BEAM_SDK_BUILD_ID}\"")
+    message(FATAL_ERROR "SDK target metadata selects a different build")
+endif()
+file(SHA256 "${_compiler}" _generation)
+file(STRINGS "${_target}" _declared REGEX "^compiler-generation = ")
+if(NOT _declared STREQUAL "compiler-generation = \"${_generation}\"")
+    message(FATAL_ERROR "SDK compiler generation disagrees with its attestation")
+endif()
+if(BEAM_VERIFY_COMPILER)
+    beam_get_runtime_artifact(_cli NAME command.beam KIND executable-helper)
+endif()

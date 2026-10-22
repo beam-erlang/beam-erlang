@@ -5,10 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-int beam_pkg_main(int argc, char **argv);
-int beam_build_main(int argc, char **argv);
-int beam_project_main(const char *directory, int argc, char **argv, int shell);
-int beam_task_main(int argc, char **argv);
+int beam_application_main(const char *descriptor, int argc, char **argv);
 
 int beam_boot_main(const char *command, const char *value, int argc, char **argv);
 
@@ -23,12 +20,10 @@ usage(FILE *out)
         "commands:\n"
         "  help [command]              Show commands\n"
         "  version                     Print the runtime identity\n"
-        "  task [--project dir] [name [-- args...]] Run a development task\n"
-        "  shell [--project dir]       Open the interactive Erlang shell\n"
+        "  shell                       Open the interactive Erlang shell\n"
         "  eval <expression>           Evaluate one Erlang expression and halt\n"
         "  run <file.erl> [-- args...] Compile and run main/1\n"
-        "  build [directory]              Build local packages\n"
-        "  run --project <dir> [-- args...] Run an installed BEAM project\n"
+        "  run --application <descriptor> [-- args...] Run an installed application\n"
         "  compile [options] <files...> Compile Erlang sources to bytecode\n",
         out);
 }
@@ -49,7 +44,7 @@ help_command(const char *command)
         return 0;
     }
     if (strcmp(command, "shell") == 0) {
-        fputs("usage: beam shell [--project <directory>]\n\n", stdout);
+        fputs("usage: beam shell\n", stdout);
         return 0;
     }
     if (strcmp(command, "eval") == 0) {
@@ -58,15 +53,9 @@ help_command(const char *command)
     }
     if (strcmp(command, "run") == 0) {
         fputs("usage: beam run <file.erl> [-- args...]\n"
-              "       beam run --project <directory> [-- args...]\n"
+              "       beam run --application <descriptor> [-- args...]\n"
               "\n", stdout);
         return 0;
-    }
-    if (strcmp(command, "build") == 0) {
-        char *help[] = {"help", "build"}; return beam_build_main(2, help);
-    }
-    if (strcmp(command, "task") == 0) {
-        char *help[] = {"--help"}; return beam_task_main(1, help);
     }
     if (strcmp(command, "compile") == 0) {
         fputs("usage: beam compile [options] [--] file.erl...\n"
@@ -101,7 +90,7 @@ reject_runtime_flags(int argc, char **argv)
 {
     for (int i = 0; i < argc; ++i) {
         if (!strcmp(argv[i], "--")) break;
-        if (!strcmp(argv[i], "--project") && i + 1 < argc) { ++i; continue; }
+        if (!strcmp(argv[i], "--application") && i + 1 < argc) { ++i; continue; }
         if (!strncmp(argv[i], "--runtime", 9)) {
             fputs("beam: runtime selection is obsolete; beam runs modern BEAM\n", stderr);
             return 1;
@@ -117,16 +106,20 @@ cmd_run(int argc, char **argv)
         fprintf(stderr, "beam: run requires a source file\n");
         return 1;
     }
-    if (strcmp(argv[0], "--project") == 0) {
+    if (strcmp(argv[0], "--application") == 0) {
         if (argc < 2 || !argv[1][0] || argv[1][0] == '-' ||
             (argc > 2 && strcmp(argv[2], "--") != 0)) {
-            fputs("usage: beam run --project <directory> [-- args...]\n", stderr);
+            fputs("usage: beam run --application <descriptor> [-- args...]\n", stderr);
             return 1;
         }
-        return beam_project_main(argv[1], argc > 2 ? argc - 3 : 0, argc > 2 ? argv + 3 : NULL, 0);
+        return beam_application_main(argv[1], argc > 2 ? argc - 3 : 0, argc > 2 ? argv + 3 : NULL);
     }
     if (strncmp(argv[0], "--runtime", 9) == 0) {
         fprintf(stderr, "beam: runtime selection is obsolete; beam runs modern BEAM\n");
+        return 1;
+    }
+    if (argv[0][0] == '-') {
+        fprintf(stderr, "beam: unknown run option '%s'\n", argv[0]);
         return 1;
     }
     if (argc > 1 && strcmp(argv[1], "--") != 0) {
@@ -196,11 +189,6 @@ main(int argc, char **argv)
     const char *command;
     int i;
 
-    const char *executable = strrchr(argv[0], '/');
-    executable = executable ? executable + 1 : argv[0];
-    if (strcmp(executable, "beam-pkg") == 0)
-        return beam_pkg_main(argc - 1, argv + 1);
-
     --argc;
     ++argv;
     if (!argc)
@@ -211,19 +199,10 @@ main(int argc, char **argv)
         fprintf(stderr, "beam: runtime selection is obsolete; beam runs modern BEAM\n");
         return 1;
     }
-    if ((!strcmp(command, "run") || !strcmp(command, "task") || !strcmp(command, "build")) &&
+    if (!strcmp(command, "run") &&
         reject_runtime_flags(argc, argv)) return 1;
     if (strcmp(command, "run") == 0)
         return cmd_run(argc, argv);
-    if (strcmp(command, "task") == 0) {
-        return beam_task_main(argc, argv);
-    }
-    if (strcmp(command, "build") == 0) {
-        return beam_build_main(argc + 1, argv - 1);
-    }
-    if (strcmp(command, "help") == 0 && argc == 1 && strcmp(argv[0], "build") == 0) {
-        char *help[] = {"help", "build"}; return beam_build_main(2, help);
-    }
     if (strcmp(command, "compile") == 0)
         return cmd_compile(argc, argv);
     for (i = 0; i < argc; ++i) {
@@ -255,9 +234,6 @@ main(int argc, char **argv)
         return boot_command("eval", 1, argv);
     }
     if (strcmp(command, "shell") == 0) {
-        if (argc == 2 && !strcmp(argv[0], "--project") && argv[1][0] && argv[1][0] != '-') {
-            return beam_project_main(argv[1], 0, NULL, 1);
-        }
         if (argc) {
             fputs("usage: beam shell\n", stderr);
             return 1;

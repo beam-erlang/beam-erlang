@@ -110,3 +110,28 @@ Publication uses the separately protected `release` environment. Configuration,
 release-owner review and unresolved compatibility gates are documented in
 [release operations](../release/README.md). No workflow addition configures those
 external services or makes a candidate eligible.
+
+## Independent tool bootstrap and prepared consumers
+
+The protected `sdk-snapshot.yml` workflow builds canonical installed SDKs with
+`BEAM_BUNDLE_PACKAGE_TOOL=OFF`. Desktop bootstrap qualification includes installed
+compilation and unrelated generic applications; mobile SDKs retain target-layout
+checks. Source-attested compiler seed reproduction remains a build prerequisite.
+`sdk_snapshot.py` exports immutable CI-only HTTPS prerelease assets identified by
+source revision, workflow run and attempt, with manifest/archive sizes and hashes.
+`ci/sdk-snapshot-policy.json` disables publication until a separate operational
+activation. These snapshots do not satisfy product or OTP release gates.
+
+Package CI then builds and qualifies its independent payload against installed
+inputs. Normal distribution production selects reviewed package sources, bundles
+the tool through its package-owned recipe, and reacquires/qualifies the actual
+bundled bytes through the existing artifact pipeline. Source pins must be updated
+to real reviewed commits after this migration; local dirty checkouts are not pins.
+
+The exported `beam-consumer-v1` interface accepts a `consumer.json` inventory and
+prepared native bundle. `ci/executor_v1.py` verifies file hashes and runs bundle-owned
+assertions through owned Android/iOS provisioning. Existing BEAM mobile tests retain
+their assertions and share only this transport. Android consumers require 4 KB and
+16 KB execution. iOS simulator execution and device compilation/linking are distinct;
+physical device execution remains untested. This interface exports no test fixtures
+for package production code to import.

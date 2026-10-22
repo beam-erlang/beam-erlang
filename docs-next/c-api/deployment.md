@@ -33,7 +33,7 @@ CMake version selection matches the exact distribution version, not a stable ABI
 
 | Installed location | Owner and purpose |
 | --- | --- |
-| `bin/beam`, `bin/beam-pkg -> beam` | Modern commands and package-tool alias. |
+| `bin/beam`, `bin/beam-launch`, `bin/beam-pkg` | Runtime command and generic application launchers. |
 | `lib/libbeam.so`, `lib/libbeam.a` | Shared and static forms of the same VM implementation. |
 | `lib/libbeam-{file,network,zlib}.so` | Explicit native capability components. |
 | `lib/beam/{library,boot,services}/` | Ordinary bytecode inventories, each with `modules.txt` and `ebin/`. |

@@ -12,6 +12,7 @@ sys.path.insert(0,str(ROOT/'release'))
 import release
 sys.path.insert(0,str(ROOT/'ci'))
 import catalog
+import executor_v1
 
 
 def run(*args,**kwargs):
@@ -19,56 +20,33 @@ def run(*args,**kwargs):
 
 
 def android(sdk,work,binaries,arch,page16=False):
-    tools=Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT'])
-    adb=tools/'platform-tools/adb';manager=Path(os.environ['BEAM_ANDROID_TOOLS_BIN'])/'avdmanager'
-    image='system-images;android-35;'+('google_apis_ps16k' if page16 else 'google_apis')+';'+('arm64-v8a' if arch=='arm64' else 'x86_64')
-    name='beam-acceptance-'+arch+('-16k' if page16 else '-4k')
-    run(manager,'create','avd','--force','--name',name,'--package',image,input='no\n',text=True)
-    process=subprocess.Popen([str(tools/'emulator/emulator'),'@'+name,'-no-window','-no-audio','-no-boot-anim','-no-snapshot','-gpu','swiftshader'])
-    try:
-        run(adb,'wait-for-device',timeout=240)
-        for _ in range(120):
-            if subprocess.check_output([str(adb),'shell','getprop','sys.boot_completed'],text=True).strip()=='1':break
-            time.sleep(2)
-        else:raise TimeoutError('Android boot did not complete')
-        size=subprocess.check_output([str(adb),'shell','getconf','PAGESIZE'],text=True).strip()
-        if size!=('16384' if page16 else '4096'):raise ValueError('unexpected Android page size: '+size)
-        remote='/data/local/tmp/beam-acceptance'
-        run(adb,'shell','rm','-rf',remote);run(adb,'shell','mkdir','-p',remote+'/lib')
-        run(adb,'push',sdk/'lib',remote)
+    with executor_v1.android_session(work,arch,16384 if page16 else 4096) as adb:
+        remote='/data/local/tmp/beam-sdk-consumer'
+        run(*adb,'shell','rm','-rf',remote);run(*adb,'shell','mkdir','-p',remote+'/lib')
+        run(*adb,'push',sdk/'lib',remote)
         for binary in binaries:
-            run(adb,'push',binary,remote+'/'+binary.name)
-            run(adb,'shell','chmod','755',remote+'/'+binary.name)
-            run(adb,'shell',remote+'/'+binary.name,timeout=300)
+            run(*adb,'push',binary,remote+'/'+binary.name)
+            run(*adb,'shell','chmod','755',remote+'/'+binary.name)
+            run(*adb,'shell',remote+'/'+binary.name,timeout=300)
         bundle=work/'deployment'
-        run(adb,'push',bundle,remote)
+        run(*adb,'push',bundle,remote)
         deployed=remote+'/deployment'
-        command=[str(adb),'shell',deployed+'/bin/deployment_host']
+        command=[*adb,'shell',deployed+'/bin/deployment_host']
         for mode in ['boot','file','network','zlib']:
             run(*command,mode,deployed,timeout=300)
         # Exercise missing assets and bytecode identity after successful entry.
         asset=deployed+'/lib/beam/boot/ebin/beam_boot.beam'
-        run(adb,'shell','mv',asset,asset+'.saved')
+        run(*adb,'shell','mv',asset,asset+'.saved')
         if subprocess.run(command+['boot',deployed],timeout=300).returncode==0:
             raise ValueError('missing mobile boot asset was accepted')
-        run(adb,'shell','cp',deployed+'/lib/beam/library/ebin/beam_time.beam',asset)
+        run(*adb,'shell','cp',deployed+'/lib/beam/library/ebin/beam_time.beam',asset)
         if subprocess.run(command+['boot',deployed],timeout=300).returncode==0:
             raise ValueError('mismatched mobile boot asset was accepted')
-        run(adb,'shell','mv',asset+'.saved',asset)
+        run(*adb,'shell','mv',asset+'.saved',asset)
         run(*command,'boot',deployed,timeout=300)
-    finally:
-        subprocess.run([str(adb),'emu','kill']);process.terminate()
-        try:process.wait(timeout=20)
-        except subprocess.TimeoutExpired:process.kill();process.wait()
-        subprocess.run([str(manager),'delete','avd','--name',name])
-
 
 def simulator(binaries,bundle):
-    devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','available','--json'],text=True))['devices']
-    selected=next(device for key,values in devices.items() if 'iOS' in key for device in values)
-    udid=selected['udid'];run('xcrun','simctl','boot',udid) if selected['state']!='Booted' else None
-    try:
-        run('xcrun','simctl','bootstatus',udid,'-b')
+    with executor_v1.simulator_session() as udid:
         for binary in binaries:
             # Spawn the simulator executable directly to retain its real exit status.
             run('xcrun','simctl','spawn',udid,binary,timeout=300)
@@ -86,7 +64,6 @@ def simulator(binaries,bundle):
                 raise ValueError('mismatched simulator boot asset was accepted')
         finally:asset.write_bytes(saved)
         run(*command,'boot',app,timeout=300)
-    finally: run('xcrun','simctl','shutdown',udid)
 
 
 def main():

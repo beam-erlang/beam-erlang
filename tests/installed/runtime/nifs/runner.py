@@ -1,7 +1,7 @@
 """Installed external NIF admission, project launch and repeated teardown."""
 import argparse
-from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import hashlib
+from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import os
 from pathlib import Path
 import shutil
@@ -15,6 +15,7 @@ from installed.cli.scenarios.terminal import check_beam_shell_history
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cmake', required=True)
+    parser.add_argument('--without-package', action='store_true')
     for key in ('test-dir', 'source-dir'):
         parser.add_argument('--' + key, type=Path, required=True)
     parser.add_argument("--linkage", choices=("shared", "static"), default="shared")
@@ -84,11 +85,14 @@ def main():
     if args.linkage == 'static':
         print('Static native admission and repeated teardown passed without the SDK.')
         return
+    if args.without_package:
+        print('Installed native SDK acceptance passed; SDK-only configuration has no bundled package application.')
+        return
     project = root / 'project'
     project.mkdir()
     for name in ('probe.c', 'probe.erl', 'packet_probe.h'):
         shutil.copy2(source / name, project / name)
-    (project / 'beam.toml').write_text('''format = 1
+    (project / 'beam.toml').write_text('''format = 2
 [package]
 name = "acceptance/native-project"
 version = "1"
@@ -96,8 +100,8 @@ version = "1"
 sources = ["probe.erl"]
 [build.native]
 cmake = "."
-outputs = ["priv/probe.so"]
-nifs = { probe = "priv/probe.so" }
+outputs = ["probe"]
+nifs = { probe = "probe" }
 [host]
 modules = ["erlang", "io", "persistent_term"]
 [entry]
@@ -109,9 +113,9 @@ find_package(BEAM CONFIG REQUIRED)
 add_library(probe MODULE probe.c)
 beam_target_nif(probe)
 set_target_properties(probe PROPERTIES PREFIX "")
-install(TARGETS probe LIBRARY DESTINATION priv)
+beam_package_native_output(probe NAME probe)
 ''')
-    execute([prefix / 'bin/beam', 'build', project])
+    execute([prefix / 'bin/beam-pkg', 'build', project])
     execute([prefix / 'bin/beam-pkg', 'install', project])
     deployed = root / 'deployed project λ'
     shutil.copytree(project / '.beam', deployed / '.beam')
@@ -124,17 +128,17 @@ install(TARGETS probe LIBRARY DESTINATION priv)
     env['PATH'] = ''
     log = root / 'project.events'
     env['NIF_ACCEPTANCE_LOG'] = str(log)
-    result = execute([prefix / 'bin/beam', 'run', '--project', deployed, '--', 'literal value'])
+    result = execute([prefix / 'bin/beam-pkg', 'run', '--project', deployed, '--', 'literal value'])
     assert result.stdout == 'NATIVE_PROJECT ["literal value"]\n' and not result.stderr, result
     assert log.read_text() == 'LDU'
     before = {str(p): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in deployed.rglob('*') if p.is_file()}
-    execute([prefix / 'bin/beam', 'run', '--project', deployed, '--', 'halt'], status=7)
-    failure = execute([prefix / 'bin/beam', 'run', '--project', deployed, '--', 'exception'], status=1)
+    execute([prefix / 'bin/beam-pkg', 'run', '--project', deployed, '--', 'halt'], status=7)
+    failure = execute([prefix / 'bin/beam-pkg', 'run', '--project', deployed, '--', 'exception'], status=1)
     assert 'native_project_exception' in failure.stderr
-    line = execute([prefix / 'bin/beam', 'run', '--project', deployed, '--', 'input'], input_data='hello λ\n'.encode())
+    line = execute([prefix / 'bin/beam-pkg', 'run', '--project', deployed, '--', 'input'], input_data='hello λ\n'.encode())
     assert line.stdout == 'prompt> hello λ\n'
-    shell_command = [str(prefix / 'bin/beam'), 'shell', '--project', str(deployed)]
+    shell_command = [str(prefix / 'bin/beam-pkg'), 'shell', '--project', str(deployed)]
     for ending, status in [('q().\n', 0), ('', 0), ('erlang:halt(9).\n', 9)]:
         log.write_text('')
         result = execute(shell_command, input_data=(
@@ -169,7 +173,7 @@ install(TARGETS probe LIBRARY DESTINATION priv)
         target, = deployed.rglob(filename)
         data = target.read_bytes()
         target.unlink()
-        execute([prefix / 'bin/beam', 'run', '--project', deployed], status=1)
+        execute([prefix / 'bin/beam-pkg', 'run', '--project', deployed], status=1)
         execute(shell_command, status=1)
         target.write_bytes(data)
     # Broken output must unwind through VM termination rather than SIGPIPE.
@@ -186,13 +190,22 @@ install(TARGETS probe LIBRARY DESTINATION priv)
     assert log.read_text() == 'LU'
     library, = deployed.rglob('probe.so')
     saved = library.read_bytes()
+    environment, = deployed.rglob('environment.toml')
+    saved_environment = environment.read_text()
     try:
         for mode in ('bad_abi', 'bad_module', 'bad_function', 'fail_load'):
-            library.write_bytes((build / (mode + '.so')).read_bytes())
+            selected_bytes = (build / (mode + '.so')).read_bytes()
+            library.write_bytes(selected_bytes)
+            # This case selects a malformed native fixture deliberately. Keep its
+            # installation inventory truthful so native admission, rather than
+            # the separate corrupted-file boundary, owns the rejection.
+            environment.write_text(saved_environment.replace(hashlib.sha256(saved).hexdigest(),
+                                                               hashlib.sha256(selected_bytes).hexdigest()))
             rejected = execute(shell_command, status=1)
             assert '1> ' not in rejected.stdout and rejected.stderr
     finally:
         library.write_bytes(saved)
+        environment.write_text(saved_environment)
     print('Independent native/project acceptance passed.')
 
 

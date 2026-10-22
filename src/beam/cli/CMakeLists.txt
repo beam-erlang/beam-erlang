@@ -61,20 +61,22 @@ foreach(_value IN ITEMS MODULES BEAM_FILES FALLBACK_MODULES FALLBACK_BEAM_FILES)
     set(BEAM_CLI_${_value} "${BEAM_CLI_${_value}}" PARENT_SCOPE)
 endforeach()
 
-# Project policy has its own inventory; the legacy source profile is unchanged.
-set(_project_root "${CMAKE_BINARY_DIR}/lib/beam/runtime/beam/project")
-beam_add_erlang_component(beam_project_support
-    SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/../project/beam_project_run.erl"
-    OUTPUT_DIRECTORY "${_project_root}/ebin")
-add_dependencies(beam_cli_support beam_project_support)
-file(CONFIGURE OUTPUT "${_project_root}/modules.txt" CONTENT "beam_project_run\n" @ONLY)
-install(FILES "${_project_root}/ebin/beam_project_run.beam" DESTINATION lib/beam/runtime/beam/project/ebin)
-install(FILES "${_project_root}/modules.txt" DESTINATION lib/beam/runtime/beam/project)
 include("${CMAKE_SOURCE_DIR}/cmake/RuntimeCoreModules.cmake")
-set(_reserved "static const char *const beam_project_reserved[] = {\n")
+set(_reserved "static const char *const beam_cli_core_modules[] = {\n")
 # Installed host modules are supplied from the actual acquired composition.
-foreach(_module IN LISTS BEAM_CORE_MODULES BEAM_BASE_MODULES)
+foreach(_module IN LISTS BEAM_CORE_MODULES)
     string(APPEND _reserved "    \"${_module}\",\n")
 endforeach()
 string(APPEND _reserved "};\n")
-file(CONFIGURE OUTPUT "${_cli_include}/beam_project_inventory.h" CONTENT "${_reserved}" @ONLY)
+file(CONFIGURE OUTPUT "${_cli_include}/beam_cli_core_inventory.h" CONTENT "${_reserved}" @ONLY)
+
+beam_add_erlang_component(beam_application_support
+    SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/beam_application_run.erl"
+    OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/beam/runtime/beam/application/ebin")
+add_dependencies(beam_cli_support beam_application_support)
+install(FILES "${CMAKE_BINARY_DIR}/lib/beam/runtime/beam/application/ebin/beam_application_run.beam"
+    DESTINATION lib/beam/runtime/beam/application/ebin)
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/lib/beam/runtime/beam/application/modules.txt"
+    CONTENT "beam_application_run\n" @ONLY)
+install(FILES "${CMAKE_BINARY_DIR}/lib/beam/runtime/beam/application/modules.txt"
+    DESTINATION lib/beam/runtime/beam/application)

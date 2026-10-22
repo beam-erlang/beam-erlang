@@ -542,15 +542,15 @@ drafts retain one complete application per package; never create module subsets
 to bypass ownership conflicts.
 The Erlangsters drafts depend on STDLIB, whose overlap with BEAM-host-owned
 modules must be resolved before that composition can execute.
-`beam-pkg` is an installed relative alias of `beam`; package policy lives in
-`beam-erlang-package/src`, with distribution-owned returning hosting and a private
-`lib/beam/tools/pkg` inventory. Build produces archives and locks for ordinary
-local Erlang/native graphs without OTP applications. Help/version use output only;
-build/install select file/program/zlib; only build invokes the installed compiler.
-`beam build` shares package build policy. Install reads locked archives and publishes
-immutable `.beam/` generations; project launch uses only that selected environment
-in a fresh BEAM VM. Tree remains a status-2 stub. Explicit OTP build/project launch
-is rejected; plain source execution uses modern BEAM.
+`beam-pkg` is an independently versioned Erlang application. The generic native
+launcher invokes `beam run --application` with an explicit descriptor; it has no
+package policy and does not link libbeam. The package-owned versioned payload
+lives under `lib/beam/apps/beam-pkg/<version>`. Help/version use output only;
+build/install request file/program/zlib in a fresh composition. Package-aware
+commands belong to `beam-pkg`; `beam` retains generic/source execution, compilation,
+evaluation and the plain shell. No package module inventory is compiled into beam.
+Format-2 package records and target-aware native outputs are under qualification.
+Tree remains a status-2 stub; whole OTP build/project launch is unsupported.
 Preserve the installed acceptance suites and the existing playground inventory.
 The OTP counter draft records retained installed Kernel/STDLIB requirements;
 the future consumer targets the separate OTP distribution. Consumer sources and
@@ -559,19 +559,21 @@ are implemented. Older candidates under workspace `notes/` are historical.
 
 The tool build consumes `BEAM_PACKAGE_SOURCE_DIR`, selected explicitly as a local
 `beam-erlang-package` checkout. Its shared recipe owns source/output inventories; the
-adapter in `cmake/PackageTool.cmake` supplies the verified modern build compiler and generates
-the private host header. Missing companion sources fail at configure time. Native
-alias/host behavior and installed acceptance stay here. Its compiler dependency follows the main build bootstrap and its acceptance. Hosted CI explicitly acquires the exact public package commit in
-`release/inputs.json`; CMake performs no network acquisition. Keep checks enabled.
+adapter in `cmake/PackageTool.cmake` supplies the verified modern build compiler.
+`BEAM_BUNDLE_PACKAGE_TOOL=OFF` produces a bootstrap or target SDK without package
+sources. Desktop distributions normally bundle the selected package payload.
+Standalone builds consume installed BEAM::CLI and install to a separate prefix.
+Hosted source inputs must be reviewed commits; never substitute working-tree
+results for release attestations. CMake performs no network acquisition.
 
 ## Installed project shell and source tasks
 
-`beam shell --project .` opens an installed BEAM selection, including library
+`beam-pkg shell --project .` opens an installed BEAM selection, including library
 roots without main/1. Preparation checks the complete interactive host inventory;
 execution uses public composition and explicit native activation with host I/O.
-Plain and project shell are modern BEAM commands. Project shell adds no filesystem, network,
+Plain shell belongs to beam; project shell belongs to beam-pkg. Project shell adds no filesystem, network,
 program or implicit acquisition services. Never auto-build or install on launch.
-`beam task [--project dir] [name [-- args...]]` lists or executes root-manifest
+`beam-pkg task [--project dir] [name [-- args...]]` lists or executes root-manifest
 `[scripts]` literal argv arrays. Task policy belongs to beam-erlang-package;
 native exec hosting belongs to beam-erlang and terminates the tool VM/system
 before handing off terminal, streams and status. Scripts are source-only and

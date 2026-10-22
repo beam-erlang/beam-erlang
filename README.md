@@ -98,9 +98,9 @@ With the installed `bin` directory on `PATH`, a project containing a
 `beam.toml` manifest uses the experimental package workflow:
 
 ```sh
-beam build .
+beam-pkg build .
 beam-pkg install .
-beam run --project .
+beam-pkg run --project .
 ```
 
 ## Embedding

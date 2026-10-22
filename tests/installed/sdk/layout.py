@@ -7,9 +7,9 @@ import re
 from support.process import check
 
 
-def check_installation(prefix):
+def check_installation(prefix, bundled=True):
     required = (
-        "bin/beam", "bin/beam-pkg", "lib/libbeam.so", "lib/libbeam.a", "libexec/beam/erl_child_setup",
+        "bin/beam", "bin/beam-launch", "lib/libbeam.so", "lib/libbeam.a", "libexec/beam/erl_child_setup",
         "include/beam.h", "include/beam_bytecode.h", "include/beam_base_inventory.h",
         "include/beam_boot_inventory.h", "include/beam_services_inventory.h",
         "share/beam/sdk/beam_bytecode_verify.c", "lib/cmake/BEAM/BEAMConfig.cmake",
@@ -20,19 +20,30 @@ def check_installation(prefix):
           "installed native helper is not executable")
     check_runtime_artifacts(prefix)
     tools = prefix / "lib/beam/tools"
-    check((prefix / "bin/beam-pkg").is_symlink() and
-          os.readlink(prefix / "bin/beam-pkg") == "beam", "package alias must be relative")
-    pkg = tools / "pkg"
-    check({p.relative_to(pkg).as_posix() for p in pkg.rglob("*") if p.is_file()} ==
-          {"modules.txt"} | {"ebin/" + m + ".beam" for m in ("beam_pkg", "beam_pkg_util", "beam_pkg_toml", "beam_pkg_archive", "beam_pkg_manifest", "beam_pkg_build", "beam_pkg_environment", "beam_pkg_task")}, "unexpected package tool inventory")
-    check((pkg / "modules.txt").read_text().splitlines() == ["beam_pkg", "beam_pkg_util", "beam_pkg_toml", "beam_pkg_archive", "beam_pkg_manifest", "beam_pkg_build", "beam_pkg_environment", "beam_pkg_task"], "invalid package inventory")
+    if bundled:
+        launcher = prefix / "bin/beam-pkg"
+        check(launcher.is_file() and not launcher.is_symlink(), "package command must be a generic process launcher")
+        config = (prefix / "bin/beam-pkg.beam-launcher").read_text().splitlines()
+        check(config[:3] == ["beam-launcher-v1", "relative", "beam"], "invalid bundled runtime binding")
+        descriptor = (prefix / "bin" / config[3]).resolve()
+        check(descriptor.is_relative_to(prefix.resolve()), "bundled descriptor escapes installation")
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("descriptor", prefix / "share/beam/tools/beam-application.py")
+        codec = importlib.util.module_from_spec(spec); spec.loader.exec_module(codec)
+        application = codec.validate(descriptor)
+        check(application[2] == b"beam-pkg" and application[5][0] == "command", "invalid bundled package application")
+        modules = (descriptor.parent / "modules.txt").read_text().splitlines()
+        check({m[1].decode() for m in application[8]} == set(modules), "package descriptor/inventory disagreement")
+        check({p.name for p in (descriptor.parent / "ebin").iterdir()} == {m + ".beam" for m in modules}, "package artifacts disagree with inventory")
+    else:
+        check(not (prefix / "bin/beam-pkg").exists(), "SDK-only configuration installed package policy")
     compiler = tools / "compiler"
     modules = (compiler / "modules.txt").read_text().splitlines()
     check(len(modules) == len(set(modules)) and {"compile", "beam_compiler_engine"} <= set(modules),
           "invalid compiler module inventory")
     check({path.name for path in (compiler / "ebin").iterdir()} ==
           {f"{module}.beam" for module in modules}, "compiler artifacts disagree with inventory")
-    check(not (prefix / "lib/beam/apps").exists(), "OTP applications remain in BEAM")
+    check(not (prefix / "lib/beam/apps").exists() or {p.name for p in (prefix / "lib/beam/apps").iterdir()} == {"beam-pkg"}, "unexpected bundled applications remain in BEAM")
     check({p.name for p in (prefix / "include/beam/nif").iterdir()} == {"beam_native.h", "erl_nif.h", "erl_driver.h", "erl_drv_nif.h", "erl_nif_api_funcs.h", "erl_int_sizes_config.h"}, "wrong public native header inventory")
     check({path.name for path in (prefix / "lib/beam/ebin").iterdir()} ==
           {"beam_host.beam"},
@@ -54,7 +65,7 @@ def check_installation(prefix):
     modules = {"prim_zip", "erl_tracer"}
     inventories = {
         "run": {"beam_source_run"},
-        "project": {"beam_project_run"},
+        "application": {"beam_application_run"},
         "cli": {"beam_run_io", "error_handler", "io", "io_lib", "io_lib_pretty", "erl_scan",
                 "binary", "io_lib_format", "io_lib_fread", "records", "string", "unicode",
                 "unicode_util", "lists", "maps"},
@@ -107,6 +118,10 @@ def check_runtime_artifacts(prefix):
     configurations = list((prefix / "lib/cmake/BEAM").glob("BEAMStaticTargets-*.cmake"))
     check(len(configurations) == 1, "expected one installed static linkage configuration")
     expected = {
+        "sdk.target": ("target-metadata", "lib/beam/target.toml", ["compiler.generation"]),
+        "compiler.generation": ("compiler-provenance", "lib/beam/compiler-generation.json", []),
+        "command.beam": ("executable-helper", "bin/beam", ["runtime"]),
+        "command.launcher": ("executable-helper", "bin/beam-launch", []),
         "runtime": ("runtime", "lib/libbeam.so", []),
         "runtime.static": ("runtime-static", "lib/libbeam.a",
                            ["link.static", "link.static.configuration", "link.static.exports"]),

@@ -2,10 +2,13 @@
 
 # Runtime-only discovery does not require any separately deployed component.
 set(BEAM_SDK_METADATA "${PACKAGE_PREFIX_DIR}/lib/beam/sdk.toml")
+set(BEAM_TARGET_METADATA "${PACKAGE_PREFIX_DIR}/lib/beam/target.toml")
 set(BEAM_HOST_MODULE "${PACKAGE_PREFIX_DIR}/lib/beam/ebin/beam_host.beam")
 set(BEAM_BASE_MODULES beam beam_list beam_map beam_bytes beam_text beam_format beam_time)
 set(BEAM_COMPONENT_DIR "${PACKAGE_PREFIX_DIR}/lib")
 set(BEAM_SDK_BUILD_ID "@BEAM_COMPONENT_BUILD_ID@")
+set(BEAM_APPLICATION_TOOL "${PACKAGE_PREFIX_DIR}/share/beam/tools/beam-application.py")
+set(BEAM_APPLICATION_LAUNCHER "${PACKAGE_PREFIX_DIR}/bin/beam-launch@CMAKE_EXECUTABLE_SUFFIX@")
 set(BEAM_BASE_INVENTORY_DIR "${PACKAGE_PREFIX_DIR}/lib/beam/library")
 set(BEAM_BASE_MANIFEST "${BEAM_BASE_INVENTORY_DIR}/modules.txt")
 set(BEAM_BASE_EBIN_DIR "${BEAM_BASE_INVENTORY_DIR}/ebin")

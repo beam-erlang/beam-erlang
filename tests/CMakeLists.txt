@@ -1,4 +1,8 @@
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+set(_package_test_args)
+if(NOT BEAM_BUNDLE_PACKAGE_TOOL)
+    list(APPEND _package_test_args --without-package)
+endif()
 
 # Native implementation coverage uses the same library/configuration as the VM.
 # These private inputs are test-only and are not SDK exports or install assets.
@@ -43,7 +47,8 @@ add_test(NAME installed-sdk
         --build-dir ${CMAKE_BINARY_DIR}
         --test-dir ${CMAKE_CURRENT_BINARY_DIR}/sdk
         --source-dir ${CMAKE_CURRENT_SOURCE_DIR}/installed/sdk/consumer
-        --doc-example-source ${CMAKE_CURRENT_SOURCE_DIR}/installed/sdk/consumer/first-call)
+        --doc-example-source ${CMAKE_CURRENT_SOURCE_DIR}/installed/sdk/consumer/first-call
+        ${_package_test_args})
 add_test(NAME installed-runtime-artifacts
     COMMAND ${Python3_EXECUTABLE} -B -m installed.sdk.runtime_artifacts.runner
         --cmake ${CMAKE_COMMAND}
@@ -212,6 +217,14 @@ set_tests_properties(
     test-support
     PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+add_test(NAME installed-application
+    COMMAND ${Python3_EXECUTABLE} -B -m installed.cli.application.runner
+        --build-dir ${CMAKE_BINARY_DIR}
+        --test-dir ${CMAKE_CURRENT_BINARY_DIR}/installed-application)
+set_tests_properties(installed-application PROPERTIES TIMEOUT 180
+    LABELS "installed;CLI;BEAM" WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+if(BEAM_BUNDLE_PACKAGE_TOOL)
 add_test(NAME installed-pkg
     COMMAND ${Python3_EXECUTABLE} -B -m installed.cli.pkg.runner
         --cmake ${CMAKE_COMMAND}
@@ -220,12 +233,14 @@ add_test(NAME installed-pkg
 set_tests_properties(installed-pkg PROPERTIES TIMEOUT 180
     LABELS "installed;CLI;BEAM"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 
 add_test(NAME installed-nifs
     COMMAND ${Python3_EXECUTABLE} -B -m installed.runtime.nifs.runner
         --cmake ${CMAKE_COMMAND} --build-dir ${CMAKE_BINARY_DIR}
         --test-dir ${CMAKE_CURRENT_BINARY_DIR}/installed-nifs
-        --source-dir ${CMAKE_CURRENT_SOURCE_DIR}/installed/runtime/nifs)
+        --source-dir ${CMAKE_CURRENT_SOURCE_DIR}/installed/runtime/nifs
+        ${_package_test_args})
 set_tests_properties(installed-nifs PROPERTIES TIMEOUT 300
     LABELS "installed;SDK;BEAM" WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 

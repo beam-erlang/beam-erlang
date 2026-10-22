@@ -661,6 +661,9 @@ typedef struct beam_return_options {
      * starting a VM or activating native implementations. */
     size_t component_count;
     const beam_component_spec *components;
+    /* Explicit dynamic NIF bindings, copied and admitted by composition. */
+    size_t nif_count;
+    const beam_nif_spec *nifs;
 } beam_return_options;
 
 typedef struct beam_return_boot beam_return_boot;

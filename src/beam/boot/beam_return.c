@@ -561,6 +561,8 @@ beam_status beam_return_prepare(const beam_return_options *options,
         }
         composition.component_count = options->component_count;
         composition.components = options->components;
+        composition.nif_count = options->nif_count;
+        composition.nifs = options->nifs;
         composition.modules = ordinary;
         composition.defer_modules = 1;
         composition.activation_modules = activation;

@@ -111,3 +111,11 @@ that version from channel selection; neither operation rewrites old payloads.
 Run `python3 -m unittest discover -s release -p 'test_*.py'` for refusal, archive,
 identity and publication retry contracts. These tooling tests do not establish
 native platform or OTP compatibility.
+
+Independent package-tool releases use their own version, source identity and gates.
+Bundled distributions retain exact selected-payload qualification through
+`qualify-package.py`, including after SDK reacquisition. Generic runner/launcher
+bootstrap can produce SDKs without package sources; CI-only SDK snapshots are
+separate prereleases and never bypass normal product signing, OTP qualification,
+source-input or immutable-promotion gates. Snapshot publication is disabled in its
+own policy; release promotion remains governed by this directory's existing policy.

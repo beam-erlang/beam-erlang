@@ -41,7 +41,7 @@ static void sha256_block(uint32_t state[8], const unsigned char block[64])
     state[4]+=e; state[5]+=f; state[6]+=g; state[7]+=h;
 }
 
-static void sha256(beam_bytes bytes, unsigned char digest[32])
+void beam_bytecode_sha256(beam_bytes bytes, unsigned char digest[32])
 {
     uint32_t state[8] = {0x6a09e667u,0xbb67ae85u,0x3c6ef372u,0xa54ff53au,
                          0x510e527fu,0x9b05688cu,0x1f83d9abu,0x5be0cd19u};
@@ -109,7 +109,7 @@ beam_status beam_bytecode_verify(const beam_bytecode_inventory *inventory,
             return fail(error, BEAM_INVALID_ARGUMENT, "invalid supplied module bytes", record->name);
         if (module->bytes.size!=record->size)
             return fail(error, BEAM_INVALID_BEAM, "bytecode size differs from the selected build", record->name);
-        sha256(module->bytes, digest);
+        beam_bytecode_sha256(module->bytes, digest);
         if (memcmp(digest, record->sha256, sizeof(digest)))
             return fail(error, BEAM_INVALID_BEAM, "bytecode differs from the selected build", record->name);
     }
