@@ -54,7 +54,7 @@ static int filename_encoding = ERL_FILENAME_UNKNOWN;
 static int filename_warning = ERL_FILENAME_WARNING_WARNING;
 #if defined(__WIN32__) || defined(__DARWIN__) || defined(__ANDROID__)
 /* Default to Unicode on Windows, MacOS X and Android */
-static int user_filename_encoding = erts_vm_filename_utf8() ? ERL_FILENAME_UTF8 : ERL_FILENAME_LATIN1;
+static int user_filename_encoding = ERL_FILENAME_UTF8;
 #else
 static int user_filename_encoding = ERL_FILENAME_UNKNOWN;
 #endif
