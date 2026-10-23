@@ -16,9 +16,9 @@
     "name": "zlib",
     "versionInfo": "1.3.2",
     "sha": "da607da739fa6047df13e66a2af6b8bec7c2a498",
-    "path": "./emulator/zlib",
-    "exclude": ["./emulator/zlib/vendor.info",
-                "./emulator/zlib/zlib.mk"],
+    "path": "./src/erts/emulator/zlib",
+    "exclude": ["./src/erts/emulator/zlib/vendor.info",
+                "./src/erts/emulator/zlib/zlib.mk"],
     "supplier": "Person: Mark Adler (zlib@gzip.org)",
     "purl": "pkg:github/madler/zlib"
   }

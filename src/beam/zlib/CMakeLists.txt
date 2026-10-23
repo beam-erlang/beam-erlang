@@ -11,6 +11,6 @@ beam_add_component(beam_zlib_component NAME zlib KIND BEAM_COMPONENT_ZLIB
 target_compile_definitions(beam_zlib_component PRIVATE STATIC_ERLANG_NIF_LIBNAME=beam_zlib)
 target_link_libraries(beam_zlib_component PRIVATE zlib)
 target_compile_options(beam_zlib_component PRIVATE
-    "-include" "${PROJECT_SOURCE_DIR}/emulator/beam_private_vendor_symbols.h")
+    "-include" "${PROJECT_SOURCE_DIR}/src/erts/emulator/beam_private_vendor_symbols.h")
 target_include_directories(beam_zlib_component PRIVATE
-    "${PROJECT_SOURCE_DIR}/emulator/zlib")
+    "${PROJECT_SOURCE_DIR}/src/erts/emulator/zlib")

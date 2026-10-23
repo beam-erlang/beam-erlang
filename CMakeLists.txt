@@ -33,7 +33,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/BeamComponent.cmake)
 add_subdirectory(src/beam)
 set(BEAM_DYNAMIC_NIF_TARGETS ${BEAM_NATIVE_NIF_TARGETS})
 set(BEAM_DYNAMIC_DRIVER_TARGETS ${BEAM_DRIVER_TARGETS})
-add_subdirectory(src/core/shared_data)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RuntimeModules.cmake)
 
 # Keep generated headers and object outputs at their established build paths.
@@ -44,7 +43,7 @@ target_include_directories(beam_erts_headers INTERFACE
     ${CMAKE_BINARY_DIR}/erts/include
     ${CMAKE_BINARY_DIR}/erts/include/internal
 )
-add_subdirectory(emulator erts/emulator)
+add_subdirectory(src/erts/emulator erts/emulator)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/PackageTool.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Runtime.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallSDK.cmake)

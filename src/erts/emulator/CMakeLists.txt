@@ -53,6 +53,14 @@ target_include_directories(beam_erts_headers INTERFACE
     ${EMULATOR_GENERATED_DIR}
 )
 
+# Core BIFs share one implementation across all VM compositions.
+add_library(beam_core_shared_data_native OBJECT
+    beam/erl_bif_atomics.c
+    beam/erl_bif_counters.c
+    beam/erl_bif_persistent.c
+)
+beam_configure_native_component(beam_core_shared_data_native)
+
 add_library(beam_emulator OBJECT)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # GNU-unique inline statics pin a rejected JIT runtime after dlclose.

@@ -166,6 +166,9 @@ def project_shell_cases(prefix, root, env):
     assert 'conflicting composition module names' in result.stderr
 
 
+from support.scratch import scratch
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cmake', required=True)
@@ -176,42 +179,43 @@ def main():
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True)
-    env = isolated_environment(root)
-    stage = root / 'stage'
-    stage_installation(args, stage)
-    work = root / 'unrelated work 日本語'
-    project = work / 'project λ'
-    project.mkdir(parents=True)
-    # Opening the manifest would block: the command must not even read it.
-    os.mkfifo(project / 'beam.toml')
-    (project / 'beam.lock').write_text('untouched lock sentinel\n')
-    cases(stage, work)
-    build_cases(stage, root, args.cmake)
-    project_shell_cases(stage, root, env)
-    relocated = root / 'relocated prefix λ'
-    stage.rename(relocated)
-    # Keep exactly the runtime and ordinary support inventories plus package policy. No compiler,
-    # OTP apps, private CLI helpers, file/network services or native programs.
-    for path in (relocated / 'lib').iterdir():
-        if path.name not in {'libbeam.so', 'beam'}:
-            if path.is_dir():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
-    check({p.name for p in (relocated / 'lib/beam/apps').iterdir()} == {'beam-pkg'}, 'unexpected bundled applications')
-    for name in ['runtime', 'ebin', 'tools/compiler']:
-        shutil.rmtree(relocated / 'lib/beam' / name)
-    shutil.rmtree(relocated / 'libexec')
-    cases(relocated, work)
-    module = payload(relocated) / 'ebin/beam_pkg.beam'
-    with hidden(module):
-        result = run([relocated / 'bin/beam-pkg', 'help'], cwd=work, env=env,
-                     timeout=20, status=1, text=True)
-        check('application inputs' in result.stderr and not result.stdout, 'missing policy was ignored')
-    with hidden(relocated / 'lib/beam/boot'):
-        run([relocated / 'bin/beam-pkg', 'run', '--project', 'missing'],
-            cwd=work, env=env, timeout=20, status=1)
-    print('installed package commands: launcher, syntax, side effects, relocation and minimal assets passed')
+    with scratch(root):
+        env = isolated_environment(root)
+        stage = root / 'stage'
+        stage_installation(args, stage)
+        work = root / 'unrelated work 日本語'
+        project = work / 'project λ'
+        project.mkdir(parents=True)
+        # Opening the manifest would block: the command must not even read it.
+        os.mkfifo(project / 'beam.toml')
+        (project / 'beam.lock').write_text('untouched lock sentinel\n')
+        cases(stage, work)
+        build_cases(stage, root, args.cmake)
+        project_shell_cases(stage, root, env)
+        relocated = root / 'relocated prefix λ'
+        stage.rename(relocated)
+        # Keep exactly the runtime and ordinary support inventories plus package policy. No compiler,
+        # OTP apps, private CLI helpers, file/network services or native programs.
+        for path in (relocated / 'lib').iterdir():
+            if path.name not in {'libbeam.so', 'beam'}:
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+        check({p.name for p in (relocated / 'lib/beam/apps').iterdir()} == {'beam-pkg'}, 'unexpected bundled applications')
+        for name in ['runtime', 'ebin', 'tools/compiler']:
+            shutil.rmtree(relocated / 'lib/beam' / name)
+        shutil.rmtree(relocated / 'libexec')
+        cases(relocated, work)
+        module = payload(relocated) / 'ebin/beam_pkg.beam'
+        with hidden(module):
+            result = run([relocated / 'bin/beam-pkg', 'help'], cwd=work, env=env,
+                         timeout=20, status=1, text=True)
+            check('application inputs' in result.stderr and not result.stdout, 'missing policy was ignored')
+        with hidden(relocated / 'lib/beam/boot'):
+            run([relocated / 'bin/beam-pkg', 'run', '--project', 'missing'],
+                cwd=work, env=env, timeout=20, status=1)
+        print('installed package commands: launcher, syntax, side effects, relocation and minimal assets passed')
 
 
 if __name__ == '__main__':

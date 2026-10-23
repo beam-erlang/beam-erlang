@@ -6,10 +6,10 @@ set(_compiler_include "${CMAKE_BINARY_DIR}/compiler/include")
 file(MAKE_DIRECTORY "${_compiler_generated}" "${_compiler_include}")
 add_custom_command(
     OUTPUT "${_compiler_generated}/beam_opcodes.erl" "${_compiler_generated}/beam_opcodes.hrl"
-    COMMAND ${PERL_EXECUTABLE} "${CMAKE_SOURCE_DIR}/emulator/utils/beam_makeops"
-        -compiler -outdir "${_compiler_generated}" "${CMAKE_SOURCE_DIR}/lib/compiler/src/genop.tab"
-    DEPENDS "${CMAKE_SOURCE_DIR}/emulator/utils/beam_makeops"
-        "${CMAKE_SOURCE_DIR}/lib/compiler/src/genop.tab"
+    COMMAND ${PERL_EXECUTABLE} "${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/beam_makeops"
+        -compiler -outdir "${_compiler_generated}" "${CMAKE_SOURCE_DIR}/src/lib/compiler/src/genop.tab"
+    DEPENDS "${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/beam_makeops"
+        "${CMAKE_SOURCE_DIR}/src/lib/compiler/src/genop.tab"
     COMMENT "Generating compiler opcode tables" VERBATIM)
 set(_compiler_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/passes/beam_a.erl"

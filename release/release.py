@@ -265,6 +265,24 @@ def export_support(build, output):
         archive_tree(support, output, 'support')
 
 
+def stage_runtime_notices(notices):
+    notices.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / 'LICENSE.txt', notices / 'LICENSE.txt')
+    shutil.copy2(ROOT / 'AUTHORS', notices / 'AUTHORS')
+    shutil.copytree(ROOT / 'LICENSES', notices / 'LICENSES')
+    for relative in ['emulator/asmjit/LICENSE.md', 'emulator/ryu/LICENSE-Apache2',
+                     'emulator/ryu/LICENSE-Boost', 'emulator/ryu/xcharconv_ryu.h.sha.license',
+                     'emulator/pcre/LICENCE', 'emulator/zstd/LICENSE', 'emulator/zstd/COPYING']:
+        target = notices / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / 'src/erts' / relative, target)
+    zlib_header = (ROOT/'src/erts/emulator/zlib/zlib.h').read_text()
+    zlib_notice = re.match(r'/\*.*?\*/', zlib_header, re.DOTALL)
+    if not zlib_notice:
+        raise ValueError('zlib source license notice missing')
+    (notices/'zlib-NOTICE.txt').write_text(zlib_notice.group() + '\n')
+
+
 def pack(args):
     data = inputs(args.inputs)
     version = (ROOT / 'BEAM_VERSION').read_text().strip()
@@ -302,22 +320,7 @@ def pack(args):
     with tempfile.TemporaryDirectory() as temporary:
         staged = Path(temporary) / stem
         shutil.copytree(args.prefix, staged, symlinks=True)
-        notices = staged / 'share/doc/beam-erlang'
-        notices.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / 'LICENSE.txt', notices / 'LICENSE.txt')
-        shutil.copy2(ROOT / 'AUTHORS', notices / 'AUTHORS')
-        shutil.copytree(ROOT / 'LICENSES', notices / 'LICENSES')
-        for relative in ['emulator/asmjit/LICENSE.md', 'emulator/ryu/LICENSE-Apache2',
-                         'emulator/ryu/LICENSE-Boost', 'emulator/ryu/xcharconv_ryu.h.sha.license',
-                         'emulator/pcre/LICENCE', 'emulator/zstd/LICENSE', 'emulator/zstd/COPYING']:
-            target = notices / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(ROOT / relative, target)
-        zlib_header = (ROOT/'emulator/zlib/zlib.h').read_text()
-        zlib_notice = re.match(r'/\*.*?\*/', zlib_header, re.DOTALL)
-        if not zlib_notice:
-            raise ValueError('zlib source license notice missing')
-        (notices/'zlib-NOTICE.txt').write_text(zlib_notice.group() + '\n')
+        stage_runtime_notices(staged / 'share/doc/beam-erlang')
         package_notice = staged / 'share/doc/beam-erlang-package'
         package_notice.mkdir(parents=True)
         shutil.copy2(Path(args.package) / 'LICENSE.txt', package_notice / 'LICENSE.txt')

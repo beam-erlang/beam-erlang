@@ -376,6 +376,9 @@ def lifecycle(args, prefix, root, env):
             check(stderr, f"missing output-only {name} fallback was ignored")
 
 
+from support.scratch import scratch
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
@@ -390,19 +393,20 @@ def main():
     if args.test_dir.exists():
         shutil.rmtree(args.test_dir)
     args.test_dir.mkdir(parents=True)
-    env = isolated_environment(args.test_dir)
-    stage = args.test_dir / "stage"
-    stage_installation(args, stage)
-    fixture = args.source_dir / "run_probe.erl"
-    prefix_cases(stage, fixture, "fresh", args.test_dir, args.hello_fixture)
-    reduce_prefix(stage)
-    prefix_cases(stage, fixture, "fresh reduced", args.test_dir, args.hello_fixture)
-    prefix = args.test_dir / "relocated reduced prefix κ"
-    stage.rename(prefix)
-    source, work, isolated = prefix_cases(prefix, fixture, "relocated", args.test_dir, args.hello_fixture)
-    missing_assets(prefix, source, work, isolated)
-    lifecycle(args, prefix, args.test_dir, env)
-    print("installed source run: fresh, relocated, reduced, and returning lifetimes passed")
+    with scratch(args.test_dir):
+        env = isolated_environment(args.test_dir)
+        stage = args.test_dir / "stage"
+        stage_installation(args, stage)
+        fixture = args.source_dir / "run_probe.erl"
+        prefix_cases(stage, fixture, "fresh", args.test_dir, args.hello_fixture)
+        reduce_prefix(stage)
+        prefix_cases(stage, fixture, "fresh reduced", args.test_dir, args.hello_fixture)
+        prefix = args.test_dir / "relocated reduced prefix κ"
+        stage.rename(prefix)
+        source, work, isolated = prefix_cases(prefix, fixture, "relocated", args.test_dir, args.hello_fixture)
+        missing_assets(prefix, source, work, isolated)
+        lifecycle(args, prefix, args.test_dir, env)
+        print("installed source run: fresh, relocated, reduced, and returning lifetimes passed")
 
 
 if __name__ == "__main__":

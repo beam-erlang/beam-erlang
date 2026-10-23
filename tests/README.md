@@ -23,7 +23,7 @@ The Erlang Common Test wrappers are not registered with CTest. The native
 `ethread` fixture has the separate integration described below; `erl_print_SUITE`
 and `parallel_messages_SUITE` remain unexecuted. Their assertions, fixtures and
 historical path text remain unchanged.
-The separate `emulator/test/` tree and tool-local tests remain in place;
+The separate `src/erts/emulator/test/` tree and tool-local tests remain in place;
 none of their retained suites is registered here.
 
 ### Native thread-library cases

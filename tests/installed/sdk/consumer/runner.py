@@ -37,6 +37,9 @@ def check_runtime_only(execute, cmake, source, prefix, root, phase):
           'required CLI component did not reject the runtime-only installation')
 
 
+from support.scratch import scratch
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cmake', required=True)
@@ -50,40 +53,41 @@ def main():
     shutil.rmtree(root, ignore_errors=True)
     work = root / 'unrelated'
     work.mkdir(parents=True)
-    env = isolated_environment(work)
-    execute = partial(run, cwd=work, env=env, timeout=30, text=True)
-    prefix = root / 'stage'
-    stage_installation(args, prefix)
-    for phase in ('fresh', 'relocated'):
-        if phase == 'relocated':
-            destination = root / 'relocated préfix 日本'
-            prefix.rename(destination)
-            prefix = destination
-        check_installation(prefix, bundled=not args.without_package)
-        check_runtime_only(execute, args.cmake, source, prefix, root, phase)
-        coexistence = root / f'{phase}-native-coexistence'
-        execute([args.cmake, '-S', source / 'native_coexistence', '-B', coexistence,
+    with scratch(root):
+        env = isolated_environment(work)
+        execute = partial(run, cwd=work, env=env, timeout=30, text=True)
+        prefix = root / 'stage'
+        stage_installation(args, prefix)
+        for phase in ('fresh', 'relocated'):
+            if phase == 'relocated':
+                destination = root / 'relocated préfix 日本'
+                prefix.rename(destination)
+                prefix = destination
+            check_installation(prefix, bundled=not args.without_package)
+            check_runtime_only(execute, args.cmake, source, prefix, root, phase)
+            coexistence = root / f'{phase}-native-coexistence'
+            execute([args.cmake, '-S', source / 'native_coexistence', '-B', coexistence,
+                     f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}'])
+            execute([args.cmake, '--build', coexistence])
+            exact(execute([coexistence / 'native_coexistence']), 'Native coexistence OK\n')
+            check(not (prefix / 'bin/beam_bootstrap').exists(), 'private compiler host installed')
+            check(not (prefix / 'bin/beam_seed_compiler').exists(), 'private seed compiler installed')
+            exact(execute([prefix / 'bin/beam', 'eval',
+                           'io:format("Installed CLI~n").']), 'Installed CLI\n')
+            returning = root / f'{phase}-returning-client'
+            execute([args.cmake, '-S', source / 'returning', '-B', returning,
+                     f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}', f'-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}'])
+            execute([args.cmake, '--build', returning])
+            for language in ('c', 'cxx'):
+                exact(execute([returning / f'returning_{language}_host', prefix,
+                               returning / 'sdk_returning.beam']), 'Installed returning SDK\n')
+            if phase == 'fresh':
+                check_bytecode(execute, args.cmake, source / 'returning', prefix, returning, root)
+        sample = root / 'first-call'
+        execute([args.cmake, '-S', args.doc_example_source, '-B', sample,
                  f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}'])
-        execute([args.cmake, '--build', coexistence])
-        exact(execute([coexistence / 'native_coexistence']), 'Native coexistence OK\n')
-        check(not (prefix / 'bin/beam_bootstrap').exists(), 'private compiler host installed')
-        check(not (prefix / 'bin/beam_seed_compiler').exists(), 'private seed compiler installed')
-        exact(execute([prefix / 'bin/beam', 'eval',
-                       'io:format("Installed CLI~n").']), 'Installed CLI\n')
-        returning = root / f'{phase}-returning-client'
-        execute([args.cmake, '-S', source / 'returning', '-B', returning,
-                 f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}', f'-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}'])
-        execute([args.cmake, '--build', returning])
-        for language in ('c', 'cxx'):
-            exact(execute([returning / f'returning_{language}_host', prefix,
-                           returning / 'sdk_returning.beam']), 'Installed returning SDK\n')
-        if phase == 'fresh':
-            check_bytecode(execute, args.cmake, source / 'returning', prefix, returning, root)
-    sample = root / 'first-call'
-    execute([args.cmake, '-S', args.doc_example_source, '-B', sample,
-             f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}'])
-    execute([args.cmake, '--build', sample])
-    exact(execute([sample / 'first-call']), '42\n')
+        execute([args.cmake, '--build', sample])
+        exact(execute([sample / 'first-call']), '42\n')
 
 
 if __name__ == '__main__':

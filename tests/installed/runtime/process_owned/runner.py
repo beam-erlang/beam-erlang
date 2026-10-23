@@ -77,6 +77,9 @@ def terminal_check(command, env, cwd, policy, nonblocking, interrupt):
         os.close(master)
 
 
+from support.scratch import scratch
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
@@ -88,84 +91,85 @@ def main():
     args.source_dir = args.source_dir.resolve()
     shutil.rmtree(args.test_dir, ignore_errors=True)
     args.test_dir.mkdir(parents=True)
-    build_work = args.test_dir / "build-work"
-    build_work.mkdir()
-    env = isolated_environment(build_work)
-    execute = partial(run, env=env, cwd=build_work)
-    prefix = args.test_dir / "sdk"
-    stage_installation(args, prefix)
-    bytecode = args.test_dir / "bytecode"
-    bytecode.mkdir()
-    execute([str(prefix / "bin/beam"), "compile", "-o", str(bytecode),
-         "--", str(args.source_dir / "fixtures/process_root.erl")])
-    for name in ("preload_probe", "preload_on_load"):
+    with scratch(args.test_dir):
+        build_work = args.test_dir / "build-work"
+        build_work.mkdir()
+        env = isolated_environment(build_work)
+        execute = partial(run, env=env, cwd=build_work)
+        prefix = args.test_dir / "sdk"
+        stage_installation(args, prefix)
+        bytecode = args.test_dir / "bytecode"
+        bytecode.mkdir()
         execute([str(prefix / "bin/beam"), "compile", "-o", str(bytecode),
-                 "--", str(args.source_dir / "fixtures" / f"{name}.erl")])
-    client = args.test_dir / "client"
-    execute([args.cmake, "-S", str(args.source_dir), "-B", str(client),
-         f"-DCMAKE_PREFIX_PATH={prefix}"])
-    execute([args.cmake, "--build", str(client)])
-    stage = args.test_dir / "stage"
-    (stage / "bin").mkdir(parents=True)
-    (stage / "lib").mkdir()
-    shutil.copy2(client / "process_owned", stage / "bin/host")
-    shutil.copy2(client / "preloads", stage / "bin/preloads")
-    shutil.copy2(prefix / "lib/libbeam.so", stage / "lib/libbeam.so")
-    deployed = args.test_dir / "relocated root λ"
-    stage.rename(deployed)
-    work = args.test_dir / "unrelated"
-    work.mkdir()
-    env = isolated_environment(work)
-    env["PATH"] = str(work)
-    env["ERL_CRASH_DUMP"] = str(work / "root.dump")
-    result = execute([str(deployed / "bin/preloads"), str(bytecode / "preload_probe.beam"),
-                      str(bytecode / "preload_on_load.beam")], env=env, cwd=work)
-    if result.stdout != "composition preload lifetime checks passed\n" or result.stderr:
-        raise RuntimeError(f"preload lifecycle failed: {result.stdout!r} {result.stderr!r}")
-    for requested, expected in ((0, 0), (7, 7), (255, 1), (252, 0), (253, 0), (254, 0)):
-        result = execute([str(deployed / "bin/host"), str(bytecode / "process_root.beam"),
-                      str(requested)], env=env, cwd=work, status=expected)
-        message = ("process_root_cancelled\n" if requested == 253 else
-                   "process_root_rejected\n" if requested in (252, 254) else
-                   "process_root_ready\n")
-        if result.stdout != message:
-            raise RuntimeError(f"root did not retain its identity and arguments: {result.stdout!r}")
-        if requested == 255:
-            if "System process <0.0.0> terminated: root_failed" not in result.stderr:
-                raise RuntimeError(f"root lost fatal failure semantics: {result.stderr!r}")
-        elif result.stderr:
-            raise RuntimeError(f"unexpected root diagnostics: {result.stderr!r}")
-    for policy in range(4):
-        master, slave = pty.openpty()
-        initial = termios.tcgetattr(slave)
-        try:
-            result = subprocess.run(
-                [str(deployed / "bin/host"), str(bytecode / "process_root.beam"), "0", str(policy)],
-                env=env, cwd=work, stdin=slave, stdout=slave, stderr=subprocess.PIPE,
-                text=True, timeout=60)
-            os.set_blocking(master, False)
-            output = bytearray()
-            while True:
-                try:
-                    chunk = os.read(master, 4096)
-                    if not chunk:
-                        break
-                    output.extend(chunk)
-                except BlockingIOError:
-                    break
-            if result.returncode or output.replace(b"\r\n", b"\n") != b"process_root_ready\n" or result.stderr:
-                raise RuntimeError(f"break policy {policy} failed: {bytes(output)!r} {result.stderr!r}")
-            if termios.tcgetattr(slave) != initial:
-                raise RuntimeError(f"break policy {policy} left terminal settings changed")
-        finally:
-            os.close(slave)
-            os.close(master)
-    command = [str(deployed / "bin/host"), str(bytecode / "process_root.beam")]
-    for nonblocking in (False, True):
+             "--", str(args.source_dir / "fixtures/process_root.erl")])
+        for name in ("preload_probe", "preload_on_load"):
+            execute([str(prefix / "bin/beam"), "compile", "-o", str(bytecode),
+                     "--", str(args.source_dir / "fixtures" / f"{name}.erl")])
+        client = args.test_dir / "client"
+        execute([args.cmake, "-S", str(args.source_dir), "-B", str(client),
+             f"-DCMAKE_PREFIX_PATH={prefix}"])
+        execute([args.cmake, "--build", str(client)])
+        stage = args.test_dir / "stage"
+        (stage / "bin").mkdir(parents=True)
+        (stage / "lib").mkdir()
+        shutil.copy2(client / "process_owned", stage / "bin/host")
+        shutil.copy2(client / "preloads", stage / "bin/preloads")
+        shutil.copy2(prefix / "lib/libbeam.so", stage / "lib/libbeam.so")
+        deployed = args.test_dir / "relocated root λ"
+        stage.rename(deployed)
+        work = args.test_dir / "unrelated"
+        work.mkdir()
+        env = isolated_environment(work)
+        env["PATH"] = str(work)
+        env["ERL_CRASH_DUMP"] = str(work / "root.dump")
+        result = execute([str(deployed / "bin/preloads"), str(bytecode / "preload_probe.beam"),
+                          str(bytecode / "preload_on_load.beam")], env=env, cwd=work)
+        if result.stdout != "composition preload lifetime checks passed\n" or result.stderr:
+            raise RuntimeError(f"preload lifecycle failed: {result.stdout!r} {result.stderr!r}")
+        for requested, expected in ((0, 0), (7, 7), (255, 1), (252, 0), (253, 0), (254, 0)):
+            result = execute([str(deployed / "bin/host"), str(bytecode / "process_root.beam"),
+                          str(requested)], env=env, cwd=work, status=expected)
+            message = ("process_root_cancelled\n" if requested == 253 else
+                       "process_root_rejected\n" if requested in (252, 254) else
+                       "process_root_ready\n")
+            if result.stdout != message:
+                raise RuntimeError(f"root did not retain its identity and arguments: {result.stdout!r}")
+            if requested == 255:
+                if "System process <0.0.0> terminated: root_failed" not in result.stderr:
+                    raise RuntimeError(f"root lost fatal failure semantics: {result.stderr!r}")
+            elif result.stderr:
+                raise RuntimeError(f"unexpected root diagnostics: {result.stderr!r}")
         for policy in range(4):
-            terminal_check(command, env, work, policy, nonblocking, interrupt=False)
-        terminal_check(command, env, work, 0, nonblocking, interrupt=True)
-    print("generic process-owned root checks passed")
+            master, slave = pty.openpty()
+            initial = termios.tcgetattr(slave)
+            try:
+                result = subprocess.run(
+                    [str(deployed / "bin/host"), str(bytecode / "process_root.beam"), "0", str(policy)],
+                    env=env, cwd=work, stdin=slave, stdout=slave, stderr=subprocess.PIPE,
+                    text=True, timeout=60)
+                os.set_blocking(master, False)
+                output = bytearray()
+                while True:
+                    try:
+                        chunk = os.read(master, 4096)
+                        if not chunk:
+                            break
+                        output.extend(chunk)
+                    except BlockingIOError:
+                        break
+                if result.returncode or output.replace(b"\r\n", b"\n") != b"process_root_ready\n" or result.stderr:
+                    raise RuntimeError(f"break policy {policy} failed: {bytes(output)!r} {result.stderr!r}")
+                if termios.tcgetattr(slave) != initial:
+                    raise RuntimeError(f"break policy {policy} left terminal settings changed")
+            finally:
+                os.close(slave)
+                os.close(master)
+        command = [str(deployed / "bin/host"), str(bytecode / "process_root.beam")]
+        for nonblocking in (False, True):
+            for policy in range(4):
+                terminal_check(command, env, work, policy, nonblocking, interrupt=False)
+            terminal_check(command, env, work, 0, nonblocking, interrupt=True)
+        print("generic process-owned root checks passed")
 
 
 if __name__ == "__main__":

@@ -328,6 +328,9 @@ def host_case(prefix, fixture, work, env, minimal=False):
           f"interactive lifecycle failed: {out!r} {err!r}")
 
 
+from support.scratch import scratch
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
@@ -341,60 +344,61 @@ def main():
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True)
-    env = isolated_environment(root)
-    prefix = root / "prefix"
-    stage_installation(args, prefix)
-    fixtures = root / "fixture bytes 日本語"
-    fixtures.mkdir()
-    out, err = run([prefix / "bin/beam", "compile", "--deterministic", "-o", fixtures,
-                    "--", source / "interactive_probe.erl",
-                    source / "interactive_prestart_rejected.erl"], root, env)
-    check(not out and not err, f"fixture compilation: {out!r} {err!r}")
-    fixture = fixtures / "interactive_probe.beam"
-    client = root / "client"
-    run([args.cmake, "-S", source, "-B", client, f"-DCMAKE_PREFIX_PATH={prefix}", f"-DPRIVATE_HOST_BUILD={args.build_dir}",
-         f"-DBEAM_TEST_SUPPORT_DIR={args.project_source_dir / 'tests/support'}",
-         f"-DBEAM_PROJECT_SOURCE_DIR={args.project_source_dir}"], root, env)
-    run([args.cmake, "--build", client, "--parallel", "2"], root, env)
-    shutil.copy2(client / "interactive_acceptance", prefix / "bin/interactive_acceptance")
-    for phase in ("fresh", "reduced", "relocated"):
-        if phase == "reduced":
-            reduce_prefix(prefix)
-            command_family_case(prefix, source, root / "whole BEAM family work 日本語", args.hello_fixture)
-            shutil.rmtree(prefix / "lib/beam/tools/compiler")
-            shutil.rmtree(prefix / "lib/beam/runtime/beam/run")
-        elif phase == "relocated":
-            relocated = root / "relocated prefix λ 日本語"
-            prefix.rename(relocated)
-            prefix = relocated
-        print(f"Checking {phase} interactive installation", flush=True)
-        work = root / f"{phase} work 日本語"
-        phase_env = prefix_cases(prefix, fixture, work)
-        host_case(prefix, fixture, work, phase_env)
-    missing_assets(prefix, fixture, work, phase_env)
-    minimal = root / "minimal output prefix"
-    (minimal / "bin").mkdir(parents=True)
-    (minimal / "lib").mkdir()
-    copy_bytecode(prefix, minimal)
-    shutil.copy2(prefix / "bin/interactive_acceptance", minimal / "bin/interactive_acceptance")
-    for name in ("libbeam.so",):
-        shutil.copy2(prefix / "lib" / name, minimal / "lib" / name)
-    for name in ("cli", "interactive"):
-        relative = Path("lib/beam/runtime/beam") / name
-        shutil.copytree(prefix / relative, minimal / relative)
-    expected = set(RETURNING_ASSETS) | {"bin/interactive_acceptance", "lib/libbeam.so"} | {
-        str(Path("lib/beam/runtime/beam") / name / path.relative_to(prefix / "lib/beam/runtime/beam" / name))
-        for name in ("cli", "interactive")
-        for path in (prefix / "lib/beam/runtime/beam" / name).rglob("*") if path.is_file()}
-    check({str(path.relative_to(minimal)) for path in minimal.rglob("*") if path.is_file()} == expected,
-          "output-only deployment contains extra runtime files")
-    isolated = dict(env, PATH=str(root / "empty path"))
-    host_case(minimal, fixture, root, isolated, minimal=True)
-    for name in ("lists", "maps"):
-        with hidden(minimal / "lib/beam/runtime/beam/cli/ebin" / f"{name}.beam"):
-            _, err = run([minimal / "bin/interactive_acceptance", minimal, fixture, "minimal"], root, isolated, status=1)
-            check(err, f"missing output-only {name} fallback was ignored")
-    print("installed interactive: fresh, reduced, relocated, minimal, and returning lifetimes passed")
+    with scratch(root):
+        env = isolated_environment(root)
+        prefix = root / "prefix"
+        stage_installation(args, prefix)
+        fixtures = root / "fixture bytes 日本語"
+        fixtures.mkdir()
+        out, err = run([prefix / "bin/beam", "compile", "--deterministic", "-o", fixtures,
+                        "--", source / "interactive_probe.erl",
+                        source / "interactive_prestart_rejected.erl"], root, env)
+        check(not out and not err, f"fixture compilation: {out!r} {err!r}")
+        fixture = fixtures / "interactive_probe.beam"
+        client = root / "client"
+        run([args.cmake, "-S", source, "-B", client, f"-DCMAKE_PREFIX_PATH={prefix}", f"-DPRIVATE_HOST_BUILD={args.build_dir}",
+             f"-DBEAM_TEST_SUPPORT_DIR={args.project_source_dir / 'tests/support'}",
+             f"-DBEAM_PROJECT_SOURCE_DIR={args.project_source_dir}"], root, env)
+        run([args.cmake, "--build", client, "--parallel", "2"], root, env)
+        shutil.copy2(client / "interactive_acceptance", prefix / "bin/interactive_acceptance")
+        for phase in ("fresh", "reduced", "relocated"):
+            if phase == "reduced":
+                reduce_prefix(prefix)
+                command_family_case(prefix, source, root / "whole BEAM family work 日本語", args.hello_fixture)
+                shutil.rmtree(prefix / "lib/beam/tools/compiler")
+                shutil.rmtree(prefix / "lib/beam/runtime/beam/run")
+            elif phase == "relocated":
+                relocated = root / "relocated prefix λ 日本語"
+                prefix.rename(relocated)
+                prefix = relocated
+            print(f"Checking {phase} interactive installation", flush=True)
+            work = root / f"{phase} work 日本語"
+            phase_env = prefix_cases(prefix, fixture, work)
+            host_case(prefix, fixture, work, phase_env)
+        missing_assets(prefix, fixture, work, phase_env)
+        minimal = root / "minimal output prefix"
+        (minimal / "bin").mkdir(parents=True)
+        (minimal / "lib").mkdir()
+        copy_bytecode(prefix, minimal)
+        shutil.copy2(prefix / "bin/interactive_acceptance", minimal / "bin/interactive_acceptance")
+        for name in ("libbeam.so",):
+            shutil.copy2(prefix / "lib" / name, minimal / "lib" / name)
+        for name in ("cli", "interactive"):
+            relative = Path("lib/beam/runtime/beam") / name
+            shutil.copytree(prefix / relative, minimal / relative)
+        expected = set(RETURNING_ASSETS) | {"bin/interactive_acceptance", "lib/libbeam.so"} | {
+            str(Path("lib/beam/runtime/beam") / name / path.relative_to(prefix / "lib/beam/runtime/beam" / name))
+            for name in ("cli", "interactive")
+            for path in (prefix / "lib/beam/runtime/beam" / name).rglob("*") if path.is_file()}
+        check({str(path.relative_to(minimal)) for path in minimal.rglob("*") if path.is_file()} == expected,
+              "output-only deployment contains extra runtime files")
+        isolated = dict(env, PATH=str(root / "empty path"))
+        host_case(minimal, fixture, root, isolated, minimal=True)
+        for name in ("lists", "maps"):
+            with hidden(minimal / "lib/beam/runtime/beam/cli/ebin" / f"{name}.beam"):
+                _, err = run([minimal / "bin/interactive_acceptance", minimal, fixture, "minimal"], root, isolated, status=1)
+                check(err, f"missing output-only {name} fallback was ignored")
+        print("installed interactive: fresh, reduced, relocated, minimal, and returning lifetimes passed")
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ fi
 ORIGIN_REPO="git@github.com:erlang/ryu.git"
 UPSTREAM_REPO="https://github.com/ulfjack/ryu"
 
-cd $ERL_TOP/emulator/ryu
+cd $ERL_TOP/src/erts/emulator/ryu
 
 if [ -d ryu-repo ]; then
     cd ryu-repo
@@ -126,7 +126,7 @@ incorporate them into ryu-repo/to_chars.h.
 
 Once done, update xcharconv_ryu.h.sha with the new sha. i.e.
 
-echo "${STL_CHARCONV_SHA}" > ${ERL_TOP}/emulator/ryu/xcharconv_ryu.h.sha
+echo "${STL_CHARCONV_SHA}" > ${ERL_TOP}/src/erts/emulator/ryu/xcharconv_ryu.h.sha
 
 Then run this script again to continue.
 

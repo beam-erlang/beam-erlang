@@ -3,12 +3,14 @@
 from pathlib import Path
 from unittest.mock import patch
 import os
+import json
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 
+from .scratch import scratch
 from .files import hidden, hidden_paths
 from .process import child_process, isolated_environment, kill_group, run
 
@@ -21,6 +23,39 @@ class HarnessTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.work = Path(self.directory.name)
         self.env = isolated_environment(self.work)
+
+    def test_scratch_cleanup_success_failure_and_interrupt(self):
+        outside = self.work / "selected-sdk"
+        outside.mkdir()
+        (outside / "input").write_bytes(b"unchanged")
+        for error in (None, RuntimeError("failed"), KeyboardInterrupt()):
+            root = self.work / "case"
+            root.mkdir(exist_ok=True)
+            try:
+                with scratch(root):
+                    (root / "payload").write_bytes(b"large disposable payload")
+                    (root / "input-link").symlink_to(outside, target_is_directory=True)
+                    (root / "result.json").write_text('{"checked": true}')
+                    if error is not None:
+                        raise error
+            except BaseException as caught:
+                self.assertIs(caught, error)
+            self.assertFalse((root / "payload").exists())
+            self.assertFalse((root / "input-link").exists())
+            self.assertEqual((outside / "input").read_bytes(), b"unchanged")
+            self.assertTrue(json.loads((root / "result.json").read_text())["checked"])
+            self.assertTrue(json.loads((root / "cleanup.json").read_text())["payloads_removed"])
+
+    def test_scratch_diagnostic_limit_and_explicit_retention(self):
+        root = self.work / "case"
+        root.mkdir()
+        with scratch(root):
+            (root / "large.log").write_bytes(b"x" * (2 * 1024 * 1024))
+        self.assertEqual((root / "large.log").stat().st_size, 1024 * 1024)
+        with patch.dict(os.environ, {"BEAM_TEST_KEEP_WORK": "1"}):
+            with scratch(root):
+                (root / "payload").write_bytes(b"debug")
+        self.assertTrue((root / "payload").is_file())
 
     def python(self, source, **options):
         return run([sys.executable, "-c", source], cwd=self.work,

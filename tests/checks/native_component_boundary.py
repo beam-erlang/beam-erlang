@@ -191,7 +191,7 @@ def main():
     runtime_exports = set(symbols(args, runtime_path, "-D", "-g", "--defined-only"))
     check(not any(name.startswith(("pcre2_", "_pcre2_")) for name in runtime_exports),
           "libbeam exposes its ABI-incompatible private PCRE to host libraries")
-    compression_header = (args.source_dir / "emulator/zlib/zlib.h").read_text()
+    compression_header = (args.source_dir / "src/erts/emulator/zlib/zlib.h").read_text()
     compression_exports = set(re.findall(r"\bZEXPORT(?:VA)?\s+(\w+)\s*\(", compression_header))
     check("inflate" in compression_exports and "crc32" in compression_exports,
           "compression export inventory did not match the vendored public header")
@@ -308,7 +308,7 @@ def main():
     core_target, *core_objects = args.core_component
     check(core_target == "beam_core_shared_data_native" and links.count(core_target) == 1,
           "libbeam must link shared-data core exactly once")
-    expected_core_sources = {(args.source_dir / "src/core/shared_data" / name).resolve()
+    expected_core_sources = {(args.source_dir / "src/erts/emulator/beam" / name).resolve()
                             for name in ("erl_bif_atomics.c", "erl_bif_counters.c", "erl_bif_persistent.c")}
     core_compiled = [(source, obj) for source, obj in commands if source in expected_core_sources]
     check(len(core_compiled) == 3 and {source for source, _ in core_compiled} == expected_core_sources and

@@ -8,7 +8,7 @@ endif()
 # These private inputs are test-only and are not SDK exports or install assets.
 add_executable(beam_ethread_tests
     vm/ethread_SUITE_data/ethread_tests.c
-    "${PROJECT_SOURCE_DIR}/lib_src/common/erl_misc_utils.c")
+    "${PROJECT_SOURCE_DIR}/src/erts/lib_src/common/erl_misc_utils.c")
 target_compile_definitions(beam_ethread_tests PRIVATE
     $<TARGET_PROPERTY:ethread,COMPILE_DEFINITIONS>)
 target_include_directories(beam_ethread_tests PRIVATE

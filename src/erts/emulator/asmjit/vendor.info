@@ -15,8 +15,8 @@
     "licenseDeclared": "Zlib",
     "name": "asmjit",
     "versionInfo": "5fe1940275d04432da841896bac0a66cc2375551",
-    "path": "./emulator/asmjit",
-    "exclude": ["./emulator/asmjit/vendor.info"],
+    "path": "./src/erts/emulator/asmjit",
+    "exclude": ["./src/erts/emulator/asmjit/vendor.info"],
     "supplier": "Person: Petr Kobalicek",
     "purl": "pkg:github/asmjit/asmjit",
     "sha": "5fe1940275d04432da841896bac0a66cc2375551"

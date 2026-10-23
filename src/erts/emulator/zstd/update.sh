@@ -27,7 +27,7 @@ if [ -z "${GITHUB_TOKEN}"]; then
     exit 1
 fi
 
-cd $ERL_TOP/emulator/zstd
+cd $ERL_TOP/src/erts/emulator/zstd
 
 set -eo pipefail
 

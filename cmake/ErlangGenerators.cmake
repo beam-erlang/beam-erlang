@@ -10,36 +10,36 @@ function(erts_add_beam_makeops FLAVOR)
     set(OUTDIR "${CMAKE_BINARY_DIR}/emulator/${FLAVOR}")
     file(MAKE_DIRECTORY "${OUTDIR}")
 
-    # genop.tab stays at lib/compiler/src/genop.tab. beam_makeops reads it
+    # genop.tab retains its upstream-relative path under src/. beam_makeops reads it
     # with the rest of the opcode tables.
     set(_tabs
-        ${CMAKE_SOURCE_DIR}/lib/compiler/src/genop.tab
-        ${CMAKE_SOURCE_DIR}/emulator/beam/predicates.tab
-        ${CMAKE_SOURCE_DIR}/emulator/beam/generators.tab
+        ${CMAKE_SOURCE_DIR}/src/lib/compiler/src/genop.tab
+        ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/predicates.tab
+        ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/generators.tab
     )
 
     if(FLAVOR STREQUAL "jit")
         list(APPEND _tabs
-            ${CMAKE_SOURCE_DIR}/emulator/beam/jit/${ERTS_TARGET_ARCH}/ops.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/jit/${ERTS_TARGET_ARCH}/predicates.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/jit/${ERTS_TARGET_ARCH}/generators.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/jit/${ERTS_TARGET_ARCH}/ops.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/jit/${ERTS_TARGET_ARCH}/predicates.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/jit/${ERTS_TARGET_ARCH}/generators.tab
         )
         set(_jit_arg "yes")
     elseif(FLAVOR STREQUAL "emu")
         list(APPEND _tabs
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/ops.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/predicates.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/generators.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/macros.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/instrs.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/arith_instrs.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/bif_instrs.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/bs_instrs.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/float_instrs.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/map_instrs.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/msg_instrs.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/select_instrs.tab
-            ${CMAKE_SOURCE_DIR}/emulator/beam/emu/trace_instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/ops.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/predicates.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/generators.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/macros.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/arith_instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/bif_instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/bs_instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/float_instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/map_instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/msg_instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/select_instrs.tab
+            ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/emu/trace_instrs.tab
         )
         set(_jit_arg "no")
     else()
@@ -68,14 +68,14 @@ function(erts_add_beam_makeops FLAVOR)
     add_custom_command(
         OUTPUT ${_outputs}
         COMMAND ${PERL_EXECUTABLE}
-                ${CMAKE_SOURCE_DIR}/emulator/utils/beam_makeops
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/beam_makeops
                 -wordsize ${_wordsize}
                 -code-model ${_code_model}
                 -outdir ${OUTDIR}
                 -jit ${_jit_arg}
                 -DUSE_VM_PROBES=0
                 -emulator ${_tabs}
-        DEPENDS ${_tabs} ${CMAKE_SOURCE_DIR}/emulator/utils/beam_makeops
+        DEPENDS ${_tabs} ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/beam_makeops
         COMMENT "Generating BEAM opcodes for flavor ${FLAVOR}"
         VERBATIM
     )
@@ -103,12 +103,12 @@ function(erts_add_make_alloc_types FLAVOR)
     add_custom_command(
         OUTPUT ${_generated_headers}
         COMMAND ${PERL_EXECUTABLE}
-                ${CMAKE_SOURCE_DIR}/emulator/utils/make_alloc_types
-                -src ${CMAKE_SOURCE_DIR}/emulator/beam/erl_alloc.types
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_alloc_types
+                -src ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_alloc.types
                 -dst ${OUTDIR}/erl_alloc_types.h
                 ${_alloc_type_vars}
-        DEPENDS ${CMAKE_SOURCE_DIR}/emulator/beam/erl_alloc.types
-                ${CMAKE_SOURCE_DIR}/emulator/utils/make_alloc_types
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_alloc.types
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_alloc_types
         COMMENT "Generating allocator types for flavor ${FLAVOR}"
         VERBATIM
     )
@@ -142,18 +142,18 @@ function(erts_add_make_tables FLAVOR)
     add_custom_command(
         OUTPUT ${_outputs}
         COMMAND ${PERL_EXECUTABLE}
-                ${CMAKE_SOURCE_DIR}/emulator/utils/make_tables
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_tables
                 -src ${OUTDIR}
                 -include ${OUTDIR}
                 -dst ${OUTDIR}
                 -jit ${_jit_arg}
-                ${CMAKE_SOURCE_DIR}/emulator/beam/atom.names
-                ${CMAKE_SOURCE_DIR}/emulator/beam/erl_dirty_bif.tab
-                ${CMAKE_SOURCE_DIR}/emulator/beam/bif.tab
-        DEPENDS ${CMAKE_SOURCE_DIR}/emulator/beam/atom.names
-                ${CMAKE_SOURCE_DIR}/emulator/beam/bif.tab
-                ${CMAKE_SOURCE_DIR}/emulator/beam/erl_dirty_bif.tab
-                ${CMAKE_SOURCE_DIR}/emulator/utils/make_tables
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/atom.names
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_dirty_bif.tab
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/bif.tab
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/atom.names
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/bif.tab
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_dirty_bif.tab
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_tables
         COMMENT "Generating atom and BIF tables for flavor ${FLAVOR}"
         VERBATIM
     )
@@ -176,11 +176,11 @@ function(erts_add_make_driver_tab FLAVOR)
     add_custom_command(
         OUTPUT ${_generated_sources}
         COMMAND ${PERL_EXECUTABLE}
-                ${CMAKE_SOURCE_DIR}/emulator/utils/make_driver_tab
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_driver_tab
                 -o ${OUTDIR}/driver_tab.c
                 -nifs ${_driver_tab_nif_inputs} ${ERTS_DRIVER_TAB_STATIC_NIFS}
                 -drivers ${_driver_tab_driver_inputs}
-        DEPENDS ${CMAKE_SOURCE_DIR}/emulator/utils/make_driver_tab
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_driver_tab
         COMMENT "Generating driver table for flavor ${FLAVOR}"
         VERBATIM
     )
@@ -196,9 +196,9 @@ function(erts_add_core_preload_target TARGET OUTDIR)
     add_custom_command(
         OUTPUT "${_source}"
         COMMAND ${PERL_EXECUTABLE}
-                ${CMAKE_SOURCE_DIR}/emulator/utils/make_preload
+                ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_preload
                 -prefix core_ -table core_pre_loaded ${BEAM_CORE_BEAM_FILES} > "${_source}"
-        DEPENDS ${BEAM_CORE_BEAM_FILES} ${CMAKE_SOURCE_DIR}/emulator/utils/make_preload
+        DEPENDS ${BEAM_CORE_BEAM_FILES} ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_preload
         COMMENT "Generating shared core preload data"
         VERBATIM
     )
@@ -238,7 +238,7 @@ function(erts_add_jit_asm_global_header FLAVOR)
         message(FATAL_ERROR "erts_add_jit_asm_global_header: ERTS_TARGET_ARCH not set")
     endif()
 
-    set(_pl "${CMAKE_SOURCE_DIR}/emulator/beam/jit/${ERTS_TARGET_ARCH}/beam_asm_global.hpp.pl")
+    set(_pl "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/jit/${ERTS_TARGET_ARCH}/beam_asm_global.hpp.pl")
     if(NOT EXISTS "${_pl}")
         message(FATAL_ERROR "JIT arch header script not found: ${_pl}")
     endif()

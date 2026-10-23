@@ -34,8 +34,8 @@
 %%% Created : 17 Jan 2011 by Rickard Green <rickard@erlang.org>
 %%%-------------------------------------------------------------------
 
--define(H_FILE, "include/internal/ethr_atomics.h").
--define(C_FILE, "lib_src/common/ethr_atomics.c").
+-define(H_FILE, "src/erts/include/internal/ethr_atomics.h").
+-define(C_FILE, "src/erts/lib_src/common/ethr_atomics.c").
 
 %% These order constraints are important:
 %% - 'cmpxchg' needs to appear before 'read'

@@ -9,7 +9,7 @@ function(beam_configure_native_component target)
     if(ERTS_BUILD_FLAVOR STREQUAL "jit")
         target_compile_definitions(${target} PRIVATE BEAMASM=1)
     endif()
-    set(_emulator "${PROJECT_SOURCE_DIR}/emulator")
+    set(_emulator "${PROJECT_SOURCE_DIR}/src/erts/emulator")
     target_include_directories(${target} PRIVATE
         ${_emulator}/beam
         ${_emulator}/sys/${BEAM_SYS_DIRECTORY}

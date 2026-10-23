@@ -12,7 +12,7 @@ def sha(path):
 
 def source_identity(root):
     paths = [root / 'CMakeLists.txt', root / 'BEAM_VERSION']
-    for folder in ('src', 'cmake', 'emulator', 'include', 'lib_src', 'lib/compiler'):
+    for folder in ('src', 'cmake'):
         paths.extend(p for p in (root / folder).rglob('*') if p.is_file()
                      and '__pycache__' not in p.parts and p.suffix != '.pyc')
     return hashlib.sha256(''.join(f'{p.relative_to(root)}:{sha(p)}\n'

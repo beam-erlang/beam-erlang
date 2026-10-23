@@ -39,10 +39,10 @@ target_include_directories(beam_driver_sdk INTERFACE $<INSTALL_INTERFACE:include
 install(TARGETS beam_driver_sdk EXPORT BEAMTargets)
 install(FILES
     "${CMAKE_SOURCE_DIR}/src/beam_native.h"
-    "${CMAKE_SOURCE_DIR}/emulator/beam/erl_nif.h"
-    "${CMAKE_SOURCE_DIR}/emulator/beam/erl_driver.h"
-    "${CMAKE_SOURCE_DIR}/emulator/beam/erl_drv_nif.h"
-    "${CMAKE_SOURCE_DIR}/emulator/beam/erl_nif_api_funcs.h"
+    "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_nif.h"
+    "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_driver.h"
+    "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_drv_nif.h"
+    "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_nif_api_funcs.h"
     "${CMAKE_BINARY_DIR}/erts/include/erl_int_sizes_config.h"
     DESTINATION include/beam/nif)
 file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/sdk.toml" CONTENT

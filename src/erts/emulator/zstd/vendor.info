@@ -16,13 +16,13 @@
     "name": "zstd",
     "versionInfo": "v1.5.7",
     "sha": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
-    "path": "./emulator/zstd",
-    "exclude": ["./emulator/zstd/vendor.info",
-                "./emulator/zstd/update.sh",
-                "./emulator/zstd/zstd.mk",
-                "./emulator/zstd/zstd.version"],
+    "path": "./src/erts/emulator/zstd",
+    "exclude": ["./src/erts/emulator/zstd/vendor.info",
+                "./src/erts/emulator/zstd/update.sh",
+                "./src/erts/emulator/zstd/zstd.mk",
+                "./src/erts/emulator/zstd/zstd.version"],
     "supplier": "Organization: Meta",
     "purl": "pkg:github/facebook/zstd",
-    "update": "./emulator/zstd/update.sh"
+    "update": "./src/erts/emulator/zstd/update.sh"
   }
 ]

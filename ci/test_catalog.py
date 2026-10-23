@@ -45,9 +45,18 @@ class Contracts(unittest.TestCase):
             suffix='.exe' if platform.system()=='Windows' else ''
             for name in ['beam_bootstrap','beam_seed_compiler','yielding_c_fun_host']:(build/'bin'/(name+suffix)).write_bytes(b'host')
             expected=module.record(source,build)
+            relocated = source / 'src/erts/preloaded/ebin/core.beam'
+            relocated.parent.mkdir(parents=True)
+            relocated.write_bytes(b'core')
+            self.assertNotEqual(expected['source'], module.record(source,build)['source'])
+            expected=module.record(source,build)
             (build/'host-tools.json').write_text(json.dumps(expected))
             arguments=['host_tools.py','verify','--source',str(source),'--build',str(build)]
             with patch.object(sys,'argv',arguments):module.main()
+            relocated.write_bytes(b'changed-core')
+            with patch.object(sys,'argv',arguments), self.assertRaisesRegex(ValueError,'differ'):
+                module.main()
+            relocated.write_bytes(b'core')
             (build/'bin'/('beam_bootstrap'+suffix)).write_bytes(b'changed')
             self.assertNotEqual(expected,module.record(source,build))
             with patch.object(sys,'argv',arguments), self.assertRaisesRegex(ValueError,'differ'):

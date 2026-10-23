@@ -105,6 +105,9 @@ def check_beam_prefix(prefix, work, fixture, artifacts):
     check(not list(work.rglob("*.beam")), "runtime commands wrote compiled BEAM files")
 
 
+from support.scratch import scratch
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cmake", required=True)
@@ -117,16 +120,17 @@ def main():
     if test_dir.exists():
         shutil.rmtree(test_dir)
     test_dir.mkdir(parents=True)
-    prefix = test_dir / "stage"
-    stage_installation(args, prefix)
-    print("Checking fresh installation", flush=True)
-    artifacts = {p.name: p.read_bytes() for p in args.module_artifacts}
-    check_beam_prefix(prefix, test_dir / "fresh-work", args.fixture, artifacts)
-    relocated = test_dir / "relocated préfix 日本"
-    prefix.rename(relocated)
-    print("Checking relocated installation", flush=True)
-    check_beam_prefix(relocated, test_dir / "relocated-work", args.fixture, artifacts)
-    print("Installed runtime contracts passed", flush=True)
+    with scratch(test_dir):
+        prefix = test_dir / "stage"
+        stage_installation(args, prefix)
+        print("Checking fresh installation", flush=True)
+        artifacts = {p.name: p.read_bytes() for p in args.module_artifacts}
+        check_beam_prefix(prefix, test_dir / "fresh-work", args.fixture, artifacts)
+        relocated = test_dir / "relocated préfix 日本"
+        prefix.rename(relocated)
+        print("Checking relocated installation", flush=True)
+        check_beam_prefix(relocated, test_dir / "relocated-work", args.fixture, artifacts)
+        print("Installed runtime contracts passed", flush=True)
 
 
 if __name__ == "__main__":

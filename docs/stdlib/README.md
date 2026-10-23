@@ -26,9 +26,9 @@ external bytecode:
 Embedded core does not mean every export is usable without its optional
 dependencies. These modules retain VM machinery and do not bring in OTP
 applications. The retained shared-data source references are
-[atomics](../../src/core/shared_data/atomics.erl),
-[counters](../../src/core/shared_data/counters.erl) and
-[persistent_term](../../src/core/shared_data/persistent_term.erl); a complete
+[atomics](../../src/erts/preloaded/src/atomics.erl),
+[counters](../../src/erts/preloaded/src/counters.erl) and
+[persistent_term](../../src/erts/preloaded/src/persistent_term.erl); a complete
 reader-facing reference for these inherited APIs remains to be integrated.
 
 ### Ordinary base library

@@ -14,6 +14,22 @@ import promote
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_runtime_notices_preserve_archive_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            notices = Path(temporary) / 'share/doc/beam-erlang'
+            release.stage_runtime_notices(notices)
+            for relative in ['asmjit/LICENSE.md', 'ryu/LICENSE-Apache2',
+                             'ryu/LICENSE-Boost', 'ryu/xcharconv_ryu.h.sha.license',
+                             'pcre/LICENCE', 'zstd/LICENSE', 'zstd/COPYING']:
+                self.assertEqual((notices / 'emulator' / relative).read_bytes(),
+                                 (release.ROOT / 'src/erts/emulator' / relative).read_bytes())
+            self.assertEqual((notices / 'LICENSE.txt').read_bytes(),
+                             (release.ROOT / 'LICENSE.txt').read_bytes())
+            header = (release.ROOT / 'src/erts/emulator/zlib/zlib.h').read_text()
+            self.assertEqual((notices / 'zlib-NOTICE.txt').read_text(),
+                             header[:header.index('*/') + 2] + '\n')
+            self.assertFalse((notices / 'src').exists())
+
     def test_cmake_and_release_version_parsers_agree(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

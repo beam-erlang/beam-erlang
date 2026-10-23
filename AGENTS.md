@@ -64,6 +64,15 @@ OTP delivery as BEAM packages is not a prerequisite.
 
 When focusing on this tree, launch from `~/Workspace/beam-erlang/beam-erlang` so this file is loaded. The parent `~/Workspace/beam-erlang/AGENTS.md` is the workspace map (hygiene, references, sync, side ventures).
 
+## Source layout
+
+Retained upstream trees preserve their relative paths beneath `src/`: `src/erts/`
+and `src/lib/`. Modern component and tooling organization remains in `src/beam/`.
+All nine embedded Erlang modules and their verified bytecode live under
+`src/erts/preloaded/`; this placement does not change VM composition. See the
+[source map](../dev-documents/source-map.md#upstream-relative-source-layout) for
+original paths, relocation exceptions and validation.
+
 ## This CMake vs. erlang-otp-cmake
 
 There are two CMake efforts. Do not mix them.
@@ -320,7 +329,8 @@ modern shell/eval recipe acquires `prim_eval` as ordinary code from
 artifact lives in `src/beam/eval/ebin`; never compile the Erlang stub as a
 replacement. OTP owns its independent preload and artifact verification.
 `atomics`, `counters` and `persistent_term` remain one shared Erlang/native
-implementation under `src/core/shared_data/`, with no family dispatch.
+implementation: Erlang sources under `src/erts/preloaded/src/` and native BIFs
+under `src/erts/emulator/beam/`, with no family dispatch.
 
 BEAM file, network and zlib native implementations belong to their component
 units; tracing retains a separate library under `lib/beam/runtime/beam/priv`.
@@ -624,3 +634,12 @@ Product maintenance lines and channels are registered in `release/policy.json`;
 branch existence alone does not establish support. Stable and preview share the
 same qualified-byte pipeline. Current source pins, owner configuration and OTP
 compatibility blockers remain independent from the architecture's completeness.
+
+## Test output cleanup
+
+Follow the workspace [validation storage lifecycle](../AGENTS.md#validation-storage-lifecycle).
+Runners clean disposable payloads on success, failure and catchable interruption,
+keeping bounded diagnostics and result identities. `BEAM_TEST_KEEP_WORK=1` is an
+explicit debugging-only retention override; record its size and remove it after
+investigation. Existing development installations and selected input prefixes
+are never cleanup targets.

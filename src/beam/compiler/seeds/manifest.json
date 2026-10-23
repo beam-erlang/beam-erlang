@@ -904,12 +904,12 @@
   "inputs": [
     {
       "scope": "source",
-      "path": "emulator/utils/beam_makeops",
+      "path": "src/erts/emulator/utils/beam_makeops",
       "sha256": "a8d7f7a9ab3b00c6e449abf7dc9003762e670df627acc8f2f9cb8cd8cc68096c"
     },
     {
       "scope": "source",
-      "path": "lib/compiler/src/genop.tab",
+      "path": "src/lib/compiler/src/genop.tab",
       "sha256": "79cf0ee1df79f0b50f5055338cbf4ee238115c12db862de89f7fca0c5309b017"
     },
     {

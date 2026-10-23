@@ -44,6 +44,9 @@ def inactive_and_help(prefix, work):
                   f"command help requires runtime files: {stdout!r} {stderr!r}")
 
 
+from support.scratch import scratch
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
@@ -56,30 +59,31 @@ def main():
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True)
-    env = isolated_environment(root)
-    stage = root / "stage"
-    stage_installation(args, stage)
-    check_prefix(stage, root / "fresh", args.cmake, build, args.source_dir, args.project_source_dir)
-    inactive_and_help(stage, root / "fresh-independent")
-    # Reinstallation preserves the independently owned compiler inventory.
-    owned_compiler = stage / "lib/beam/tools/compiler"
-    owned_expected = {path.relative_to(owned_compiler): path.read_bytes()
-                      for path in owned_compiler.rglob("*") if path.is_file()}
-    check(owned_expected, "owned compiler installation is empty")
-    stage_installation(args, stage)
-    check({path.relative_to(owned_compiler): path.read_bytes()
-           for path in owned_compiler.rglob("*") if path.is_file()} == owned_expected,
-          "incremental installation changed the owned compiler inventory")
-    for runtime in ("beam",):
-        c = Compiler(stage, root / "incremental" / runtime, runtime)
-        source = module(c.work / "incremental.erl", "incremental")
-        c.compile("--deterministic", "--depfile", c.work / "incremental.d", source)
-        c.value(c.work / "incremental.beam", "incremental")
-    relocated = root / "relocated prefix κ"
-    stage.rename(relocated)
-    check_prefix(relocated, root / "relocated", args.cmake, build, args.source_dir, args.project_source_dir)
-    inactive_and_help(relocated, root / "relocated-independent")
-    print("installed compile acceptance passed", flush=True)
+    with scratch(root):
+        env = isolated_environment(root)
+        stage = root / "stage"
+        stage_installation(args, stage)
+        check_prefix(stage, root / "fresh", args.cmake, build, args.source_dir, args.project_source_dir)
+        inactive_and_help(stage, root / "fresh-independent")
+        # Reinstallation preserves the independently owned compiler inventory.
+        owned_compiler = stage / "lib/beam/tools/compiler"
+        owned_expected = {path.relative_to(owned_compiler): path.read_bytes()
+                          for path in owned_compiler.rglob("*") if path.is_file()}
+        check(owned_expected, "owned compiler installation is empty")
+        stage_installation(args, stage)
+        check({path.relative_to(owned_compiler): path.read_bytes()
+               for path in owned_compiler.rglob("*") if path.is_file()} == owned_expected,
+              "incremental installation changed the owned compiler inventory")
+        for runtime in ("beam",):
+            c = Compiler(stage, root / "incremental" / runtime, runtime)
+            source = module(c.work / "incremental.erl", "incremental")
+            c.compile("--deterministic", "--depfile", c.work / "incremental.d", source)
+            c.value(c.work / "incremental.beam", "incremental")
+        relocated = root / "relocated prefix κ"
+        stage.rename(relocated)
+        check_prefix(relocated, root / "relocated", args.cmake, build, args.source_dir, args.project_source_dir)
+        inactive_and_help(relocated, root / "relocated-independent")
+        print("installed compile acceptance passed", flush=True)
 
 
 if __name__ == "__main__":

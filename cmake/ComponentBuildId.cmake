@@ -1,9 +1,7 @@
 # A component must match the runtime's native sources, bytecode and build configuration.
 # Hash paths relative to the source tree so relocation does not change the identity.
 file(GLOB_RECURSE _component_identity_sources CONFIGURE_DEPENDS LIST_DIRECTORIES FALSE
-    "${CMAKE_SOURCE_DIR}/src/*" "${CMAKE_SOURCE_DIR}/emulator/*"
-    "${CMAKE_SOURCE_DIR}/include/*" "${CMAKE_SOURCE_DIR}/lib_src/*"
-    "${CMAKE_SOURCE_DIR}/cmake/*")
+    "${CMAKE_SOURCE_DIR}/src/*" "${CMAKE_SOURCE_DIR}/cmake/*")
 list(FILTER _component_identity_sources EXCLUDE REGEX "(__pycache__|[.]pyc$)")
 list(APPEND _component_identity_sources
     "${CMAKE_SOURCE_DIR}/CMakeLists.txt"
