@@ -148,13 +148,12 @@ or change host OS policy. Final ownership acceptance is recorded; see
 
 ## Documentation and development notes
 
-`docs-next/` is the candidate user-facing documentation tree and will replace
-`docs/` in a later reviewed cutover. Keep the existing `docs/` README and retained
-upstream runtime documentation unchanged while developing the candidate beside
-it. Retained material requires review and distillation before becoming modern
-product guidance; its presence is not a claim of supported behavior.
+`docs/` owns the user-facing manuals. Upstream formats and native API references
+are adapted to the modern product and retain their license notices. Advanced
+VM reference material does not imply public library or capability availability.
+The former candidate and unreviewed upstream documentation trees are retired.
 
-Organize `docs-next/` by reader task and public surface: getting started,
+Organize `docs/` by reader task and public surface: getting started,
 language/runtime concepts, C embedding, modern standard library, native
 components, commands and packaging. Keep C tutorials/guides separate from the
 API reference. Each of `libbeam-file.so`, `libbeam-network.so` and
@@ -169,13 +168,18 @@ experimental contracts explicitly. Documentation work alone does not authorize
 interface changes; changes affecting OTP require coordinated adaptation and
 the appropriate installed acceptance in both products.
 
+Native loading and activation remain under design review. Keep their current
+behavior in `docs/native-extensions/loading.md`, explicitly provisional, and
+link there from native examples and references. Do not present automatic
+`on_load` handling or its current absence as a settled design decision.
+
 Temporary design drafts, implementation notes, migration records and
 evidence belong in the workspace's `../dev-documents/`; start with its
 [index](../dev-documents/README.md). Moving these records does not retire the
 runtime strategy or the permanent acceptance contracts below. Review older
 implementation descriptions against the code before relying on them.
 
-`docs-next/c-api/` owns the candidate C API documentation. Write it for C
+`docs/c-api/` owns the C API documentation. Write it for C
 embedders without ERTS knowledge and describe supported behavior. Keep history
 and proposed capabilities in the other development notes. The standalone
 first-call example belongs to `tests/installed/sdk/consumer/first-call/` and is
@@ -356,7 +360,7 @@ checks; do not recreate this inventory from private source paths in consumers.
 The SDK also deploys exact embedded-core bytecode through
 `beam_install_core_modules` for tools that inspect preloads on disk. This does
 not change runtime composition; consumers must not compile replacement copies
-of VM-owned core modules. See [runtime artifact SDK](docs-next/c-api/deployment.md).
+of VM-owned core modules. See [runtime artifact SDK](docs/c-api/deployment.md).
 
 ## Current builds and artifact refresh
 
@@ -390,7 +394,7 @@ selection uses the same allocator group as the retained `+Mu` parser, excluding
 temporary, literal and test allocators. Preserve enum validation, exact options
 size checking and shared/static sequential-lifetime acceptance. OTP owns the
 `+Muatags` command adaptation; no general emulator-argument API or modern command
-flag is implied. See the [C API reference](docs-next/c-api/reference.md).
+flag is implied. See the [C API reference](docs/c-api/reference.md).
 
 Normal builds verify source-attested compiler seeds and deterministic core/base
 artifacts without rewriting tracked files. `beam_refresh_native_artifacts`

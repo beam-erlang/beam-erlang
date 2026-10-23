@@ -25,9 +25,7 @@ identity is `17.0-r1-preview.1`. No qualified public preview is available. See
 and readiness.
 
 The source baseline is recorded in [UPSTREAM_COMMIT](UPSTREAM_COMMIT).
-Start with the [candidate user documentation](docs-next/README.md).
-The existing [documentation index and upstream material](docs/README.md) remain
-in place while the candidate develops into their replacement. See the
+Start with the [user documentation](docs/README.md). See the
 [test guide](tests/README.md) for the current repository and acceptance coverage.
 
 ## Building
