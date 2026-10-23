@@ -2,6 +2,7 @@
 """Public process-owned entry without either framework's assets."""
 from functools import partial
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import fcntl
@@ -75,9 +76,6 @@ def terminal_check(command, env, cwd, policy, nonblocking, interrupt):
             process.communicate()
         os.close(slave)
         os.close(master)
-
-
-from support.scratch import scratch
 
 
 def main():

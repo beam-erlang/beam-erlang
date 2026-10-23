@@ -5,13 +5,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from support.scratch import scratch
 import shutil
 import sys
 
 from support.process import check, isolated_environment, run
-
-
-from support.scratch import scratch
 
 
 def main():

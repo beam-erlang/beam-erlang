@@ -4,15 +4,13 @@ import hashlib
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import os
 from pathlib import Path
+from support.scratch import scratch
 import shutil
 import signal
 import subprocess
 from support.process import run, isolated_environment, child_process
 from support.terminal import TerminalShell
 from installed.cli.scenarios.terminal import check_beam_shell_history
-
-
-from support.scratch import scratch
 
 
 def main():
@@ -97,28 +95,28 @@ def main():
         for name in ('probe.c', 'probe.erl', 'packet_probe.h'):
             shutil.copy2(source / name, project / name)
         (project / 'beam.toml').write_text('''format = 2
-    [package]
-    name = "acceptance/native-project"
-    version = "1"
-    [build]
-    sources = ["probe.erl"]
-    [build.native]
-    cmake = "."
-    outputs = ["probe"]
-    nifs = { probe = "probe" }
-    [host]
-    modules = ["erlang", "io", "persistent_term"]
-    [entry]
-    module = "probe"
-    ''')
+[package]
+name = "acceptance/native-project"
+version = "1"
+[build]
+sources = ["probe.erl"]
+[build.native]
+cmake = "."
+outputs = ["probe"]
+nifs = { probe = "probe" }
+[host]
+modules = ["erlang", "io", "persistent_term"]
+[entry]
+module = "probe"
+''')
         (project / 'CMakeLists.txt').write_text('''cmake_minimum_required(VERSION 3.25)
-    project(native_project LANGUAGES C)
-    find_package(BEAM CONFIG REQUIRED)
-    add_library(probe MODULE probe.c)
-    beam_target_nif(probe)
-    set_target_properties(probe PROPERTIES PREFIX "")
-    beam_package_native_output(probe NAME probe)
-    ''')
+project(native_project LANGUAGES C)
+find_package(BEAM CONFIG REQUIRED)
+add_library(probe MODULE probe.c)
+beam_target_nif(probe)
+set_target_properties(probe PROPERTIES PREFIX "")
+beam_package_native_output(probe NAME probe)
+''')
         execute([prefix / 'bin/beam-pkg', 'build', project])
         execute([prefix / 'bin/beam-pkg', 'install', project])
         deployed = root / 'deployed project λ'

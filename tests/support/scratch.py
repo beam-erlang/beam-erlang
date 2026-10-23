@@ -33,6 +33,11 @@ def compact(root, outcome):
                 if not diagnostic or source.suffix not in {".log", ".json", ".html", ".term", ".txt"}:
                     continue
                 size = source.stat().st_size
+                # Structured results must remain parseable; only text logs may
+                # be truncated. Oversized records are explicitly reported.
+                if source.suffix in {".json", ".term"} and size > FILE_LIMIT:
+                    omitted += 1
+                    continue
                 count = min(size, FILE_LIMIT)
                 if used + count > LIMIT or len(retained) >= 256:
                     omitted += 1
@@ -66,7 +71,7 @@ def scratch(root):
     def terminate(signum, frame):
         raise SystemExit(128 + signum)
     signal.signal(signal.SIGTERM, terminate)
-    outcome = "passed"
+    outcome = "completed"
     try:
         yield root
     except BaseException as error:

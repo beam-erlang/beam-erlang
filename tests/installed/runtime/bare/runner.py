@@ -2,6 +2,7 @@
 """Exercise the installed bare C API without external Erlang runtime files."""
 from functools import partial
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
@@ -26,9 +27,6 @@ def run_terminal(executable, env, cwd):
     expected = b"Bare VM stopped; host continued.\r\n"
     check(result.returncode == 0 and result.stdout == expected,
           f"bare terminal host: exit={result.returncode}, output={result.stdout!r}")
-
-
-from support.scratch import scratch
 
 
 def main():

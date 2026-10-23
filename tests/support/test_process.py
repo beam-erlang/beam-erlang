@@ -57,6 +57,21 @@ class HarnessTests(unittest.TestCase):
                 (root / "payload").write_bytes(b"debug")
         self.assertTrue((root / "payload").is_file())
 
+    def test_scratch_sigterm_cleanup(self):
+        root = self.work / "terminated"
+        program = ("import os, signal, sys; from pathlib import Path; "
+                   f"sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r}); "
+                   "from support.scratch import scratch; "
+                   f"root=Path({str(root)!r}); root.mkdir();\n"
+                   "with scratch(root):\n"
+                   "    (root/'payload').write_bytes(b'temporary')\n"
+                   "    os.kill(os.getpid(), signal.SIGTERM)\n")
+        child = subprocess.run([sys.executable, "-B", "-c", program],
+                               capture_output=True, timeout=5)
+        self.assertEqual(child.returncode, 143, child.stderr)
+        self.assertFalse((root / "payload").exists())
+        self.assertIn("SystemExit", json.loads((root / "cleanup.json").read_text())["outcome"])
+
     def python(self, source, **options):
         return run([sys.executable, "-c", source], cwd=self.work,
                    env=self.env, timeout=3, **options)

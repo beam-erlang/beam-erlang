@@ -3,6 +3,7 @@
 
 
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import re
@@ -103,9 +104,6 @@ def check_beam_prefix(prefix, work, fixture, artifacts):
     out, err = run([*command, "run", "hello_world.erl"], work, env)
     check(out == b"Hello, World!\n" and err == b"", "BEAM requires OTP assets")
     check(not list(work.rglob("*.beam")), "runtime commands wrote compiled BEAM files")
-
-
-from support.scratch import scratch
 
 
 def main():

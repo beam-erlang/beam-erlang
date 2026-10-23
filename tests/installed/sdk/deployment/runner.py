@@ -2,6 +2,7 @@
 """Independent installed-SDK application deployment acceptance."""
 
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
@@ -15,9 +16,6 @@ def run(command, cwd, env, success=True):
     check(success == (result.returncode == 0),
           f"{command}: status={result.returncode}\n{result.stdout}\n{result.stderr}")
     return result.stdout, result.stderr
-
-
-from support.scratch import scratch
 
 
 def main():

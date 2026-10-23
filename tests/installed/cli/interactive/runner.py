@@ -2,6 +2,7 @@
 """Installed BEAM shell and evaluation without OTP applications or compiler tooling."""
 
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import json
@@ -326,9 +327,6 @@ def host_case(prefix, fixture, work, env, minimal=False):
                     "minimal" if minimal else work / "retained 日本語"], work, env, timeout=180)
     check(not err and re.fullmatch(rb"interactive lifetimes ok: threads=[1-9][0-9]* descriptors=[0-9]+ files=0 sockets=0 streams=0\n", out),
           f"interactive lifecycle failed: {out!r} {err!r}")
-
-
-from support.scratch import scratch
 
 
 def main():

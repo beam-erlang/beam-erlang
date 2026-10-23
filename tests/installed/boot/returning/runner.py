@@ -2,6 +2,7 @@
 """Installed returning-boot acceptance. Uses only the shipped prefix."""
 from functools import partial
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
@@ -12,9 +13,6 @@ from support.process import run as capture, isolated_environment
 
 def run(command, env, cwd, status=0, timeout=120):
     return capture(command, env=env, cwd=cwd, timeout=timeout, status=status, text=True, errors="replace")
-
-
-from support.scratch import scratch
 
 
 def main():

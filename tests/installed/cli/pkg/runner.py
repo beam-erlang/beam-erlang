@@ -1,5 +1,6 @@
 """Installed package commands, native build, relocation and minimal help hosting."""
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import hashlib
@@ -164,9 +165,6 @@ def project_shell_cases(prefix, root, env):
     invoke([pkg, 'install', work], cwd=root, env=env, timeout=60)
     result = invoke(shell, cwd=root, env=env, status=1, text=True)
     assert 'conflicting composition module names' in result.stderr
-
-
-from support.scratch import scratch
 
 
 def main():

@@ -2,6 +2,7 @@
 """Installed BEAM source execution without OTP applications or shell tooling."""
 
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import json
@@ -374,9 +375,6 @@ def lifecycle(args, prefix, root, env):
         with hidden(minimal / common / "ebin" / f"{name}.beam"):
             _, stderr = run(command, root, isolated, status=1)
             check(stderr, f"missing output-only {name} fallback was ignored")
-
-
-from support.scratch import scratch
 
 
 def main():

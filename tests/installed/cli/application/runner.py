@@ -2,6 +2,7 @@
 import argparse
 import importlib.util
 from pathlib import Path
+from support.scratch import scratch
 import shutil
 import sys
 
@@ -13,9 +14,6 @@ from support.process import check, isolated_environment, run as capture
 def run(*args, **kwargs):
     kwargs.setdefault('timeout', 30)
     return capture(*args, **kwargs)
-
-
-from support.scratch import scratch
 
 
 def main():
@@ -38,29 +36,29 @@ def main():
         app = root / 'unrelated application 日本語'
         (app / 'ebin').mkdir(parents=True)
         (app / 'ordinary.erl').write_text('''-module(ordinary).
-    -export([main/1]).
-    main(["halt"]) -> erlang:halt(23);
-    main(["throw"]) -> erlang:error(application_fixture);
-    main(["action"]) -> {beam_command,1,{exit,97}};
-    main(Args) ->
-        undefined = persistent_term:get(application_fixture,undefined),
-        false = erlang:module_loaded(compile),
-        false = erlang:module_loaded(beam_pkg),
-        io:format("ENTRY ~tp~n",[Args]).
-    ''')
+-export([main/1]).
+main(["halt"]) -> erlang:halt(23);
+main(["throw"]) -> erlang:error(application_fixture);
+main(["action"]) -> {beam_command,1,{exit,97}};
+main(Args) ->
+    undefined = persistent_term:get(application_fixture,undefined),
+    false = erlang:module_loaded(compile),
+    false = erlang:module_loaded(beam_pkg),
+    io:format("ENTRY ~tp~n",[Args]).
+''')
         (app / 'dispatcher.erl').write_text('''-module(dispatcher).
-    -export([command/2]).
-    command({beam_context,1,_,_,_,_,Root,Cwd,_,_,Bytes},["forward"|Rest]) ->
-        persistent_term:put(application_fixture,dirty),
-        D0 = binary_to_term(Bytes),
-        Inventory = [M || M={file,<<"ordinary">>,_,_,_} <- element(9,D0)],
-        D1 = setelement(9,setelement(6,setelement(5,D0,Root),{main,<<"ordinary">>,<<"main">>}),Inventory),
-        {beam_command,1,{run,D1,term_to_binary(Rest)}};
-    command(_, ["invalid"]) -> {beam_command,1,{run,invalid,<<>>}};
-    command({beam_context,1,_,_,_,_,_,Cwd,_,_,_}, ["exec",Executable|Args]) ->
-        {beam_command,1,{exec,Cwd,[<< <<C/utf8>> || C <- A >> || A <- [Executable|Args]]}};
-    command(_, _) -> {beam_command,1,{exit,19}}.
-    '''.replace('Root,Cwd,_,_,Bytes','Root,_Cwd,_,_,Bytes'))
+-export([command/2]).
+command({beam_context,1,_,_,_,_,Root,Cwd,_,_,Bytes},["forward"|Rest]) ->
+    persistent_term:put(application_fixture,dirty),
+    D0 = binary_to_term(Bytes),
+    Inventory = [M || M={file,<<"ordinary">>,_,_,_} <- element(9,D0)],
+    D1 = setelement(9,setelement(6,setelement(5,D0,Root),{main,<<"ordinary">>,<<"main">>}),Inventory),
+    {beam_command,1,{run,D1,term_to_binary(Rest)}};
+command(_, ["invalid"]) -> {beam_command,1,{run,invalid,<<>>}};
+command({beam_context,1,_,_,_,_,_,Cwd,_,_,_}, ["exec",Executable|Args]) ->
+    {beam_command,1,{exec,Cwd,[<< <<C/utf8>> || C <- A >> || A <- [Executable|Args]]}};
+command(_, _) -> {beam_command,1,{exit,19}}.
+'''.replace('Root,Cwd,_,_,Bytes','Root,_Cwd,_,_,Bytes'))
         run([sdk/'bin/beam','compile','--deterministic','-o',app/'ebin','--',app/'ordinary.erl',app/'dispatcher.erl'], cwd=root, env=env)
         (app/'modules.txt').write_text('ordinary\ndispatcher\n')
         descriptor = app/'application.etf'

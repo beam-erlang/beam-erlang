@@ -2,6 +2,7 @@
 """Public C/C++ consumers and the complete installed SDK layout."""
 from functools import partial
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
@@ -35,9 +36,6 @@ def check_runtime_only(execute, cmake, source, prefix, root, phase):
                         f'-DCMAKE_PREFIX_PATH={runtime}', '-DREQUIRE_CLI=ON'], status=None)
     check(rejected.returncode != 0 and 'BEAM CLI component is not installed' in rejected.stderr,
           'required CLI component did not reject the runtime-only installation')
-
-
-from support.scratch import scratch
 
 
 def main():

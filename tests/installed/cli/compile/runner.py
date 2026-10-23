@@ -2,6 +2,7 @@
 """Compile-command acceptance using only a fresh installed distribution."""
 
 from pathlib import Path
+from support.scratch import scratch
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
@@ -42,9 +43,6 @@ def inactive_and_help(prefix, work):
             stdout, stderr = run([*c.command, "help", "compile"], c.work, c.env)
             check("compile" in stdout and "--depfile" in stdout and not stderr,
                   f"command help requires runtime files: {stdout!r} {stderr!r}")
-
-
-from support.scratch import scratch
 
 
 def main():

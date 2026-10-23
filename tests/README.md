@@ -5,6 +5,16 @@ OTP owns its command, application, startup and native-service acceptance in its
 separate product. Both products use the same VM through explicit composition.
 The permanent requirements are in [AGENTS.md](../AGENTS.md#permanent-acceptance-contracts).
 
+## Disposable output
+
+Installed runners remove their copied prefixes, consumer builds and bundles on
+completion, including failures and catchable interruption. CTest retains command
+output; each test directory retains a `cleanup.json` record and bounded text
+diagnostics (up to 8 MiB total, 1 MiB per file). Oversized structured records are
+omitted rather than truncated into invalid data. Set `BEAM_TEST_KEEP_WORK=1` only
+for active debugging, then remove the retained directory after investigation.
+Selected input SDKs and normal development builds are not cleanup targets.
+
 ## Test layout
 
 `installed/` contains installed SDK and modern distribution acceptance,
