@@ -1,4 +1,6 @@
 """Installed artifact selection, provenance and isolated native deployment."""
+from support.artifacts import artifact
+from support.bytecode import TEST_SUPPORT_DIR
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import hashlib
@@ -33,7 +35,7 @@ def main():
         def configure(name, *, status=0, diagnostic=None, **variables):
             build = root / name
             command = [args.cmake, '-S', args.source_dir, '-B', build,
-                       f'-DCMAKE_PREFIX_PATH={sdk}', f'-DEXPECTED_FLAVOR={flavor}',
+                       f'-DCMAKE_PREFIX_PATH={sdk}', f'-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}', f'-DEXPECTED_FLAVOR={flavor}',
                        f'-DEXPECTED_VERSION={expected_version()}']
             command.extend(f'-D{key}={value}' for key, value in variables.items())
             result = run(command, cwd=root, env=env, timeout=30, status=status, text=True)
@@ -181,7 +183,7 @@ def main():
             finally:
                 path.write_bytes(original)
         # Static discovery and core inspection acquisition need no shared VM/CLI.
-        (sdk / 'lib/libbeam.so').unlink()
+        artifact(sdk,'runtime').unlink()
         shutil.rmtree(sdk / 'bin')
         static = configure('static-only', STATIC_PROBE='ON')
         run([args.cmake, '--build', static], cwd=root, env=env, timeout=60)

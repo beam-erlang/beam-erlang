@@ -35,7 +35,7 @@ add_custom_target(payload ALL DEPENDS "${{output}}")
 ''')
     build = root / "build"
     run([cmake, "-S", root, "-B", build, "-G", generator,
-         f"-DCMAKE_PREFIX_PATH={c.prefix}"], c.work, c.env, timeout=60)
+         f"-DCMAKE_PREFIX_PATH={c.prefix}", f"-DCMAKE_MAKE_PROGRAM={c.make if generator == 'Unix Makefiles' else c.ninja}"], c.work, c.env, timeout=60)
     run([cmake, "--build", build], c.work, c.env, timeout=60)
     beam = build / "cmake_payload.beam"
     c.value(beam, "first")
@@ -83,7 +83,7 @@ def literal_make_case(c):
     makefile = write(root / "Makefile", f"include {make_word(depfile)}\n"
                      f"{make_word(beam, target=True)}:\n"
                      f"\t@printf x >> {recipe_arg(marker)}\n\t@{command}\n")
-    make = ["/usr/bin/make", "-f", makefile, beam]
+    make = [c.make, "-f", makefile, beam]
     run(make, c.work, c.env)
     check(not marker.exists(), "literal dependencies trigger an unnecessary rebuild")
 

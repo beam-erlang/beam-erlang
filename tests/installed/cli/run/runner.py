@@ -3,6 +3,7 @@
 
 from pathlib import Path
 from support.scratch import scratch
+from support.artifacts import artifact, relative as artifact_relative
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import json
@@ -132,8 +133,8 @@ def probe_origins(stdout, prefix, source):
     for inventory, names in ordinary.items():
         expected.update({name: f"{prefix}/lib/beam/{inventory}/ebin/{name}.beam" for name in names})
     for unit, names in components.items():
-        expected.update({name: f"{prefix}/lib/libbeam-{unit}.so#{name}" for name in names})
-    expected.update(zlib=str(prefix / "lib/libbeam-zlib.so") + "#zlib", run_probe=str(source))
+        expected.update({name: f"{artifact(prefix,'component.'+unit)}#{name}" for name in names})
+    expected.update(zlib=str(artifact(prefix,"component.zlib")) + "#zlib", run_probe=str(source))
     actual = {}
     for line in stdout.splitlines()[:-1]:
         check(line.startswith("origin "), f"unexpected probe output: {line!r}")
@@ -310,8 +311,8 @@ def missing_assets(prefix, source, work, env):
     runner = prefix / "lib/beam/runtime/beam/run"
     common = prefix / "lib/beam/runtime/beam/cli"
     paths = [runner, common, prefix / "lib/beam/tools/compiler", prefix / "lib/beam/boot",
-             prefix / "lib/libbeam-file.so", prefix / "lib/libbeam-network.so",
-             prefix / "lib/libbeam-zlib.so"]
+             artifact(prefix,"component.file"), artifact(prefix,"component.network"),
+             artifact(prefix,"component.zlib")]
     paths.extend(sorted((runner / "ebin").glob("*.beam")))
     paths.extend(sorted((common / "ebin").glob("*.beam")))
     # lists/maps are supplied by the network component in the full service recipe.
@@ -355,13 +356,13 @@ def lifecycle(args, prefix, root, env):
     (minimal / "lib").mkdir()
     copy_bytecode(prefix, minimal)
     shutil.copy2(host, minimal / "bin/source_run_acceptance")
-    for name in ("libbeam.so",):
+    for name in (artifact(prefix,"runtime").name,):
         shutil.copy2(prefix / "lib" / name, minimal / "lib" / name)
     runner = Path("lib/beam/runtime/beam/run")
     common = Path("lib/beam/runtime/beam/cli")
     for inventory in (runner, common):
         shutil.copytree(prefix / inventory, minimal / inventory)
-    expected = set(RETURNING_ASSETS) | {"bin/source_run_acceptance", "lib/libbeam.so"} | {
+    expected = set(RETURNING_ASSETS) | {"bin/source_run_acceptance", artifact_relative(prefix,"runtime")} | {
         str(inventory / path.relative_to(prefix / inventory))
         for inventory in (runner, common) for path in (prefix / inventory).rglob("*") if path.is_file()}
     actual = {str(path.relative_to(minimal)) for path in minimal.rglob("*") if path.is_file()}

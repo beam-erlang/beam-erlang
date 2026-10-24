@@ -13,6 +13,9 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include "host_observe.h"
+#endif
 
 /* Distribution-owned observations, not additional installed SDK contracts. */
 extern void beam_runtime_memory_usage(size_t *, size_t *, size_t *, size_t *);
@@ -109,15 +112,22 @@ static int equals(const buffer *b, const char *text)
 { return b->size==strlen(text) && (!b->size || !memcmp(b->data,text,b->size)); }
 static int entries(const char *path)
 {
+#ifdef __APPLE__
+    int count=beam_test_host_entries(path); check(count>=0,path); return count;
+#else
     DIR *d=opendir(path); struct dirent *entry; int count=0;
     check(d!=NULL,path);
     while ((entry=readdir(d))) if (entry->d_name[0]!='.') ++count;
     closedir(d); return count;
+#endif
 }
 static int compare_int(const void *a,const void *b)
 { return (*(const int*)a > *(const int*)b)-(*(const int*)a < *(const int*)b); }
 static int descriptors(int *values)
 {
+#ifdef __APPLE__
+    int count=beam_test_host_copy_fds(values,1024); check(count>=0,"descriptor census"); return count;
+#else
     DIR *d=opendir("/proc/self/fd"); struct dirent *entry; int count=0;
     check(d!=NULL,"descriptor census");
     while ((entry=readdir(d))) {
@@ -126,15 +136,20 @@ static int descriptors(int *values)
         check(count<1024,"descriptor capacity"); values[count++]=(int)fd;
     }
     closedir(d); qsort(values,(size_t)count,sizeof(int),compare_int); return count;
+#endif
 }
 static void signal_handler(int signal) { (void)signal; }
 static void children(char *out,size_t capacity)
 {
+#ifdef __APPLE__
+    check(beam_test_host_child_text(out,capacity)==0,"child census");
+#else
     char path[128]; FILE *file; size_t count;
     snprintf(path,sizeof path,"/proc/self/task/%ld/children",(long)getpid());
     file=fopen(path,"r"); check(file!=NULL,"child census");
     count=fread(out,1,capacity-1,file); check(!ferror(file) && feof(file),"child census capacity");
     out[count]='\0'; fclose(file);
+#endif
 }
 static void snapshot(host_state *s)
 {
@@ -312,7 +327,7 @@ int main(int argc,char **argv)
     check(argc==5,"usage: host PREFIX PROGRAM_BEAM SOURCE_ORIGIN WORK_FILE");
     {
         char loaded[4096],expected[4096],canonical[4096]; size_t required=0;
-        check(snprintf(expected,sizeof expected,"%s/lib/libbeam.so",argv[1])<(int)sizeof expected,"runtime library path");
+        check(snprintf(expected,sizeof expected,"%s/" BEAM_TEST_RUNTIME_RELATIVE,argv[1])<(int)sizeof expected,"runtime library path");
         check(beam_library_path(loaded,sizeof loaded,&required,&error)==BEAM_OK,error.message);
         check(realpath(expected,canonical) && !strcmp(loaded,canonical),"host uses its deployed libbeam");
     }

@@ -3,9 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#ifdef __APPLE__
+#include "host_observe.h"
+#endif
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"native check failed line %d: %s (%s)\n",__LINE__,#x,error.message); return 1; } } while(0)
 static beam_status check_mapping(void *context, beam_bytes request, beam_host_reply *reply) {
     (void)context; (void)request;
+#ifdef __APPLE__
+    if (beam_test_host_runtime_images() != 0) return BEAM_INVALID_STATE;
+#else
     FILE *maps = fopen("/proc/self/maps", "r");
     if (!maps) return BEAM_INVALID_STATE;
     char line[4096];
@@ -13,6 +19,7 @@ static beam_status check_mapping(void *context, beam_bytes request, beam_host_re
         if (strstr(line, "libbeam.so")) { fclose(maps); return BEAM_INVALID_STATE; }
     }
     fclose(maps);
+#endif
     const unsigned char ok[] = {131,119,2,'o','k'};
     return beam_host_reply_copy(reply, (beam_bytes){ok,sizeof(ok)});
 }
@@ -58,10 +65,15 @@ int main(int argc,char **argv) {
     if (!strcmp(argv[3],"foreign-runtime")) {
         CHECK(status==BEAM_INVALID_ARGUMENT && !composition);
         CHECK(!strcmp(error.message,"native library depends on another BEAM runtime image"));
+#ifdef __APPLE__
+        CHECK(beam_test_host_runtime_images() == 0);
+#else
         FILE *maps=fopen("/proc/self/maps","r"); CHECK(maps);
         char line[4096];
         while(fgets(line,sizeof(line),maps)) CHECK(!strstr(line,"libbeam.so"));
-        fclose(maps); free(bytes); return 0;
+        fclose(maps);
+#endif
+        free(bytes); return 0;
     }
     if (!strcmp(argv[3],"prepare-failure")) { CHECK(status!=BEAM_OK && !composition); free(bytes); return 0; }
     CHECK(status==BEAM_OK); free(bytes); free(extra);

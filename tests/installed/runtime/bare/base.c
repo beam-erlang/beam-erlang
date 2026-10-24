@@ -6,12 +6,29 @@
 #include <string.h>
 #include <time.h>
 #include "fixtures.h"
+#ifdef __APPLE__
+#include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include "host_observe.h"
+#endif
 
 #define CHECK(test) do { if (!(test)) { fprintf(stderr, "base:%d: %s (%s)\n", __LINE__, #test, error.message); return 1; } } while (0)
 static const char *base_names[] = {"beam", "beam_list", "beam_map", "beam_bytes", "beam_text", "beam_format", "beam_time"};
 
 static int entries(const char *path)
 {
+#ifdef __APPLE__
+    if (!strcmp(path, "/proc/self/task")) return beam_test_host_threads(getpid());
+    if (!strcmp(path, "/proc/self/fd")) {
+        int *descriptors; size_t count;
+        if (beam_test_host_fds(getpid(), &descriptors, &count)) return -1;
+        free(descriptors);
+        return count <= INT_MAX ? (int)count : -1;
+    }
+    errno = EINVAL; return -1;
+#else
     DIR *directory = opendir(path);
     struct dirent *entry;
     int count = 0;
@@ -20,6 +37,7 @@ static int entries(const char *path)
         if (entry->d_name[0] != '.') ++count;
     closedir(directory);
     return count;
+#endif
 }
 
 static int module_count(beam_vm *vm, size_t expected)

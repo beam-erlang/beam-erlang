@@ -6,3 +6,6 @@ target_compile_features(compiler_lifetime PRIVATE c_std_99)
 target_compile_options(compiler_lifetime PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(compiler_lifetime PRIVATE BEAM::Runtime)
 
+
+include("${TEST_SUPPORT_DIR}/HostObservation.cmake")
+beam_test_observe(compiler_lifetime)

@@ -4,10 +4,26 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 
 int beam_application_main(const char *descriptor, int argc, char **argv);
 
 int beam_boot_main(const char *command, const char *value, int argc, char **argv);
+
+static int package_command(int argc, char **argv)
+{
+    char library[PATH_MAX], descriptor[PATH_MAX];
+    size_t required;
+    beam_error error = {0};
+    if (beam_library_path(library,sizeof(library),&required,&error) != BEAM_OK)
+        return 1;
+    char *slash = strrchr(library,'/');
+    if (!slash) return 1;
+    *slash = 0;
+    if (snprintf(descriptor,sizeof(descriptor),"%s/beam/apps/beam-pkg/application.etf",library) >= sizeof(descriptor))
+        return 1;
+    return beam_application_main(descriptor,argc,argv);
+}
 
 static void
 usage(FILE *out)
@@ -199,6 +215,11 @@ main(int argc, char **argv)
         fprintf(stderr, "beam: runtime selection is obsolete; beam runs modern BEAM\n");
         return 1;
     }
+    if (!strcmp(command,"build") || !strcmp(command,"task") ||
+        ((!strcmp(command,"run") || !strcmp(command,"shell")) && argc && !strcmp(argv[0],"--project")) ||
+        (!strcmp(command,"help") && argc == 1 &&
+         (!strcmp(argv[0],"build") || !strcmp(argv[0],"task"))))
+        return package_command(argc+1,argv-1);
     if (!strcmp(command, "run") &&
         reject_runtime_flags(argc, argv)) return 1;
     if (strcmp(command, "run") == 0)

@@ -20,7 +20,7 @@ include("${_package_source}/cmake/PackageTool.cmake")
 if(NOT COMMAND beam_package_build)
     message(FATAL_ERROR "BEAM_PACKAGE_SOURCE_DIR does not provide beam_package_build")
 endif()
-set(_pkg_root "${CMAKE_BINARY_DIR}/${BEAM_PACKAGE_INSTALL_DIR}")
+set(_pkg_root "${CMAKE_BINARY_DIR}/lib/beam/apps/beam-pkg")
 beam_package_build(beam_pkg_support
     OUTPUT_DIRECTORY "${_pkg_root}"
     COMPILER_COMMAND $<TARGET_FILE:beam_bootstrap> --deterministic

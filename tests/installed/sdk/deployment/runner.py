@@ -3,6 +3,8 @@
 
 from pathlib import Path
 from support.scratch import scratch
+from support.artifacts import relative as artifact_relative
+import sys
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
@@ -45,19 +47,25 @@ def main():
             stage = root / ('stage-' + case)
             run([args.cmake, '--install', build, '--prefix', stage], work, env)
             bundle = root / ('relocated 日本 é ' + case); stage.rename(bundle)
-            expected = {'bin/deployment_host', 'lib/libbeam.so'}
+            expected = {'bin/deployment_host', artifact_relative(sdk,'runtime')}
             if case != 'bare': expected |= set(RETURNING_ASSETS)
-            if case in ('file', 'network'): expected.add(f'lib/libbeam-{case}.so')
-            if case == 'zlib': expected |= {'lib/libbeam-zlib.so'}
+            if case in ('file', 'network'): expected.add(artifact_relative(sdk,'component.'+case))
+            if case == 'zlib': expected |= {artifact_relative(sdk,'component.zlib')}
             if case == 'program': expected.add('libexec/beam/erl_child_setup')
             actual = {p.relative_to(bundle).as_posix() for p in bundle.rglob('*') if p.is_file()}
             assert actual == expected, (case, actual ^ expected)
             host = bundle / 'bin/deployment_host'
-            dynamic, _ = run(['readelf', '-d', host], work, env)
-            assert '$ORIGIN/../lib' in dynamic and str(sdk) not in dynamic and str(build) not in dynamic
+            if sys.platform=='darwin':
+                dynamic,_=run(['/usr/bin/otool','-l',host],work,env)
+                origin='@executable_path/../lib'
+            else:
+                dynamic,_=run(['readelf','-d',host],work,env)
+                origin='$ORIGIN/../lib'
+            assert origin in dynamic and str(sdk) not in dynamic and str(build) not in dynamic
             for generated in (build / 'beam-deployment').rglob('*'):
                 if generated.is_file(): assert str(sdk) not in generated.read_text()
             test_env = dict(env, DEPLOY_EXPECT_ROOT=str(bundle))
+            selected={name:artifact_relative(sdk,'component.'+name) for name in ('file','network','zlib')}
             hidden = root / 'unavailable-sdk'; sdk.rename(hidden)
             try:
                 out, err = run([host, case], work, test_env)
@@ -65,8 +73,8 @@ def main():
                 assert out == 'DEPLOY_ENTERED\n' * entries + 'DEPLOY_OK\n' and not err, (out, err)
                 missing = []
                 if case != 'bare': missing += list(RETURNING_ASSETS)
-                if case in ('file', 'network'): missing.append(f'lib/libbeam-{case}.so')
-                if case == 'zlib': missing += ['lib/libbeam-zlib.so']
+                if case in ('file', 'network'): missing.append(selected[case])
+                if case == 'zlib': missing += [selected['zlib']]
                 for name in missing:
                     asset = bundle / name; held = asset.with_name(asset.name + '.held'); asset.rename(held)
                     try:
@@ -82,7 +90,7 @@ def main():
             if invalid.exists(): shutil.rmtree(invalid)
             run([args.cmake, '-S', source, '-B', invalid, f'-DCMAKE_PREFIX_PATH={sdk}', f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", *options], work, env, success=False)
         # Bare SDK clients do not require an optional native component to exist.
-        asset = sdk / 'lib/libbeam-network.so'; held = asset.with_suffix('.held'); asset.rename(held)
+        asset = sdk / artifact_relative(sdk,'component.network'); held = asset.with_suffix('.held'); asset.rename(held)
         try:
             run([args.cmake, '-S', source, '-B', root / 'bare-without-network', f'-DCMAKE_PREFIX_PATH={sdk}', f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", '-DPROFILE=bare'], work, env)
             run([args.cmake, '-S', source, '-B', root / 'missing-network', f'-DCMAKE_PREFIX_PATH={sdk}', f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", '-DPROFILE=beam-returning', '-DCOMPONENTS=network'], work, env, success=False)

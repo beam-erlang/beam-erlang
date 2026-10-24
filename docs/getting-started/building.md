@@ -36,3 +36,31 @@ application, retain explicit component selection and sign the application with
 its embedded frameworks. Static-runtime composition restrictions remain unchanged.
 See [deployment](../c-api/deployment.md) and the product-owned
 [target acceptance fixture](../../tests/target/CMakeLists.txt) for SDK consumption.
+
+## Native Apple Silicon development
+
+Use `macos-arm64-appleclang-emu` or `macos-arm64-appleclang-jit` with the normal
+bundled package tool. Select the matching package checkout, Python and the Make
+executable used by installed-compiler acceptance explicitly:
+
+```sh
+cmake --preset macos-arm64-appleclang-jit \
+  -DBEAM_PACKAGE_SOURCE_DIR="$PACKAGE_SOURCE" \
+  -DPython3_EXECUTABLE="$PYTHON" -DBEAM_TEST_MAKE="$MAKE"
+cmake --build --preset macos-arm64-appleclang-jit
+ctest --preset macos-arm64-appleclang-jit
+cmake --install build/macos-arm64-appleclang-jit
+```
+
+The deployment target is 15.0. Execution on macOS 26.6.2 does not establish macOS
+15 runtime support, including compatibility of selected external dependencies.
+Darwin native modules use their actual installed artifact names; SDK consumers
+must use exported targets and artifact inventories rather than infer a suffix.
+Static hosts export the applicable public runtime symbol inventory for admitted
+native modules. Host-resolved module linkage does not suppress unresolved
+executable symbols.
+
+Ordinary BEAM builds and tests need no OTP installation. The independent
+installed-OTP-hosted VM selection remains a separate project under
+`tests/vm/common_test`. Linux integration and full OTP compatibility remain
+separate from native development acceptance.

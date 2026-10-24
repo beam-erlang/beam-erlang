@@ -4,6 +4,7 @@
 
 from pathlib import Path
 from support.scratch import scratch
+from support.artifacts import native_executable
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import re
@@ -44,7 +45,7 @@ def check_beam_prefix(prefix, work, fixture, artifacts):
         check((family_ebin / name).read_bytes() == content,
               f"installed {name} differs from its build artifact")
     interactive = selected / "interactive/ebin"
-    check(beam.read_bytes()[:4] == b"\x7fELF", "installed beam is not a native executable")
+    check(native_executable(beam), "installed beam is not a native executable")
     shutil.copyfile(fixture, work / "hello_world.erl")
     out, err = run([*command, "run", "hello_world.erl"], work, env)
     check(out == b"Hello, World!\n" and err == b"", "BEAM source contract changed")

@@ -1,6 +1,7 @@
 """Installed package commands, native build, relocation and minimal help hosting."""
 from pathlib import Path
 from support.scratch import scratch
+from support.artifacts import artifact
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import hashlib
@@ -66,7 +67,7 @@ def cases(prefix, work):
     for selector in ([],):
         for tail in (['--project'], ['--project', ''], ['--project', '--'],
                      ['--project', '.', 'extra'], ['--project', '--runtime=otp']):
-            invoke([*selector, 'run', *tail], 1, 'beam:', str(beam))
+            invoke([*selector, 'run', *tail], 1, 'invalid project arguments', str(beam))
     check(snapshot(work) == before, 'package scaffold changed project or home files')
 
 
@@ -124,10 +125,10 @@ def build_cases(prefix, root, cmake):
     run([pkg, 'build', work], cwd=root, env=env, timeout=30, status=1)
     check((work / 'beam.lock').read_bytes() == saved, 'failed build replaced selected lock')
     check(not (work / '.beam').exists(), 'build created an installed environment')
-    for tail, diagnostic in (([''], 'invalid directory'), (['--bad'], 'invalid build/install option'),
+    for tail, diagnostic in (([''], 'invalid arguments'), (['--bad'], 'invalid arguments'),
                              (['one', 'two'], 'invalid arguments')):
         result = run([pkg, 'build', *tail], cwd=root, env=env, timeout=20, status=1, text=True)
-        check(diagnostic in result.stderr, 'malformed build was accepted')
+        check(diagnostic in result.stderr, f'malformed build diagnostic mismatch for {tail!r}: {result.stderr!r}')
 
 
 def project_shell_cases(prefix, root, env):
@@ -164,7 +165,7 @@ def project_shell_cases(prefix, root, env):
     invoke([pkg, 'build', work], cwd=root, env=env, timeout=60)
     invoke([pkg, 'install', work], cwd=root, env=env, timeout=60)
     result = invoke(shell, cwd=root, env=env, status=1, text=True)
-    assert 'conflicting composition module names' in result.stderr
+    assert 'package conflicts with host module: sets' in result.stderr, result.stderr
 
 
 def main():
@@ -179,6 +180,7 @@ def main():
     root.mkdir(parents=True)
     with scratch(root):
         env = isolated_environment(root)
+        env["PATH"]=str(Path(args.cmake).parent)+os.pathsep+env["PATH"]
         stage = root / 'stage'
         stage_installation(args, stage)
         work = root / 'unrelated work 日本語'
@@ -195,7 +197,7 @@ def main():
         # Keep exactly the runtime and ordinary support inventories plus package policy. No compiler,
         # OTP apps, private CLI helpers, file/network services or native programs.
         for path in (relocated / 'lib').iterdir():
-            if path.name not in {'libbeam.so', 'beam'}:
+            if path.name not in {artifact(relocated,'runtime').name, 'beam'}:
                 if path.is_dir():
                     shutil.rmtree(path)
                 else:

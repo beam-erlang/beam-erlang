@@ -15,6 +15,7 @@ import time
 
 from support.bytecode import RETURNING_ASSETS, copy_bytecode
 from support.files import hidden
+from support.artifacts import artifact, relative as artifact_relative
 from support.process import child_process, run as capture, isolated_environment, check
 
 from ..scenarios import terminal, provenance
@@ -297,8 +298,7 @@ def missing_assets(prefix, fixture, work, env):
     root = prefix / "lib/beam/runtime/beam"
     assets = [root / "cli", root / "interactive",
               prefix / "libexec/beam/erl_child_setup",
-               *(prefix / "lib" / name for name in
-              ("libbeam-file.so", "libbeam-network.so", "libbeam-zlib.so"))]
+               *(artifact(prefix, "component." + unit) for unit in ("file", "network", "zlib"))]
     assets.extend(prefix / relative for relative in RETURNING_ASSETS)
     assets.extend(root.joinpath("interactive/ebin").glob("*.beam"))
     assets.extend(path for path in root.joinpath("cli/ebin").glob("*.beam") if path.stem not in {"lists", "maps"})
@@ -379,12 +379,11 @@ def main():
         (minimal / "lib").mkdir()
         copy_bytecode(prefix, minimal)
         shutil.copy2(prefix / "bin/interactive_acceptance", minimal / "bin/interactive_acceptance")
-        for name in ("libbeam.so",):
-            shutil.copy2(prefix / "lib" / name, minimal / "lib" / name)
+        shutil.copy2(artifact(prefix, "runtime"), minimal / artifact_relative(prefix, "runtime"))
         for name in ("cli", "interactive"):
             relative = Path("lib/beam/runtime/beam") / name
             shutil.copytree(prefix / relative, minimal / relative)
-        expected = set(RETURNING_ASSETS) | {"bin/interactive_acceptance", "lib/libbeam.so"} | {
+        expected = set(RETURNING_ASSETS) | {"bin/interactive_acceptance", artifact_relative(prefix, "runtime")} | {
             str(Path("lib/beam/runtime/beam") / name / path.relative_to(prefix / "lib/beam/runtime/beam" / name))
             for name in ("cli", "interactive")
             for path in (prefix / "lib/beam/runtime/beam" / name).rglob("*") if path.is_file()}

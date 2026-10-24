@@ -92,3 +92,23 @@ const char beam_nif_sdk_v1[] = \"${_identity}\";
         target_link_libraries("${target}" PRIVATE BEAM::Runtime)
     endif()
 endfunction()
+
+# A logical package output is resolved by CMake, never by guessing a suffix.
+function(beam_package_native_output target)
+    cmake_parse_arguments(OUTPUT "" "NAME" "" ${ARGN})
+    if(OUTPUT_UNPARSED_ARGUMENTS OR NOT OUTPUT_NAME MATCHES "^[A-Za-z0-9_-]+$" OR NOT TARGET "${target}")
+        message(FATAL_ERROR "beam_package_native_output requires a target and NAME")
+    endif()
+    get_target_property(_kind "${target}" TYPE)
+    if(NOT _kind MATCHES "^(MODULE_LIBRARY|SHARED_LIBRARY)$")
+        message(FATAL_ERROR "Package native outputs must be module or shared libraries")
+    endif()
+    get_property(_names GLOBAL PROPERTY BEAM_PACKAGE_NATIVE_NAMES)
+    if(OUTPUT_NAME IN_LIST _names)
+        message(FATAL_ERROR "Duplicate native output name: ${OUTPUT_NAME}")
+    endif()
+    set_property(GLOBAL APPEND PROPERTY BEAM_PACKAGE_NATIVE_NAMES "${OUTPUT_NAME}")
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/beam-native-outputs/${OUTPUT_NAME}.toml"
+        CONTENT "name = \"${OUTPUT_NAME}\"\npath = \"priv/$<TARGET_FILE_NAME:${target}>\"\n")
+    install(TARGETS "${target}" LIBRARY DESTINATION priv RUNTIME DESTINATION priv)
+endfunction()

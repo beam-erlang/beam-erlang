@@ -506,6 +506,9 @@ int ethr_runtime_begin(void);
 int ethr_runtime_bind(int main_threads, int reader_groups);
 int ethr_runtime_cleanup(void);
 int ethr_runtime_unbind(void);
+#ifdef __DARWIN__
+int ethr_runtime_reclaim_events(void);
+#endif
 int ethr_runtime_system_cleanup(void);
 int ethr_runtime_destroy(void);
 int ethr_runtime_is_active(void);

@@ -2,6 +2,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include <beam.h>
 #include "bytecode_input.h"
+#include "host_observe.h"
+#include <unistd.h>
 #include <dirent.h>
 #include <errno.h>
 #include <signal.h>
@@ -14,10 +16,14 @@
 static beam_error error;
 static int entries(const char *path)
 {
+#ifdef __APPLE__
+    return beam_test_host_entries(path);
+#else
     DIR *dir = opendir(path); int count = 0; struct dirent *e;
     CHECK(dir);
     while ((e = readdir(dir))) if (e->d_name[0] != '.') ++count;
     closedir(dir); return count;
+#endif
 }
 static beam_buffer read_bytes(const char *path)
 {
@@ -88,7 +94,7 @@ int main(int argc, char **argv)
     beam_module_spec modules[14];
     memcpy(modules, base.modules, base.count * sizeof(*base.modules)); modules[base.count] = module;
     char zlib_path[4096], helper[4096];
-    CHECK(snprintf(zlib_path, sizeof(zlib_path), "%s/lib/libbeam-zlib.so", argv[1]) < (int)sizeof(zlib_path));
+    CHECK(snprintf(zlib_path, sizeof(zlib_path), "%s/" BEAM_TEST_ZLIB_RELATIVE, argv[1]) < (int)sizeof(zlib_path));
     CHECK(snprintf(helper, sizeof(helper), "%s/libexec/beam/erl_child_setup", argv[1]) < (int)sizeof(helper));
     unsigned services = !strcmp(argv[4], "host") ? BEAM_SERVICE_OUTPUT | BEAM_SERVICE_CODE :
         !strcmp(argv[4], "zlib") ? BEAM_SERVICE_ZLIB : BEAM_SERVICE_PROGRAM;

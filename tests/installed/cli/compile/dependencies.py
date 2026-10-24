@@ -46,7 +46,7 @@ def dependency_cases(c):
     c.compile("--deterministic", "--depfile", depfile, "-o", out,
               "-I", one, f"-I{two}", "-DSELECT", source)
     check(depfile.read_bytes() == first_dep, "dependency ordering is unstable")
-    run(["/usr/bin/make", "-f", depfile, "-q", out / "dep_test.beam"], c.work, c.env)
+    run([c.make, "-f", depfile, "-q", out / "dep_test.beam"], c.work, c.env)
     previous = (out / "dep_test.beam").read_bytes()
     doc = root / "module doc.md"
     documentation = doc.read_text()

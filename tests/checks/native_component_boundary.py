@@ -6,6 +6,8 @@ import collections
 import json
 import re
 import shlex
+import sys
+import shutil
 
 from support.process import check, isolated_environment, run
 
@@ -49,10 +51,13 @@ DRIVER_API = {"erl_errno_id", "set_busy_port", "set_port_control_flags"}
 
 
 def symbols(args, path, *options):
+    if sys.platform == 'darwin':
+        options=[option for option in options if option not in ('-D','--defined-only')]
+        if '-u' not in options: options.append('-U')
     output = run([args.nm, *options, str(path)], cwd=args.test_dir,
                  env=args.environment, timeout=10, text=True).stdout
-    return [line.split()[-1].split("@", 1)[0]
-            for line in output.splitlines() if line.split()]
+    names=[line.split()[-1].split("@",1)[0] for line in output.splitlines() if line.split()]
+    return [name[1:] if sys.platform=='darwin' and name.startswith('_') else name for name in names]
 
 
 def command_paths(command):
@@ -71,6 +76,14 @@ def public_api(name):
 
 
 def dynamic_links(args, library):
+    if sys.platform == 'darwin':
+        output=run([args.otool,'-L',library],cwd=args.test_dir,env=args.environment,timeout=10,text=True).stdout
+        identity=run([args.otool,'-D',library],cwd=args.test_dir,env=args.environment,timeout=10,text=True).stdout
+        own={line.strip() for line in identity.splitlines()[1:]}
+        needed={Path(path).name for path in re.findall(r'^\t(.+?) \(',output,re.M) if path not in own}
+        commands=run([args.otool,'-l',library],cwd=args.test_dir,env=args.environment,timeout=10,text=True).stdout
+        paths=set(re.findall(r'cmd LC_RPATH\s+cmdsize \d+\s+path (.+?) \(offset',commands))
+        return needed,paths
     output = run([args.readelf, "--dynamic", str(library)], cwd=args.test_dir,
                  env=args.environment, timeout=10, text=True).stdout
     needed = set(re.findall(r"\(NEEDED\).*?\[([^]]+)\]", output))
@@ -101,14 +114,14 @@ def check_extension_linkage(args, target, library, links, runtime_exports):
     check(target not in links, f"libbeam still links {target}")
     check(Path(library).is_file(), f"{target} library was not built: {library}")
     needed, search_paths = dynamic_links(args, library)
-    check("$ORIGIN/../../../.." in search_paths and
-          all(path.startswith("$ORIGIN") for path in search_paths),
+    check(args.origin+"/../../../.." in search_paths and
+          all(path.startswith(args.origin) for path in search_paths),
           f"{target} contains a nonrelocatable native search path: {search_paths}")
     if stem in {"prim_socket_nif", "prim_net_nif"}:
         check(f"lib{family}_socket_backend.so" in needed and "$ORIGIN" in search_paths,
               f"{target} does not retain and locate its family socket backend: {needed}")
     else:
-        check("libbeam.so" in needed, f"{target} lacks its explicit libbeam dependency")
+        check(args.runtime_soname in needed, f"{target} lacks its explicit libbeam dependency")
     other_family = "beam" if family == "otp" else "otp"
     check(not any(other_family + "_" in name for name in needed),
           f"{target} links another family's native implementation: {needed}")
@@ -149,10 +162,10 @@ def check_unit_linkage(args, target, library, links, runtime_exports, expected_e
     name = target.removeprefix("beam_").removesuffix("_component")
     check(target not in links, f"libbeam links optional {name} component")
     needed, search_paths = dynamic_links(args, library)
-    check("libbeam.so" in needed and
+    check(args.runtime_soname in needed and
           not any("beam-" in item or "socket_backend" in item for item in needed),
           f"{name} unit is not independently deployable: {needed}")
-    check(search_paths == {"$ORIGIN"},
+    check(search_paths == {args.origin},
           f"{name} unit does not resolve its adjacent runtime library: {search_paths}")
     exports = set(symbols(args, library, "-D", "-g", "--defined-only"))
     check(exports == expected_exports, f"{name} unit exposes unexpected symbols: {exports}")
@@ -182,6 +195,9 @@ def main():
                         metavar=("TARGET", "LINK_RECORD", "LIBRARY"))
     parser.add_argument("--test-dir", type=Path, required=True)
     args = parser.parse_args()
+    args.otool=shutil.which("otool")
+    args.origin="@loader_path" if sys.platform=="darwin" else "$ORIGIN"
+    args.runtime_soname=Path(args.runtime[0][2]).name
     args.environment = isolated_environment(args.test_dir)
     check(len(args.runtime) == 1 and args.runtime[0][0] == "libbeam",
           f"unexpected linked runtimes: {args.runtime}")

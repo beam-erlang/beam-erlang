@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <locale.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,10 @@
 #include "module.h"
 #include "fixtures.h"
 #include "support.h"
+#ifdef __APPLE__
+#include <unistd.h>
+#include "host_observe.h"
+#endif
 
 /* Internal acceptance instrumentation; these are not SDK interfaces. */
 extern void beam_runtime_memory_usage(size_t *, size_t *, size_t *, size_t *);
@@ -47,6 +52,16 @@ static int host_settings_unchanged(const char *locale)
 
 static int entries(const char *path)
 {
+#ifdef __APPLE__
+    if (!strcmp(path, "/proc/self/task")) return beam_test_host_threads(getpid());
+    if (!strcmp(path, "/proc/self/fd")) {
+        int *descriptors; size_t count;
+        if (beam_test_host_fds(getpid(), &descriptors, &count)) return -1;
+        free(descriptors);
+        return count <= INT_MAX ? (int)count : -1;
+    }
+    errno = EINVAL; return -1;
+#else
     DIR *dir = opendir(path);
     struct dirent *entry;
     int count = 0;
@@ -55,10 +70,14 @@ static int entries(const char *path)
         if (entry->d_name[0] != '.') ++count;
     closedir(dir);
     return count;
+#endif
 }
 
 static int executable_mappings(void)
 {
+#ifdef __APPLE__
+    return beam_test_host_executable_regions();
+#else
     FILE *file = fopen("/proc/self/maps", "r");
     char line[4096], permissions[5];
     int count = 0;
@@ -68,6 +87,7 @@ static int executable_mappings(void)
             ++count;
     fclose(file);
     return count;
+#endif
 }
 
 static int resources_released(int system_released, int steady_system)
@@ -400,6 +420,9 @@ int main(void)
             }
             CHECK(state.state == BEAM_VM_HALT_REQUESTED && state.halt_status == 19);
             expected_halt = 19;
+            CHECK(beam_vm_call(vm, NULL, NULL, (beam_bytes){NULL, 0}, NULL) == BEAM_STOPPED);
+            CHECK(entries("/proc/self/fd") == fds);
+            CHECK(joined_thread_count(threads) == threads);
         } else {
             CHECK(call_atom(vm, "pending", empty, "ok") == 0);
             pause_ms(75);

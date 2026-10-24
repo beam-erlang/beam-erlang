@@ -13,6 +13,11 @@
 #include <unistd.h>
 #include "module.h"
 #include "fixtures.h"
+#ifdef __APPLE__
+#include <errno.h>
+#include <limits.h>
+#include "host_observe.h"
+#endif
 
 #define CHECK(test) do { if (!(test)) { \
     fprintf(stderr, "bare:%d: %s\n", __LINE__, #test); return 1; \
@@ -44,6 +49,16 @@ static void *host_worker(void *unused)
 
 static int entries(const char *path)
 {
+#ifdef __APPLE__
+    if (!strcmp(path, "/proc/self/task")) return beam_test_host_threads(getpid());
+    if (!strcmp(path, "/proc/self/fd")) {
+        int *descriptors; size_t count;
+        if (beam_test_host_fds(getpid(), &descriptors, &count)) return -1;
+        free(descriptors);
+        return count <= INT_MAX ? (int)count : -1;
+    }
+    errno = EINVAL; return -1;
+#else
     DIR *dir = opendir(path);
     struct dirent *entry;
     int count = 0;
@@ -52,6 +67,7 @@ static int entries(const char *path)
         if (entry->d_name[0] != '.') ++count;
     closedir(dir);
     return count;
+#endif
 }
 
 static int small_result(const beam_result *r, unsigned value)

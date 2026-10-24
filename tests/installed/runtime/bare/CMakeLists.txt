@@ -68,3 +68,9 @@ target_link_libraries(base_host PRIVATE BEAM::${RUNTIME_COMPONENT} Threads::Thre
 
 target_include_directories(base_host PRIVATE "${TEST_SUPPORT_DIR}")
 beam_target_bytecode_verifier(base_host INVENTORIES base)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    foreach(_target bare_host lifecycle_host management_host base_host)
+        target_sources(${_target} PRIVATE "${TEST_SUPPORT_DIR}/host_observe.c")
+        target_include_directories(${_target} PRIVATE "${TEST_SUPPORT_DIR}")
+    endforeach()
+endif()

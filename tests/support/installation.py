@@ -1,6 +1,7 @@
 """Acquire disposable installations without changing the acceptance assertions."""
 from pathlib import Path
 import shutil
+import sys
 
 from .process import isolated_environment, run
 
@@ -9,6 +10,7 @@ def add_installation_arguments(parser):
     inputs = parser.add_mutually_exclusive_group(required=True)
     inputs.add_argument('--build-dir', type=Path)
     inputs.add_argument('--acquired-prefix', type=Path)
+    parser.add_argument('--host-observer', type=Path)
     parser.add_argument('--test-support-build', type=Path,
                         help='Matching generated test inputs; never a runtime/install fallback')
 
@@ -23,6 +25,12 @@ def resolve_installation(parser, args, *, private=False):
         args.build_dir = args.test_support_build
     if args.build_dir:
         args.build_dir = args.build_dir.resolve()
+    if sys.platform=='darwin':
+        from . import host_observe
+        observer=args.host_observer or (args.build_dir/'tests/beam_test_host_observer' if args.build_dir else None)
+        if observer is None or not observer.is_file():
+            parser.error('Darwin acceptance requires an explicit native --host-observer or matching test-support build')
+        host_observe.selected_observer=observer.resolve(strict=True)
     return args
 
 

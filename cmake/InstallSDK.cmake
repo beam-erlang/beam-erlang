@@ -37,6 +37,15 @@ add_library(beam_driver_sdk INTERFACE)
 set_target_properties(beam_driver_sdk PROPERTIES EXPORT_NAME Driver)
 target_include_directories(beam_driver_sdk INTERFACE $<INSTALL_INTERFACE:include/beam/nif>)
 install(TARGETS beam_driver_sdk EXPORT BEAMTargets)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    foreach(_native_sdk beam_nif_sdk beam_driver_sdk)
+        # Native modules resolve the selected host's public API at load time.
+        # Executables and static libraries must retain ordinary link checking.
+        target_link_options(${_native_sdk} INTERFACE
+            "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,MODULE_LIBRARY>:LINKER:-undefined,dynamic_lookup>"
+            "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>:LINKER:-undefined,dynamic_lookup>")
+    endforeach()
+endif()
 install(FILES
     "${CMAKE_SOURCE_DIR}/src/beam_native.h"
     "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_nif.h"
@@ -100,6 +109,10 @@ install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMDeployment.cmake" DESTINATION lib/c
 install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMNif.cmake" DESTINATION lib/cmake/BEAM)
 
 # VM, public native headers, generic process helper and core inspection bytes.
+set(_static_exports RuntimeExports.list)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(_static_exports RuntimeExports.macho)
+endif()
 set(BEAM_RUNTIME_ARTIFACT_RECORDS
     "sdk.target|target-metadata|lib/beam/target.toml|compiler.generation"
     "compiler.generation|compiler-provenance|lib/beam/compiler-generation.json|-"
@@ -107,7 +120,7 @@ set(BEAM_RUNTIME_ARTIFACT_RECORDS
     "runtime.static|runtime-static|${BEAM_STATIC_RELATIVE}|link.static,link.static.configuration,link.static.exports"
     "link.static|link-support|lib/cmake/BEAM/BEAMStaticTargets.cmake|-"
     "link.static.configuration|link-support|lib/cmake/BEAM/BEAMStaticTargets-%CONFIG%.cmake|-"
-    "link.static.exports|link-support|lib/cmake/BEAM/RuntimeExports.list|-"
+    "link.static.exports|link-support|lib/cmake/BEAM/${_static_exports}|-"
 )
 if(BEAM_BUILD_CLI)
     list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS

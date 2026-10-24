@@ -8,6 +8,9 @@
 #include <signal.h>
 #include <termios.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include "host_observe.h"
+#endif
 
 static int selected_break = -1;
 static int alter_terminal;
@@ -22,6 +25,9 @@ static void check(int test, const char *message)
 
 static unsigned threads(void)
 {
+#ifdef __APPLE__
+    int count=beam_test_host_threads(getpid()); check(count>0,"thread inventory"); return (unsigned)count;
+#else
     DIR *directory = opendir("/proc/self/task");
     struct dirent *entry;
     unsigned count = 0;
@@ -29,6 +35,17 @@ static unsigned threads(void)
     while ((entry = readdir(directory))) if (entry->d_name[0] != '.') ++count;
     closedir(directory);
     return count;
+#endif
+}
+
+static int stream_flags(int fd)
+{
+    int flags = fcntl(fd, F_GETFL);
+#ifdef __APPLE__
+    /* XNU's FWASWRITTEN is descriptor history, not a mutable stream option. */
+    if (flags >= 0) flags &= ~0x00010000;
+#endif
+    return flags;
 }
 
 static beam_status ready(void *context, beam_bytes request, beam_host_reply *reply)
@@ -71,7 +88,7 @@ static beam_status ready(void *context, beam_bytes request, beam_host_reply *rep
             check(flags >= 0 && fcntl(0, F_SETFL, flags ^ O_NONBLOCK) == 0,
                   "change running stream flags");
             for (int fd = 0; fd < 2; ++fd) {
-                running_flags[fd] = fcntl(fd, F_GETFL);
+                running_flags[fd] = stream_flags(fd);
                 check(running_flags[fd] >= 0, "capture running stream flags");
             }
         } else {
@@ -82,7 +99,7 @@ static beam_status ready(void *context, beam_bytes request, beam_host_reply *rep
                   !memcmp(current.c_cc, running_terminal.c_cc, sizeof(current.c_cc)),
                   "continue restores running terminal mode");
             for (int fd = 0; fd < 2; ++fd)
-                check(fcntl(fd, F_GETFL) == running_flags[fd],
+                check(stream_flags(fd) == running_flags[fd],
                       "continue restores running stream flags");
         }
     }

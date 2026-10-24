@@ -1,6 +1,7 @@
 # config.h, erl_int_sizes_config.h, and ethread_header_config.h.
 #
-# Target compile/link probes; never execute a target program at configure time.
+# Target compile/link probes. The native Darwin poll behavior check runs only
+# when not cross-compiling; cross builds retain its conservative select fallback.
 
 include(CheckTypeSize)
 include(CheckIncludeFile)
@@ -134,6 +135,8 @@ check_c_source_compiles([=[
 # Linux glibc seed for a vanilla build.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     include("${CMAKE_CURRENT_LIST_DIR}/platform/LinuxFeatures.cmake")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    include("${CMAKE_CURRENT_LIST_DIR}/platform/DarwinFeatures.cmake")
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/platform/Features.cmake")
 

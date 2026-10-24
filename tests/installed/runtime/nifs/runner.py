@@ -1,4 +1,6 @@
 """Installed external NIF admission, project launch and repeated teardown."""
+from support.bytecode import TEST_SUPPORT_DIR
+from support.artifacts import artifact, relative as artifact_relative
 import argparse
 import hashlib
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
@@ -28,12 +30,13 @@ def main():
     with scratch(root):
         source = args.source_dir.resolve()
         env = isolated_environment(root)
+        env["PATH"]=str(Path(args.cmake).parent)+os.pathsep+env["PATH"]
         def execute(argv, **kw):
             return run([str(a) for a in argv], cwd=root, env=env, timeout=180, text=True, **kw)
         prefix = root / 'SDK prefix λ'
         stage_installation(args, prefix)
         build = root / 'native-build'
-        execute([args.cmake, '-S', source, '-B', build, f'-DCMAKE_PREFIX_PATH={prefix}',
+        execute([args.cmake, '-S', source, '-B', build, f'-DCMAKE_PREFIX_PATH={prefix}', f'-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}',
                  f'-DRUNTIME_COMPONENT={"RuntimeStatic" if args.linkage == "static" else "Runtime"}'])
         execute([args.cmake, '--build', build, '-j', '4'])
         execute([prefix / 'bin/beam', 'compile', '-o', build, '--', source / 'probe.erl', source / 'probe2.erl'])
@@ -43,7 +46,7 @@ def main():
         shutil.copy2(build / 'native_acceptance', stage / 'bin/host')
         shutil.copy2(build / 'builtin_acceptance', stage / 'bin/builtins')
         if args.linkage == 'shared':
-            shutil.copy2(prefix / 'lib/libbeam.so', stage / 'lib/libbeam.so')
+            shutil.copy2(artifact(prefix,'runtime'), stage / artifact_relative(prefix,'runtime'))
         else:
             for mode in ('second_runtime', 'transitive_runtime'):
                 log = root / f'{mode}.events'

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "support.h"
+#include <unistd.h>
 #include "bytecode_input.h"
 
 void completion_mode(const char *root, const char *fixture)
@@ -63,6 +64,9 @@ void completion_mode(const char *root, const char *fixture)
 
 static int task_count(void)
 {
+#ifdef __APPLE__
+    int count=beam_test_host_threads(getpid()); check(count>0,"process tasks"); return count;
+#else
     DIR *directory = opendir("/proc/self/task");
     struct dirent *entry;
     int count = 0;
@@ -71,6 +75,7 @@ static int task_count(void)
         if (entry->d_name[0] != '.') ++count;
     closedir(directory);
     return count;
+#endif
 }
 
 static void reject_preparation(beam_return_options *options, beam_status expected)
@@ -101,7 +106,7 @@ static void component_options(const char *root, beam_return_options *options,
     options->services = BEAM_SERVICE_FILE;
     options->modules = modules; options->module_count = 13;
     for (int index = 0; index < 2; ++index) {
-        snprintf(paths[index], 4096, "%s/lib/libbeam-%s.so", root, names[index]);
+        snprintf(paths[index], 4096, "%s/%s", root, beam_test_component(names[index]));
         components[index].struct_size = sizeof components[index];
         components[index].kind = kinds[index];
         components[index].path = paths[index];

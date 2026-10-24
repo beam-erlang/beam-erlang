@@ -66,12 +66,12 @@ int main(void)
         return 1;
     /* Diagnose the unsafe binding before invoking an ABI-incompatible function. */
     if (!dladdr(dlsym(RTLD_DEFAULT, "pcre2_match_8"), &provider) ||
-        !provider.dli_fname || !strstr(provider.dli_fname, "libpcre2-8.so")) {
+        !provider.dli_fname || !strstr(provider.dli_fname, "libpcre2-8.")) {
         fputs("Host PCRE resolved outside the system PCRE library\n", stderr);
         return 1;
     }
     if (!dladdr(dlsym(RTLD_DEFAULT, "inflate"), &provider) ||
-        !provider.dli_fname || !strstr(provider.dli_fname, "libz.so")) {
+        !provider.dli_fname || !strstr(provider.dli_fname, "libz.")) {
         fputs("Host compression resolved outside the system zlib library\n", stderr);
         return 1;
     }

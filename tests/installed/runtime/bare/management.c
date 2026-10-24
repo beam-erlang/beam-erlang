@@ -10,6 +10,10 @@
 #include <string.h>
 #include <time.h>
 #include "fixtures.h"
+#ifdef __APPLE__
+#include <unistd.h>
+#include "host_observe.h"
+#endif
 
 /* Private accounting used only by installed acceptance. */
 extern void beam_runtime_memory_usage(size_t *, size_t *, size_t *, size_t *);
@@ -34,6 +38,9 @@ static double seconds(void)
 
 static int threads(void)
 {
+#ifdef __APPLE__
+    return beam_test_host_threads(getpid());
+#else
     DIR *dir = opendir("/proc/self/task");
     struct dirent *entry;
     int count = 0;
@@ -42,6 +49,7 @@ static int threads(void)
         if (entry->d_name[0] != '.') ++count;
     closedir(dir);
     return count;
+#endif
 }
 
 static int joined_thread_count(int baseline)

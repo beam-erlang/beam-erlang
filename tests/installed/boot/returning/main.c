@@ -14,7 +14,7 @@ int main(int argc, char **argv)
         char loaded[4096], expected[4096], canonical[4096];
         size_t required = 0;
         beam_error error = {0};
-        snprintf(expected, sizeof expected, "%s/lib/libbeam.so", root);
+        snprintf(expected, sizeof expected, "%s/" BEAM_TEST_RUNTIME_RELATIVE, root);
         check(beam_library_path(loaded, sizeof loaded, &required, &error) == BEAM_OK, error.message);
         check(realpath(expected, canonical) != NULL && !strcmp(loaded, canonical), "host uses its deployed libbeam");
     }

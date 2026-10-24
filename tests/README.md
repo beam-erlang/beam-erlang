@@ -15,6 +15,20 @@ omitted rather than truncated into invalid data. Set `BEAM_TEST_KEEP_WORK=1` onl
 for active debugging, then remove the retained directory after investigation.
 Selected input SDKs and normal development builds are not cleanup targets.
 
+On Darwin, `test-support` also qualifies a test-only Seatbelt filesystem-denial
+backend against usable files, executables and native libraries, including symlink
+aliases and descendants. Failure to establish the sandbox is a failure, never
+permission to retry without isolation. This pilot does not establish process
+namespace isolation or complete installed-product isolation.
+
+The test-owned native host observer measures descriptor sets, thread counts,
+child PIDs and executable mappings. Its regression creates and removes actual
+resources and requires restoration; unavailable or incomplete observations fail.
+Darwin uses Mach and process-inspection interfaces, confined to test support.
+Linux retains procfs observations. The observer is not installed or exported as
+an SDK interface. Bare lifecycle clients use these Darwin observations without
+changing their existing cleanup assertions.
+
 ## Test layout
 
 `installed/` contains installed SDK and modern distribution acceptance,

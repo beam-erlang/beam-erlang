@@ -46,6 +46,7 @@ def kill_group(pid):
 @contextmanager
 def child_process(command, *, cwd, env, **kwargs):
     command = [str(part) for part in command]
+    kwargs.setdefault("close_fds", True)
     child = subprocess.Popen(command, cwd=cwd, env=env,
                              start_new_session=True, **kwargs)
     try:

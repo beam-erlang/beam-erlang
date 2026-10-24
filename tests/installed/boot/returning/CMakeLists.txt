@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(beam_returning_acceptance LANGUAGES C)
 find_package(BEAM CONFIG REQUIRED)
+include("${TEST_SUPPORT_DIR}/HostObservation.cmake")
+set(_beam_test_rpath "$ORIGIN/../lib")
+if(APPLE)
+    set(_beam_test_rpath "@executable_path/../lib")
+endif()
 if(NOT EXISTS "${RETURN_HELPER_SOURCE}")
     message(FATAL_ERROR "Require the production public-runtime helper source")
 endif()
@@ -12,7 +17,7 @@ add_executable(returning_minimal ${_sources})
 target_link_libraries(returning_minimal PRIVATE BEAM::Runtime)
 target_compile_features(returning_minimal PRIVATE c_std_11)
 set_target_properties(returning_minimal PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN/../lib")
+    BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "${_beam_test_rpath}")
 
 # This fixture intentionally violates the matching-build descriptor contract.
 # Its private include is available only to distribution acceptance.
@@ -25,3 +30,6 @@ beam_target_bytecode_verifier(returning_acceptance INVENTORIES base boot service
 
 target_include_directories(returning_minimal PRIVATE "${TEST_SUPPORT_DIR}")
 beam_target_bytecode_verifier(returning_minimal INVENTORIES base boot services)
+
+beam_test_observe(returning_acceptance)
+beam_test_observe(returning_minimal)

@@ -193,6 +193,10 @@ static int cmp_fd(const void *left, const void *right)
 
 void snapshot_fds(int *fds, int capacity, int *count)
 {
+#ifdef __APPLE__
+    *count=beam_test_host_copy_fds(fds,(size_t)capacity);
+    check(*count>=0,"process descriptors");
+#else
     DIR *directory = opendir("/proc/self/fd");
     struct dirent *entry;
     int self;
@@ -209,6 +213,7 @@ void snapshot_fds(int *fds, int capacity, int *count)
     }
     closedir(directory);
     qsort(fds, (size_t)*count, sizeof(int), cmp_fd);
+#endif
 }
 
 static int fd_sets_equal(const int *before, int before_count, const int *after, int after_count)
@@ -296,7 +301,7 @@ void run_entry(const char *root, const char *function, beam_bytes arguments,
     for (size_t i = 0; i < 3; ++i) {
         if (bits[i] && !(services & bits[i])) continue;
         size_t n = options.component_count++;
-        check(snprintf(paths[n], sizeof paths[n], "%s/lib/libbeam-%s.so", root, names[i]) < (int)sizeof paths[n], "component path");
+        check(snprintf(paths[n], sizeof paths[n], "%s/%s", root, beam_test_component(names[i])) < (int)sizeof paths[n], "component path");
         components[n] = (beam_component_spec){sizeof(beam_component_spec), kinds[i], paths[n]};
     }
     options.components = components;

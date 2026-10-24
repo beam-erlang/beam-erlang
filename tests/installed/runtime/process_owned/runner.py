@@ -3,6 +3,8 @@
 from functools import partial
 from pathlib import Path
 from support.scratch import scratch
+from support.artifacts import artifact, relative as artifact_relative
+from support.bytecode import TEST_SUPPORT_DIR
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import fcntl
@@ -22,12 +24,30 @@ def run(command, env, cwd, status=0, timeout=60):
     return capture(command, env=env, cwd=cwd, timeout=timeout, status=status, text=True, errors="replace")
 
 
+def terminal_mode(fd):
+    mode = termios.tcgetattr(fd)
+    if os.uname().sysname == "Darwin":
+        # PENDIN is kernel input-reprocessing state, set when ICANON is restored.
+        # It is not a configured terminal mode and tcsetattr cannot clear it.
+        mode[3] &= ~termios.PENDIN
+    return mode
+
+
+def stream_flags(fd):
+    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+    if os.uname().sysname == "Darwin":
+        # XNU FWASWRITTEN records descriptor history, not an F_SETFL option.
+        # https://github.com/apple/darwin-xnu/blob/main/bsd/sys/fcntl.h
+        flags &= ~0x00010000
+    return flags
+
+
 def terminal_check(command, env, cwd, policy, nonblocking, interrupt):
     master, slave = pty.openpty()
     process = None
     os.set_blocking(slave, not nonblocking)
-    initial = termios.tcgetattr(slave)
-    initial_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
+    initial = terminal_mode(slave)
+    initial_flags = stream_flags(slave)
     output = bytearray()
     deadline = time.monotonic() + 60
 
@@ -50,7 +70,7 @@ def terminal_check(command, env, cwd, policy, nonblocking, interrupt):
             read_until(b"process_root_ready")
             process.send_signal(signal.SIGINT)
             read_until(b"(d)istribution")
-            if termios.tcgetattr(slave) != initial or not os.get_blocking(slave):
+            if terminal_mode(slave) != initial or not os.get_blocking(slave):
                 raise RuntimeError("break menu did not restore initial terminal mode and blocking I/O")
             os.write(master, b"c\n")
         _, error = process.communicate(timeout=max(1, deadline - time.monotonic()))
@@ -66,10 +86,10 @@ def terminal_check(command, env, cwd, policy, nonblocking, interrupt):
         expected = 2 if interrupt else 1
         if process.returncode or error or output.count(b"process_root_ready") != expected:
             raise RuntimeError(f"terminal policy {policy} failed: {process.returncode} {bytes(output)!r} {error!r}")
-        if termios.tcgetattr(slave) != initial:
-            raise RuntimeError(f"terminal policy {policy} left terminal settings changed")
-        if fcntl.fcntl(slave, fcntl.F_GETFL) != initial_flags:
-            raise RuntimeError(f"terminal policy {policy} left stream flags changed")
+        if terminal_mode(slave) != initial:
+            raise RuntimeError(f"terminal policy {policy} left terminal settings changed: initial={initial!r}, actual={termios.tcgetattr(slave)!r}")
+        if stream_flags(slave) != initial_flags:
+            raise RuntimeError(f"terminal policy {policy} left stream flags changed: initial={initial_flags:#x}, actual={fcntl.fcntl(slave, fcntl.F_GETFL):#x}")
     finally:
         if process is not None and process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
@@ -105,14 +125,14 @@ def main():
                      "--", str(args.source_dir / "fixtures" / f"{name}.erl")])
         client = args.test_dir / "client"
         execute([args.cmake, "-S", str(args.source_dir), "-B", str(client),
-             f"-DCMAKE_PREFIX_PATH={prefix}"])
+             f"-DCMAKE_PREFIX_PATH={prefix}", f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}"])
         execute([args.cmake, "--build", str(client)])
         stage = args.test_dir / "stage"
         (stage / "bin").mkdir(parents=True)
         (stage / "lib").mkdir()
         shutil.copy2(client / "process_owned", stage / "bin/host")
         shutil.copy2(client / "preloads", stage / "bin/preloads")
-        shutil.copy2(prefix / "lib/libbeam.so", stage / "lib/libbeam.so")
+        shutil.copy2(artifact(prefix,"runtime"), stage / artifact_relative(prefix,"runtime"))
         deployed = args.test_dir / "relocated root λ"
         stage.rename(deployed)
         work = args.test_dir / "unrelated"
@@ -139,7 +159,7 @@ def main():
                 raise RuntimeError(f"unexpected root diagnostics: {result.stderr!r}")
         for policy in range(4):
             master, slave = pty.openpty()
-            initial = termios.tcgetattr(slave)
+            initial = terminal_mode(slave)
             try:
                 result = subprocess.run(
                     [str(deployed / "bin/host"), str(bytecode / "process_root.beam"), "0", str(policy)],
@@ -157,7 +177,7 @@ def main():
                         break
                 if result.returncode or output.replace(b"\r\n", b"\n") != b"process_root_ready\n" or result.stderr:
                     raise RuntimeError(f"break policy {policy} failed: {bytes(output)!r} {result.stderr!r}")
-                if termios.tcgetattr(slave) != initial:
+                if terminal_mode(slave) != initial:
                     raise RuntimeError(f"break policy {policy} left terminal settings changed")
             finally:
                 os.close(slave)

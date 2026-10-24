@@ -2532,6 +2532,7 @@ static void deref_nifmod(struct erl_module_nif* lib)
         ASSERT(lib->handle == NULL);
         ASSERT(lib->component == NULL);
         ASSERT(lib->mod == NULL);
+        erts_mtx_destroy(&lib->load_mtx);
         erts_free(ERTS_ALC_T_NIF, lib);
     }
 }
@@ -5098,6 +5099,9 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
                 erase_hashed_stubs(lib->finish);
                 erts_free(ERTS_ALC_T_NIF, lib->finish);
             }
+	    /* A failed load never publishes the library. Release its lock before
+	     * freeing the storage and removing the ownership registration. */
+	    erts_mtx_destroy(&lib->load_mtx);
 	    erts_free(ERTS_ALC_T_NIF, lib);
 	}
 	if (handle != NULL) {

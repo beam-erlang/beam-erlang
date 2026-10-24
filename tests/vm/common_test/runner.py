@@ -10,6 +10,7 @@ import shutil
 import stat
 import subprocess
 import time
+import sys
 
 from support.process import child_process, isolated_environment
 from support.scratch import scratch
@@ -161,14 +162,14 @@ def erl_string(value):
     return json.dumps(str(value), ensure_ascii=False)
 
 
-def expression(prefix, flavor, suite, stage, work):
+def expression(prefix, flavor, suite, stage, work, observer=None):
     """Check the live host before compiling and executing test-owned inputs."""
     origins = ",".join(ORIGIN_MODULES)
     sources = [stage / name for name in
                ("ts_install_cth.erl", "beam_vm_ct_event.erl", suite + ".erl")]
     files = "[" + ",".join(map(erl_string, sources)) + "]"
     expected = "[" + ",".join(CASES[suite]) + "]"
-    return (
+    code = (
         f"Prefix={erl_string(prefix)},Prefix=code:root_dir(),"
         f"{flavor}=erlang:system_info(emu_flavor),"
         '"29"=erlang:system_info(otp_release),2=erlang:system_info(schedulers_online),'
@@ -195,6 +196,24 @@ def expression(prefix, flavor, suite, stage, work):
         f"ok=file:write_file({erl_string(work / 'ct-result.term')},io_lib:format(\"~tp.~n\",[Result])),"
         f"case Result of {{{len(CASES[suite])},0,{{0,0}}}}->halt(0);_->halt(1) end."
     )
+
+    if sys.platform == 'darwin':
+        require(observer is not None, "Darwin Common Test requires a selected native host observer")
+        linux = ('{ok,Host}=file:read_link("/proc/self/exe"),'
+                 '{ok,Maps}=file:read_file("/proc/self/maps"),nomatch=binary:match(Maps,<<"libbeam.so">>),')
+        native = ('OriginPort=open_port({spawn_executable,' + erl_string(observer) + '},'
+                  '[binary,exit_status,{args,["--images",os:getpid()]}]),'
+                  'OriginRead=fun F(Acc)->receive '
+                  '{OriginPort,{data,B}}->F(<<Acc/binary,B/binary>>);'
+                  '{OriginPort,{exit_status,0}}->Acc '
+                  'after 5000->error(host_observation_timeout) end end,'
+                  '#{<<"executable">>:=OriginExe,<<"files">>:=OriginFiles}=json:decode(OriginRead(<<>>)),'
+                  'OriginExe=unicode:characters_to_binary(Host),true=lists:member(OriginExe,OriginFiles),'
+                  'false=lists:any(fun(Name)->lists:member(filename:basename(Name),'
+                  '[<<"libbeam.so">>,<<"libbeam.dylib">>]) end,OriginFiles),')
+        require(linux in code, "Missing native origin assertion")
+        code = code.replace(linux, native)
+    return code
 
 
 def protocol(suite, all_cases, events, result_text):
@@ -292,9 +311,15 @@ def execute(args):
             environment = isolated_environment(work)
             # Installed launchers and nested compiler invocations retain the explicit bound.
             environment["ERL_FLAGS"] = "+S2:2 +SDcpu2:2 +SDio2"
+            observer = None
+            if sys.platform == 'darwin':
+                require(args.host_observer is not None, "Select --host-observer on Darwin")
+                observer = work / 'host-observer'
+                shutil.copy2(args.host_observer.resolve(strict=True), observer)
+                report['host_observer_sha256'] = digest(observer)
             command = [str(args.otp_prefix.resolve() / "bin/erl"), "+S2:2", "+SDcpu2:2", "+SDio2",
                        "-noshell", "-noinput", "-eval",
-                       expression(args.otp_prefix.resolve(), args.flavor, suite, stage, work)]
+                       expression(args.otp_prefix.resolve(), args.flavor, suite, stage, work, observer)]
             report["commands"] = [command]
 
             def inspect(returncode):
@@ -333,6 +358,7 @@ def main():
     parser.add_argument("--sdk-version", required=True)
     parser.add_argument("--sdk-build-id", required=True)
     parser.add_argument("--flavor", choices=("emu", "jit"), required=True)
+    parser.add_argument("--host-observer", type=Path)
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--suite", choices=CASES)
     parser.add_argument("--test-dir", type=Path)

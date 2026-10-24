@@ -37,7 +37,7 @@ int main(int argc, char **argv)
     CHECK(argc == 3);
     CHECK(strncmp(beam_version(), "BEAM/Erlang " EXPECTED_BEAM_VERSION " ",
                   sizeof("BEAM/Erlang " EXPECTED_BEAM_VERSION " ") - 1) == 0);
-    CHECK(snprintf(expected, sizeof expected, "%s/lib/libbeam.so", argv[1]) < (int)sizeof expected);
+    CHECK(snprintf(expected, sizeof expected, "%s/" BEAM_TEST_RUNTIME_RELATIVE, argv[1]) < (int)sizeof expected);
     CHECK(dladdr((void *)beam_version, &info) && realpath(info.dli_fname, loaded) &&
           realpath(expected, canonical) && !strcmp(loaded, canonical));
     input = fopen(argv[2], "rb");

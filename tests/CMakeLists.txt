@@ -58,9 +58,10 @@ add_test(NAME installed-runtime-artifacts
 set_tests_properties(installed-runtime-artifacts PROPERTIES TIMEOUT 120
     LABELS "installed;SDK;shared"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+find_program(BEAM_TEST_MAKE NAMES gmake make DOC "GNU Make for installed compiler dependency acceptance")
 add_test(NAME installed-compile
     COMMAND ${Python3_EXECUTABLE} -B -m installed.cli.compile.runner
-        --cmake ${CMAKE_COMMAND}
+        --cmake ${CMAKE_COMMAND} --make "${BEAM_TEST_MAKE}"
         --build-dir ${CMAKE_BINARY_DIR}
         --test-dir ${CMAKE_CURRENT_BINARY_DIR}/installed-compile
         --source-dir ${CMAKE_CURRENT_SOURCE_DIR}/installed/cli/compile
@@ -179,9 +180,31 @@ set_tests_properties(installed-process-owned PROPERTIES TIMEOUT 180)
 add_executable(beam_test_etf installed/boot/returning/etf.c installed/boot/returning/etf_test.c)
 target_compile_features(beam_test_etf PRIVATE c_std_11)
 target_compile_options(beam_test_etf PRIVATE -Wall -Wextra -Werror)
+set(_host_observer_checks)
+if(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
+    add_executable(beam_test_host_observer support/host_observe.c support/host_observer.c)
+    target_compile_features(beam_test_host_observer PRIVATE c_std_11)
+    target_compile_options(beam_test_host_observer PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(beam_test_host_observer PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+    list(APPEND _host_observer_checks --host-observer $<TARGET_FILE:beam_test_host_observer>)
+endif()
+set(_isolation_checks)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    add_executable(beam_test_isolation_probe support/isolation_probe.c)
+    add_library(beam_test_isolation_library MODULE support/isolation_probe.c)
+    target_compile_definitions(beam_test_isolation_library PRIVATE BEAM_ISOLATION_LIBRARY)
+    foreach(_target beam_test_isolation_probe beam_test_isolation_library)
+        target_compile_features(${_target} PRIVATE c_std_11)
+        target_compile_options(${_target} PRIVATE -Wall -Wextra -Werror)
+    endforeach()
+    list(APPEND _isolation_checks --isolation-probe $<TARGET_FILE:beam_test_isolation_probe>
+        --isolation-library $<TARGET_FILE:beam_test_isolation_library>)
+endif()
 add_test(NAME test-support
     COMMAND ${Python3_EXECUTABLE} -B -m support.runner
         --etf-check $<TARGET_FILE:beam_test_etf>
+        ${_host_observer_checks}
+        ${_isolation_checks}
         --test-dir ${CMAKE_CURRENT_BINARY_DIR}/support)
 set_tests_properties(test-support PROPERTIES
     TIMEOUT 30 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")

@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <beam.h>
 #include "bytecode_input.h"
+#include "host_observe.h"
+#include <unistd.h>
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -17,6 +19,9 @@ static void require(int condition, const char *message)
 
 static int entries(const char *path)
 {
+#ifdef __APPLE__
+    return beam_test_host_entries(path);
+#else
     DIR *dir = opendir(path);
     struct dirent *entry;
     int count = 0;
@@ -24,6 +29,7 @@ static int entries(const char *path)
     while ((entry = readdir(dir))) if (entry->d_name[0] != '.') ++count;
     closedir(dir);
     return count;
+#endif
 }
 
 static beam_buffer read_bytes(const char *path)
@@ -195,7 +201,7 @@ int main(int argc, char **argv)
     for (int i = 0; i < 2; ++i) {
         if ((i == 0 && !file) || (i == 1 && !network)) continue;
         size_t j = preparation.component_count++;
-        require(snprintf(paths[j], sizeof(paths[j]), "%s/lib/libbeam-%s.so", argv[1], names[i]) < (int)sizeof(paths[j]), "component path");
+        require(snprintf(paths[j], sizeof(paths[j]), "%s/%s", argv[1], beam_test_component(names[i])) < (int)sizeof(paths[j]), "component path");
         components[j] = (beam_component_spec){sizeof(components[j]), kinds[i], paths[j]};
     }
     preparation.components = components;

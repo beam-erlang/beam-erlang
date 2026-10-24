@@ -3,6 +3,7 @@
 from functools import partial
 from pathlib import Path
 from support.scratch import scratch
+from support.artifacts import relative as artifact_relative
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
@@ -22,7 +23,7 @@ def check_runtime_only(execute, cmake, source, prefix, root, phase):
     runtime = root / f'{phase}-runtime-sdk'
     for directory in ('include', 'lib/cmake/BEAM'):
         shutil.copytree(prefix / directory, runtime / directory)
-    for filename in ('lib/libbeam.so', 'lib/beam/sdk.toml', 'lib/beam/runtime-artifacts.json'):
+    for filename in (artifact_relative(prefix,'runtime'), 'lib/beam/sdk.toml', 'lib/beam/runtime-artifacts.json'):
         destination = runtime / filename
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(prefix / filename, destination)

@@ -82,6 +82,9 @@ static int runtime_destroyed;
 
 static int init_ts_event_alloc(void);
 static int destroy_ts_event_alloc(void);
+#ifdef __DARWIN__
+static int reclaim_ts_event_resources(ethr_ts_event *owner);
+#endif
 
 #ifndef __WIN32__
 extern pthread_key_t ethr_ts_event_key__;
@@ -274,7 +277,7 @@ int ethr_runtime_unbind(void)
     if (!runtime_active || !runtime_cleaned)
         return EINVAL;
     tse = ethr_get_tse__();
-    if (!tse || tse->udata || (tse->iflgs & ETHR_TS_EV_BUSY))
+    if (!tse || tse->udata || (tse->iflgs & (ETHR_TS_EV_BUSY | ETHR_TS_EV_PEEK)))
         return EBUSY;
     res = ethr_set_main_thr_status(0, 0);
     if (!res)
@@ -294,6 +297,11 @@ int ethr_runtime_unbind(void)
 #endif
     tse->uflgs = 0;
     ethr_event_reset(&tse->event);
+#ifdef __DARWIN__
+    res = reclaim_ts_event_resources(tse);
+    if (res)
+        return res;
+#endif
     main_threads = 0;
     runtime_active = 0;
     return 0;
@@ -327,7 +335,7 @@ int ethr_runtime_destroy(void)
     if (res)
         return res;
     tse = ethr_get_tse__();
-    if (!tse || tse->udata || (tse->iflgs & ETHR_TS_EV_BUSY))
+    if (!tse || tse->udata || (tse->iflgs & (ETHR_TS_EV_BUSY | ETHR_TS_EV_PEEK)))
         return EBUSY;
     res = ethr_rwmutex_destroy(&xhndl_rwmtx);
     if (res)
@@ -876,6 +884,50 @@ static int destroy_ts_event_alloc(void)
     return 0;
 }
 
+#ifdef __DARWIN__
+/* Stop and runtime unbind follow all worker joins. Unlike
+ * ordinary event recycling, this boundary has no delayed VM event users.
+ * Retain the pool/TLS identities, but release Darwin timed-wait pipe resources.
+ */
+static int reclaim_ts_event_resources(ethr_ts_event *owner)
+{
+    ethr_ts_event *event;
+    int res = 0;
+    ethr_mutex_lock(&ts_ev_alloc_lock);
+    if (used_events != 1) {
+        res = EBUSY;
+        goto done;
+    }
+    for (event = free_ts_ev; event; event = event->next) {
+        if (!(event->iflgs & ETHR_TS_EV_INITED))
+            continue;
+        res = ethr_event_destroy(&event->event);
+        if (res)
+            goto done;
+        event->iflgs &= ~ETHR_TS_EV_INITED;
+    }
+    res = ethr_event_destroy(&owner->event);
+    if (!res) {
+        owner->iflgs &= ~ETHR_TS_EV_INITED;
+        res = ethr_event_init(&owner->event);
+        if (!res)
+            owner->iflgs |= ETHR_TS_EV_INITED;
+    }
+done:
+    ethr_mutex_unlock(&ts_ev_alloc_lock);
+    return res;
+}
+
+int ethr_runtime_reclaim_events(void)
+{
+    ethr_ts_event *owner = ethr_get_tse__();
+    if (!runtime_active || !owner || owner->udata ||
+        (owner->iflgs & (ETHR_TS_EV_BUSY | ETHR_TS_EV_PEEK)))
+        return EBUSY;
+    return reclaim_ts_event_resources(owner);
+}
+#endif
+
 static ethr_ts_event *ts_event_alloc(void)
 {
     ethr_ts_event *ts_ev;
@@ -982,8 +1034,10 @@ int ethr_make_ts_event__(ethr_ts_event **tsepp, int tmp)
 int ethr_free_ts_event__(ethr_ts_event *tsep)
 {
     int res = ethr_event_destroy(&tsep->event);
-    if (res == 0)
+    if (res == 0) {
+        tsep->iflgs &= ~ETHR_TS_EV_INITED;
         ts_event_free(tsep);
+    }
     return res;
 }
 

@@ -8,6 +8,7 @@ from support.installation import add_installation_arguments, resolve_installatio
 import shutil
 
 from support.files import hidden, hidden_paths
+from support.artifacts import artifact
 from support.process import isolated_environment, check
 
 from .basic import basic_cases
@@ -17,10 +18,12 @@ from .dependencies import dependency_cases, transform_case
 from .owned import compiler_lifetime_case, owned_compiler_cases
 
 
-def check_prefix(prefix, work, cmake, build, source, project):
+def check_prefix(prefix, work, cmake, build, source, project, make, ninja):
     for runtime in ("beam",):
         print(f"installed compile: {work.name}, runtime={runtime}", flush=True)
         c = Compiler(prefix, work / runtime, runtime)
+        c.make=make
+        c.ninja=ninja
         basic_cases(c)
         dependency_cases(c)
         literal_make_case(c)
@@ -35,7 +38,7 @@ def inactive_and_help(prefix, work):
     assets = [prefix / "lib/beam/runtime", prefix / "lib/beam/tools/compiler", prefix / "lib/beam/ebin",
               prefix / "libexec/beam",
                        *(prefix / "lib/beam" / inventory for inventory in ("library", "boot", "services")),
-              *(prefix / "lib" / f"libbeam-{unit}.so"
+              *(artifact(prefix, "component." + unit)
                 for unit in ("file", "network", "zlib"))]
     with hidden_paths(assets):
         for runtime in ("beam",):
@@ -48,6 +51,8 @@ def inactive_and_help(prefix, work):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cmake", required=True)
+    parser.add_argument("--ninja", default=shutil.which("ninja"))
+    parser.add_argument("--make", default=shutil.which("gmake") or shutil.which("make"))
     parser.add_argument("--test-dir", required=True, type=Path)
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--project-source-dir", type=Path, required=True)
@@ -61,7 +66,7 @@ def main():
         env = isolated_environment(root)
         stage = root / "stage"
         stage_installation(args, stage)
-        check_prefix(stage, root / "fresh", args.cmake, build, args.source_dir, args.project_source_dir)
+        check_prefix(stage, root / "fresh", args.cmake, build, args.source_dir, args.project_source_dir, args.make, args.ninja)
         inactive_and_help(stage, root / "fresh-independent")
         # Reinstallation preserves the independently owned compiler inventory.
         owned_compiler = stage / "lib/beam/tools/compiler"
@@ -79,7 +84,7 @@ def main():
             c.value(c.work / "incremental.beam", "incremental")
         relocated = root / "relocated prefix κ"
         stage.rename(relocated)
-        check_prefix(relocated, root / "relocated", args.cmake, build, args.source_dir, args.project_source_dir)
+        check_prefix(relocated, root / "relocated", args.cmake, build, args.source_dir, args.project_source_dir, args.make, args.ninja)
         inactive_and_help(relocated, root / "relocated-independent")
         print("installed compile acceptance passed", flush=True)
 

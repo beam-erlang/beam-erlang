@@ -2,6 +2,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include <beam.h>
 #include "bytecode_input.h"
+#include "host_observe.h"
+#include <unistd.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,9 +14,13 @@
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"contracts line %d: %s (%s)\n",__LINE__,#x,error.message); exit(1); } } while (0)
 static beam_error error;
 static int entries(const char *path) {
+#ifdef __APPLE__
+    return beam_test_host_entries(path);
+#else
     DIR *d=opendir(path); struct dirent *e; int n=0; CHECK(d);
     while ((e=readdir(d))) if(e->d_name[0]!='.') ++n;
     closedir(d); return n;
+#endif
 }
 static beam_buffer read_bytes(const char *path) {
     FILE *f=fopen(path,"rb"); long n; beam_buffer b={0};
@@ -64,7 +70,7 @@ int main(int argc,char **argv) {
     beam_component_kind kinds[]={BEAM_COMPONENT_FILE,BEAM_COMPONENT_NETWORK};
     beam_component_spec components[4];
     for(int i=0;i<2;++i) {
-        CHECK(snprintf(paths[i],sizeof(paths[i]),"%s/lib/libbeam-%s.so",argv[1],names[i])<(int)sizeof(paths[i]));
+        CHECK(snprintf(paths[i],sizeof(paths[i]),"%s/%s",argv[1],beam_test_component(names[i]))<(int)sizeof(paths[i]));
         components[i]=(beam_component_spec){sizeof(components[i]),kinds[i],i==0 && faults ? argv[5] : paths[i]};
     }
     size_t size=strlen(argv[3]); unsigned char *arg=calloc(1,size+12); CHECK(arg);

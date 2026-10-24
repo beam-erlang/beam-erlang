@@ -2,6 +2,7 @@
 #include <beam.h>
 #ifdef DEPLOY_RETURNING
 #include "bytecode_input.h"
+#include "host_observe.h"
 #endif
 #include "deployment_host_deployment.h"
 #include "entry.h"
@@ -75,7 +76,7 @@ int main(int argc, char **argv)
         CHECK(snprintf(paths[3], sizeof paths[3], "%s/%s", root,
               file ? TARGET_FILE : zlib ? TARGET_ZLIB : TARGET_NETWORK) < (int)sizeof paths[3]);
 #else
-        CHECK(snprintf(paths[3], sizeof paths[3], "%s/lib/libbeam-%s.so", root, argv[1]) < (int)sizeof paths[3]);
+        CHECK(snprintf(paths[3], sizeof paths[3], "%s/%s", root, beam_test_component(argv[1])) < (int)sizeof paths[3]);
 #endif
         components[0] = (beam_component_spec){sizeof components[0], file ? BEAM_COMPONENT_FILE : zlib ? BEAM_COMPONENT_ZLIB : BEAM_COMPONENT_NETWORK, paths[3]};
         options.component_count = 1;

@@ -9408,6 +9408,10 @@ erts_bare_stop_runtime(void)
         erts_thr_join(bare_poll_tids[ix], NULL);
     erts_bare_trace_join();
     erts_bare_join_async();
+#ifdef __DARWIN__
+    if (ethr_runtime_reclaim_events() != 0)
+        ERTS_INTERNAL_ERROR("could not reclaim stopped thread events");
+#endif
     erts_bare_check_io_close();
     erts_bare_sys_cleanup();
     erts_free(ERTS_ALC_T_TMP, bare_aux_tids);

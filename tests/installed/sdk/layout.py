@@ -5,11 +5,12 @@ import os
 import re
 
 from support.process import check
+from support.artifacts import relative as artifact_relative
 
 
 def check_installation(prefix, bundled=True):
     required = (
-        "bin/beam", "bin/beam-launch", "lib/libbeam.so", "lib/libbeam.a", "libexec/beam/erl_child_setup",
+        "bin/beam", "bin/beam-launch", artifact_relative(prefix,"runtime"), artifact_relative(prefix,"runtime.static"), "libexec/beam/erl_child_setup",
         "include/beam.h", "include/beam_bytecode.h", "include/beam_base_inventory.h",
         "include/beam_boot_inventory.h", "include/beam_services_inventory.h",
         "share/beam/sdk/beam_bytecode_verify.c", "lib/cmake/BEAM/BEAMConfig.cmake",
@@ -122,12 +123,12 @@ def check_runtime_artifacts(prefix):
         "compiler.generation": ("compiler-provenance", "lib/beam/compiler-generation.json", []),
         "command.beam": ("executable-helper", "bin/beam", ["runtime"]),
         "command.launcher": ("executable-helper", "bin/beam-launch", []),
-        "runtime": ("runtime", "lib/libbeam.so", []),
-        "runtime.static": ("runtime-static", "lib/libbeam.a",
+        "runtime": ("runtime", artifact_relative(prefix,"runtime"), []),
+        "runtime.static": ("runtime-static", artifact_relative(prefix,"runtime.static"),
                            ["link.static", "link.static.configuration", "link.static.exports"]),
         "link.static": ("link-support", "lib/cmake/BEAM/BEAMStaticTargets.cmake", []),
         "link.static.configuration": ("link-support", configurations[0].relative_to(prefix).as_posix(), []),
-        "link.static.exports": ("link-support", "lib/cmake/BEAM/RuntimeExports.list", []),
+        "link.static.exports": ("link-support", artifact_relative(prefix,"link.static.exports"), []),
         "helper.child_setup": ("executable-helper", "libexec/beam/erl_child_setup", []),
     }
     core = {"erts_code_purger", "erlang", "erts_internal", "erts_literal_area_collector",
@@ -148,7 +149,7 @@ def check_runtime_artifacts(prefix):
     }.items():
         expected[f"header.{name}"] = ("native-header", f"include/beam/nif/{name}.h", dependencies)
     for name in ("file", "network", "zlib"):
-        expected[f"component.{name}"] = ("native-component", f"lib/libbeam-{name}.so", ["runtime"])
+        expected[f"component.{name}"] = ("native-component", artifact_relative(prefix,f"component.{name}"), ["runtime"])
     check(set(manifest["artifacts"]) == set(expected), "unexpected runtime artifact IDs")
     for name, (kind, path, dependencies) in expected.items():
         artifact = manifest["artifacts"][name]

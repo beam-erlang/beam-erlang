@@ -4,6 +4,8 @@ import re
 import shutil
 
 from support.files import hidden_paths
+from support.artifacts import artifact
+from support.bytecode import TEST_SUPPORT_DIR
 from support.process import isolated_environment, check
 
 from .common import Compiler, dependencies, erl_string, module, run, write
@@ -96,7 +98,7 @@ value() ->
     with hidden_paths([prefix / "lib/beam/runtime",
                        prefix / "lib/beam/ebin", prefix / "libexec/beam",
                        *(prefix / "lib/beam" / inventory for inventory in ("library", "boot", "services")),
-                       *(prefix / "lib" / f"libbeam-{unit}.so"
+                       *(artifact(prefix, "component." + unit)
                          for unit in ("file", "network", "zlib"))]):
         c.compile("--deterministic", "--depfile", depfile, "-I", header.parent,
                   "-o", output, source)
@@ -273,7 +275,7 @@ def compiler_lifetime_case(prefix, work, cmake, build, source, project):
     shutil.copyfile(build / "compiler/include/beam_compiler_inventory.h",
                     client / "beam_compiler_inventory.h")
     client_build = work / "build"
-    run([cmake, "-S", client, "-B", client_build, f"-DCMAKE_PREFIX_PATH={prefix}"],
+    run([cmake, "-S", client, "-B", client_build, f"-DCMAKE_PREFIX_PATH={prefix}", f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}"],
         work, env, timeout=60)
     run([cmake, "--build", client_build, "--parallel", "2"], work, env, timeout=60)
     stdout, stderr = run([prefix / "bin/beam", "compile", "--deterministic",
@@ -283,7 +285,7 @@ def compiler_lifetime_case(prefix, work, cmake, build, source, project):
     with hidden_paths([prefix / "lib/beam/runtime",
                        prefix / "lib/beam/ebin", prefix / "libexec/beam",
                        *(prefix / "lib/beam" / inventory for inventory in ("library", "boot", "services")),
-                       *(prefix / "lib" / f"libbeam-{unit}.so"
+                       *(artifact(prefix, "component." + unit)
                          for unit in ("file", "network", "zlib"))]):
         stdout, stderr = run([client_build / "compiler_lifetime", prefix,
                               client / "compiler_lifetime_fixture.erl"], client, env, timeout=60)

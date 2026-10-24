@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "support.h"
 #include <unistd.h>
+#ifdef __APPLE__
+#include <sys/resource.h>
+#include <signal.h>
+#endif
 
 void file_mode(const char *root, const char *fixture, const char *work)
 {
@@ -56,7 +60,32 @@ void file_mode(const char *root, const char *fixture, const char *work)
         missing_item = (const unsigned char *)missing;
         missing_size = strlen(missing);
         missing_args = list_of_binaries(&missing_item, &missing_size, 1);
-        run_entry(root, "file_edges", missing_args, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
+        const char *full = "/dev/full";
+#ifdef __APPLE__
+        /* Darwin has no /dev/full. A zero file-size limit gives a real failed
+         * write without depending on a particular mounted filesystem. */
+        char full_path[4096];
+        snprintf(full_path, sizeof(full_path), "%s/full-output", work);
+        full = full_path;
+        struct rlimit saved_limit, limited;
+        struct sigaction saved_signal, ignored_signal = {0};
+        check(!getrlimit(RLIMIT_FSIZE, &saved_limit), "file-size limit");
+        limited = saved_limit; limited.rlim_cur = 0;
+        ignored_signal.sa_handler = SIG_IGN;
+        sigemptyset(&ignored_signal.sa_mask);
+        check(!sigaction(SIGXFSZ, &ignored_signal, &saved_signal), "file-size signal");
+        check(!setrlimit(RLIMIT_FSIZE, &limited), "limit failed-write fixture");
+#endif
+        const unsigned char *edge_items[] = {missing_item, (const unsigned char *)full};
+        size_t edge_sizes[] = {missing_size, strlen(full)};
+        beam_bytes edge_args = list_of_binaries(edge_items, edge_sizes, 2);
+        run_entry(root, "file_edges", edge_args, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
+        free((void *)edge_args.data);
+#ifdef __APPLE__
+        check(!setrlimit(RLIMIT_FSIZE, &saved_limit), "restore file-size limit");
+        check(!sigaction(SIGXFSZ, &saved_signal, NULL), "restore file-size signal");
+        check(!unlink(full), "remove failed-write fixture");
+#endif
         {
             const char *expected_kinds[] = {"not_found", "invalid_data", "io", "not_owner"};
             const char *labels[] = {"file-missing", "file-invalid", "file-write", "file-non-owner"};

@@ -17,6 +17,7 @@ from .process import child_process, isolated_environment, kill_group, run
 
 class HarnessTests(unittest.TestCase):
     test_root = None
+    host_observer = None
 
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(dir=self.test_root)
@@ -106,16 +107,22 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(env["LANG"], "C.UTF-8")
         self.assertEqual(Path(env["XDG_RUNTIME_DIR"]).stat().st_mode & 0o777, 0o700)
 
+    def process_state(self, pid):
+        if sys.platform == 'darwin':
+            from .host_observe import state
+            self.assertIsNotNone(self.host_observer, 'Darwin requires the native host observer')
+            return state(self.host_observer, pid, cwd=self.work, env=self.env)
+        try:
+            return Path(f'/proc/{pid}/stat').read_text().split(') ', 1)[1].split()[0]
+        except (FileNotFoundError, ProcessLookupError):
+            return None
+
     def assert_stopped(self, pid):
         # A killed orphan may await reaping by init; it must no longer execute.
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
-            try:
-                state = Path(f"/proc/{pid}/stat").read_text().split(") ", 1)[1].split()[0]
-            except (FileNotFoundError, ProcessLookupError):
-                # Linux procfs may report ESRCH after open but before read.
-                return
-            if state == "Z":
+            state = self.process_state(pid)
+            if state is None or state == "Z":
                 return
             time.sleep(0.01)
         self.fail(f"child {pid} survived failed interaction")
@@ -151,7 +158,8 @@ class HarnessTests(unittest.TestCase):
         leader, child = map(int, result.stdout.split())
         try:
             os.kill(child, 0)
-            state = Path(f"/proc/{child}/stat").read_text().split(") ", 1)[1].split()[0]
+            state = self.process_state(child)
+            self.assertIsNotNone(state)
             self.assertNotEqual(state, "Z")
         finally:
             kill_group(leader)

@@ -3,7 +3,7 @@
 -module(returning_programs).
 -export([ret_context/1, finish_then_halt/1, service_then_halt/1, return_then_halt/1, exception_then_halt/1, library/1, ret/1, boom/1, finish/1, halt/1, kill_output/1, cleanup/1,
          greeting/1, counter/1, counter_fault/1, code_client/1, code_missing/1, code_bad/1,
-         file_report/2, file_edges/1, file_omitted/1, file_owner_death/1,
+         file_report/2, file_edges/2, file_omitted/1, file_owner_death/1,
          echo/1, echo_partial/1, echo_peer/1, echo_owner/1, echo_fault/1, echo_abandon/1,
          record_service/1, record_fault/1, record_unreadable/1,
          zlib_explicit/1, zlib_abandon/1, zlib_persist/1, zlib_owner/1,
@@ -118,10 +118,10 @@ file_report(Input, Output) ->
     ok = beam_file:close(Handle, infinity),
     {Lines, Size}.
 
-file_edges(Missing) ->
+file_edges(Missing, Full) ->
     {error, #{kind := MissingKind}} = beam_file:read_file(Missing, infinity),
     {error, #{kind := InvalidKind}} = beam_file:read_file(<<"relative">>, infinity),
-    {error, #{kind := WriteKind}} = beam_file:write_file(<<"/dev/full">>, <<"x">>, infinity),
+    {error, #{kind := WriteKind}} = beam_file:write_file(Full, <<"x">>, infinity),
     {ok, Handle} = beam_file:open(<<"/etc/hosts">>, infinity, #{mode => read}),
     Parent = self(),
     spawn(fun() -> Parent ! {edge, beam_file:read(Handle, 4, infinity)} end),

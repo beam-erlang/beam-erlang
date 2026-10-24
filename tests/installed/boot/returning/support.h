@@ -3,6 +3,7 @@
 #define RETURNING_ACCEPTANCE_SUPPORT_H
 #include <beam.h>
 #include "etf.h"
+#include "host_observe.h"
 
 #include <dirent.h>
 #include <errno.h>

@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
+#ifdef __APPLE__
+#include "host_observe.h"
+#endif
 
 /* Distribution-owned acceptance instrumentation, not installed SDK APIs. */
 extern void beam_runtime_memory_usage(size_t *, size_t *, size_t *, size_t *);
@@ -22,6 +26,12 @@ typedef struct resources {
 
 static int entries(const char *path)
 {
+#ifdef __APPLE__
+    if (!strcmp(path, "/proc/self/task")) return beam_test_host_threads(getpid());
+    int *values=NULL; size_t count=0;
+    if (strcmp(path, "/proc/self/fd") || beam_test_host_fds(getpid(),&values,&count)) return -1;
+    free(values); return (int)count;
+#else
     DIR *directory = opendir(path);
     struct dirent *entry;
     int count = 0;
@@ -32,6 +42,7 @@ static int entries(const char *path)
             ++count;
     closedir(directory);
     return count;
+#endif
 }
 
 static void observe(resources *out)

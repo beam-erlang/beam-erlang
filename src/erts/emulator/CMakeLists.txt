@@ -179,6 +179,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
 target_link_options(beam_runtime_static INTERFACE
     "$<BUILD_INTERFACE:LINKER:--export-dynamic-symbol-list=${CMAKE_SOURCE_DIR}/cmake/RuntimeExports.list>"
     "$<INSTALL_INTERFACE:LINKER:--export-dynamic-symbol-list=$<INSTALL_PREFIX>/lib/cmake/BEAM/RuntimeExports.list>")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # Mach-O spelling of the same public native/runtime export inventory.
+    add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/RuntimeExports.macho"
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_SOURCE_DIR}/tools/runtime-exports.py"
+            --inventory "${CMAKE_SOURCE_DIR}/cmake/RuntimeExports.list"
+            --archive $<TARGET_FILE:libbeam_static> --nm "${CMAKE_NM}"
+            --output "${CMAKE_BINARY_DIR}/RuntimeExports.macho"
+        DEPENDS libbeam_static "${CMAKE_SOURCE_DIR}/cmake/RuntimeExports.list"
+            "${CMAKE_SOURCE_DIR}/tools/runtime-exports.py" VERBATIM)
+    add_custom_target(beam_runtime_exports ALL DEPENDS "${CMAKE_BINARY_DIR}/RuntimeExports.macho")
+    add_dependencies(beam_runtime_static beam_runtime_exports)
+    target_link_options(beam_runtime_static INTERFACE
+        "$<BUILD_INTERFACE:LINKER:-exported_symbols_list,${CMAKE_BINARY_DIR}/RuntimeExports.macho>"
+        "$<INSTALL_INTERFACE:LINKER:-exported_symbols_list,$<INSTALL_PREFIX>/lib/cmake/BEAM/RuntimeExports.macho>")
+    install(FILES "${CMAKE_BINARY_DIR}/RuntimeExports.macho" DESTINATION lib/cmake/BEAM)
 endif()
 foreach(_pair IN ITEMS "libbeam;shared" "beam_runtime_static;static")
     list(GET _pair 0 _target)

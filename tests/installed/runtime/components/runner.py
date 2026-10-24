@@ -3,10 +3,12 @@
 from functools import partial
 from pathlib import Path
 from support.scratch import scratch
+from support.artifacts import artifact, relative as artifact_relative
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
 import os
+import errno
 
 from support.bytecode import TEST_SUPPORT_DIR, BASE_ASSETS, BOOT_ASSETS, SERVICES_ASSETS, copy_bytecode
 from support.process import run as capture, isolated_environment
@@ -39,9 +41,19 @@ def main():
         bytecode.mkdir()
         execute([str(prefix / "bin/beam"), "compile", "-o", str(bytecode),
              "--", str(args.source_dir / "fixtures/component_worker.erl")])
+        invalid_probe=os.fsencode(build_work)+b"/invalid-\xff"
+        try:
+            fd=os.open(invalid_probe,os.O_CREAT|os.O_WRONLY,0o600)
+        except OSError as error:
+            if error.errno!=errno.EILSEQ: raise
+            raw_names=False
+            print("filesystem capability: raw non-UTF-8 names rejected with EILSEQ; unrepresentable directory-entry case is unavailable")
+        else:
+            os.close(fd);os.unlink(invalid_probe);raw_names=True
         for name in ("facility_worker", "facility_helper", "contract_worker"):
+            flags=["-DACCEPTANCE_RAW_NAMES"] if raw_names and name=="contract_worker" else []
             execute([str(prefix / "bin/beam"), "compile", "-o", str(bytecode),
-                     "--", str(args.source_dir / "fixtures" / f"{name}.erl")])
+                     *flags, "--", str(args.source_dir / "fixtures" / f"{name}.erl")])
         client = args.test_dir / "client"
         execute([args.cmake, "-S", str(args.source_dir), "-B", str(client),
              f"-DCMAKE_PREFIX_PATH={prefix}", f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}"])
@@ -53,9 +65,9 @@ def main():
             (stage / "lib").mkdir()
             copy_bytecode(prefix, stage, BASE_ASSETS + SERVICES_ASSETS)
             shutil.copy2(client / "components_acceptance", stage / "bin/host")
-            shutil.copy2(prefix / "lib/libbeam.so", stage / "lib/libbeam.so")
+            shutil.copy2(artifact(prefix,"runtime"), stage / artifact_relative(prefix,"runtime"))
             for unit in units:
-                name = f"libbeam-{unit}.so"
+                name = artifact(prefix,"component."+unit).name
                 shutil.copy2(prefix / "lib" / name, stage / "lib" / name)
             deployed = args.test_dir / f"relocated {profile} λ"
             stage.rename(deployed)
@@ -75,7 +87,7 @@ def main():
             (deployed / "lib").mkdir()
             copy_bytecode(prefix, deployed, BASE_ASSETS + SERVICES_ASSETS)
             shutil.copy2(client / "facilities_acceptance", deployed / "bin/host")
-            for unit in ("libbeam.so",) + (("libbeam-zlib.so",) if profile == "zlib" else ()):
+            for unit in (artifact(prefix,"runtime").name,) + ((artifact(prefix,"component.zlib").name,) if profile == "zlib" else ()):
                 shutil.copy2(prefix / "lib" / unit, deployed / "lib" / unit)
             if profile == "program":
                 (deployed / "libexec/beam").mkdir(parents=True)
@@ -95,7 +107,7 @@ def main():
             (deployed / "lib").mkdir()
             copy_bytecode(prefix, deployed, BASE_ASSETS + SERVICES_ASSETS)
             shutil.copy2(client / "contracts_acceptance", deployed / "bin/host")
-            units = ("libbeam.so", "libbeam-file.so", "libbeam-network.so")
+            units = tuple(artifact(prefix,name).name for name in ("runtime","component.file","component.network"))
             if mode.startswith("returning"):
                 copy_bytecode(prefix, deployed, BOOT_ASSETS)
             for unit in units:
@@ -108,8 +120,9 @@ def main():
             path = work / "contract λ"
             invalid = Path(str(path) + ".invalid-dir")
             invalid.mkdir()
-            fd = os.open(os.fsencode(invalid) + b"/invalid-\xff", os.O_CREAT | os.O_WRONLY, 0o600)
-            os.close(fd)
+            if raw_names:
+                fd = os.open(os.fsencode(invalid) + b"/invalid-\xff", os.O_CREAT | os.O_WRONLY, 0o600)
+                os.close(fd)
             valid = Path(str(path) + ".valid-dir")
             valid.mkdir()
             (valid / "valid λ").write_bytes(b"")

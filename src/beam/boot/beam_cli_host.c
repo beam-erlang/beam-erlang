@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host-owned source execution and terminal I/O for the BEAM boot. */
 #define _XOPEN_SOURCE 700
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE
+#endif
 #include "beam_cli_recipe.h"
 #include "../compiler/beam_compiler_host.h"
 
@@ -60,11 +63,20 @@ static beam_output_status cli_output(void *context, beam_bytes destination, beam
         out = stderr;
     else
         return BEAM_OUTPUT_UNKNOWN;
-    if (bytes.size && (!bytes.data || fwrite(bytes.data, 1, bytes.size, out) != bytes.size))
-        return BEAM_OUTPUT_FAILED;
-    if (fflush(out) != 0)
-        return BEAM_OUTPUT_FAILED;
-    return BEAM_OUTPUT_OK;
+    if (bytes.size && !bytes.data) return BEAM_OUTPUT_FAILED;
+    /* Keep failed output out of stdio's buffer: some implementations retry a
+     * failed flush at process exit, after the caller restores SIGPIPE policy. */
+    flockfile(out);
+    int failed = fflush(out) != 0;
+    size_t offset = 0;
+    while (!failed && offset < bytes.size) {
+        ssize_t written = write(fileno(out), bytes.data + offset, bytes.size - offset);
+        if (written > 0) offset += (size_t)written;
+        else if (written < 0 && errno == EINTR) continue;
+        else failed = 1;
+    }
+    funlockfile(out);
+    return failed ? BEAM_OUTPUT_FAILED : BEAM_OUTPUT_OK;
 }
 
 /* The source runner accepts only explicit UTF-8 file identities. This is a

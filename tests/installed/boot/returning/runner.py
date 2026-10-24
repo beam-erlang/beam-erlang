@@ -3,6 +3,7 @@
 from functools import partial
 from pathlib import Path
 from support.scratch import scratch
+from support.artifacts import artifact, relative as artifact_relative
 import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
@@ -75,7 +76,7 @@ def main():
             deployment = args.test_dir / f"minimal-{profile}"
             (deployment / "bin").mkdir(parents=True)
             (deployment / "lib").mkdir()
-            shutil.copyfile(prefix / "lib/libbeam.so", deployment / "lib/libbeam.so")
+            shutil.copyfile(artifact(prefix,"runtime"), deployment / artifact_relative(prefix,"runtime"))
             host = deployment / "bin/returning_acceptance"
             shutil.copyfile(client / "returning_minimal", host)
             host.chmod(0o755)
@@ -84,10 +85,10 @@ def main():
             if units:
                 directory = deployment / "lib"
                 for unit in units:
-                    name = f"libbeam-{unit}.so"
+                    name = artifact(prefix,"component."+unit).name
                     shutil.copyfile(prefix / "lib" / name, directory / name)
-            expected = {"bin/returning_acceptance", "lib/libbeam.so"} | set(assets) | {
-                f"lib/libbeam-{unit}.so" for unit in units}
+            expected = {"bin/returning_acceptance", artifact_relative(prefix,"runtime")} | set(assets) | {
+                artifact_relative(prefix,"component."+unit) for unit in units}
             actual = {path.relative_to(deployment).as_posix()
                       for path in deployment.rglob("*") if path.is_file()}
             if actual != expected:

@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--test-dir', type=Path, required=True)
     add_installation_arguments(parser)
     args = resolve_installation(parser, parser.parse_args())
+    args.cmake=shutil.which(args.cmake) or args.cmake
     root = args.test_dir.resolve()
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)

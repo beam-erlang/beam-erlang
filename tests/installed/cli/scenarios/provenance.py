@@ -1,6 +1,10 @@
 """Reusable installed provenance scenarios; profiles belong to the runners."""
 
 from pathlib import Path
+import sys
+from support.host_observe import images
+from support.process import isolated_environment
+from support.artifacts import artifact
 
 from support.process import check, run as capture
 
@@ -11,7 +15,13 @@ def run(command, cwd, env, input_data=None, status=0):
 
 
 def check_loaded_library(pid, prefix):
-    expected = (prefix / "lib/libbeam.so").resolve()
+    expected=artifact(prefix,'runtime').resolve()
+    if sys.platform=='darwin':
+        observed=images(pid,cwd=prefix.parent,env=isolated_environment(prefix.parent))
+        mapped={Path(p).resolve() for p in observed['files'] if Path(p).name==expected.name}
+        check(mapped=={expected},f'VM mapped {mapped}, expected installed library {expected}')
+        check(Path(observed['executable']).resolve()==(prefix/'bin/beam').resolve(),'VM executable escaped selected installation')
+        return
     mapped = set()
     for line in Path(f"/proc/{pid}/maps").read_text().splitlines():
         fields = line.split(maxsplit=5)
@@ -61,8 +71,8 @@ def beam_provenance_expression(prefix):
     for inventory, names in ordinary.items():
         expected.update({name: f"{prefix}/lib/beam/{inventory}/ebin/{name}.beam" for name in names})
     for unit, modules in units.items():
-        expected.update({module: f"{prefix}/lib/libbeam-{unit}.so#{module}" for module in modules})
-    expected["zlib"] = f"{prefix}/lib/libbeam-zlib.so#zlib"
+        expected.update({module: f"{artifact(prefix,'component.'+unit)}#{module}" for module in modules})
+    expected["zlib"] = f"{artifact(prefix,'component.zlib')}#zlib"
 
     def binary(text):
         escaped = text.replace("\\", "\\\\").replace('"', '\\"')
