@@ -29,12 +29,64 @@ Selected input SDKs and normal development builds are not cleanup targets.
 | `ethread_SUITE` | Native threads, locks and atomics. |
 | `parallel_messages_SUITE` | Messaging, signals and message-queue stress benchmarks. |
 
-The Erlang Common Test wrappers are not registered with CTest. The native
+These three Erlang Common Test wrappers are not registered with CTest. The native
 `ethread` fixture has the separate integration described below; `erl_print_SUITE`
 and `parallel_messages_SUITE` remain unexecuted. Their assertions, fixtures and
 historical path text remain unchanged.
-The separate `src/erts/emulator/test/` tree and tool-local tests remain in place;
-none of their retained suites is registered here.
+`vm/emulator/` retains the emulator corpus previously under
+`src/erts/emulator/test/`: suites, helpers, native fixtures, data and legacy
+specifications preserve their bytes and modes. Tool-local tests remain with
+their tools. Source ownership and relocation alone establish no execution.
+
+### Installed OTP host for emulator suites
+
+The standalone Linux [Common Test project](vm/common_test/CMakeLists.txt) registers
+an initial selection from `vm/emulator/`. It consumes an explicitly selected
+installed OTP product and matching installed BEAM SDK, with producer provenance.
+Common Test supplies the test environment; the assertions cover shared VM
+behavior. Ordinary BEAM configure/build/CTest remains independent of OTP.
+
+| Suite | Selected coverage |
+| --- | --- |
+| `atomics_SUITE` | Signed/unsigned operations, limits and argument diagnostics. |
+| `counters_SUITE` | Operations, limits, independence and write concurrency. |
+| `bs_bincomp_SUITE` | Byte/bit comprehensions and tracing. |
+| `bs_match_tail_SUITE` | Aligned, unaligned, empty and large bitstring tails. |
+
+Each suite runs its complete `all/0` selection unchanged. The runner requires
+the expected case identities and individual successful results; failed, skipped,
+missing or duplicate cases fail acceptance. Fixtures compile and execute in
+private scratch using the selected installation, without system Erlang or source
+runtime fallback. Selected SDK/OTP inputs remain read-only. Reports retain suite
+and helper hashes, runtime identities and bounded failure diagnostics; disposable
+compiled fixtures and processes are cleaned up on completion or interruption.
+
+Configure this separate project from the repository root, supplying the exact
+SDK version/build ID and OTP producer-provenance record for the selected pair:
+
+```sh
+cmake -S tests/vm/common_test -B build/vm-common-test-emu \
+  -DBEAM_SDK_ROOT=/path/to/installed-beam-sdk \
+  -DBEAM_VM_TEST_OTP_PREFIX=/path/to/installed-otp \
+  -DBEAM_VM_TEST_OTP_PROVENANCE=/path/to/otp-provenance.json \
+  -DBEAM_VM_TEST_SDK_VERSION=17.0-r1-preview.1 \
+  -DBEAM_VM_TEST_SDK_BUILD_ID=EXPECTED_BUILD_ID \
+  -DBEAM_VM_TEST_FLAVOR=emu
+ctest --test-dir build/vm-common-test-emu --output-on-failure
+```
+
+Repeat with the JIT pair, `BEAM_VM_TEST_FLAVOR=jit` and a separate build directory.
+There is no runtime discovery or automatic installation. CTest names are
+`vm-ct-<suite>`; each uses a fresh process with two schedulers, a 600-second
+deadline and serial execution. `results/<suite>/result.json`, bounded logs and
+`cleanup.json` remain under the selected harness build directory.
+
+Both Linux integration targets require the separate `beam-vm` report in
+[release qualification](../release/README.md#candidate-production-and-qualification).
+This selection does not execute the rest of the emulator corpus, the legacy
+benchmark specifications or the ordered `a_SUITE`/`z_SUITE` lifetime checks.
+Current execution results and remaining coverage are recorded in the
+[VM inventory](../../dev-documents/vm-test-inventory.md#emulator-corpus-relocation-and-common-test-integration).
 
 ### Native thread-library cases
 
@@ -73,8 +125,9 @@ cmake --build --preset linux-jit
 ctest --preset linux-jit
 ```
 
-Both test presets enable failure output and run the complete suite. CI also
-runs complete suites. Python 3.9 or newer, the native C/C++ toolchain, CMake,
+Both test presets enable failure output and run the complete ordinary BEAM suite.
+The installed-OTP emulator selection has its separate integration entry point
+above. CI runs each required suite. Python 3.9 or newer, the native C/C++ toolchain, CMake,
 Ninja, Make, `nm`, `readelf`, pkg-config, system PCRE2 development files,
 POSIX terminals and loopback networking are needed.
 Network permission failures are failures, not reasons to skip a scenario.

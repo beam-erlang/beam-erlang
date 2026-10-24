@@ -31,7 +31,7 @@ def main():
         run(sys.executable,'release/qualify-package.py','--record',record,'--source',work/'inputs/package','--work',work/'package','--report',reports/(a.target+'-package.json'))
         if row['family']=='integration':
             run(sys.executable,'release/release.py','acquire','--kind','qualification','--destination',work/'inputs')
-            run(sys.executable,'release/qualify-otp.py','--record',record,'--inputs-dir',work/'inputs','--work',work/'otp','--report',reports/(a.target+'-otp.json'))
+            run(sys.executable,'release/qualify-otp.py','--record',record,'--inputs-dir',work/'inputs','--work',work/'otp','--report',reports/(a.target+'-otp.json'),'--vm-report',reports/(a.target+'-beam-vm.json'))
     raise SystemExit(status)
 
 if __name__=='__main__':main()

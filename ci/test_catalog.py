@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import runpy
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,6 +13,21 @@ sys.path.insert(0,str(catalog.ROOT/'release'))
 import release
 
 class Contracts(unittest.TestCase):
+    def test_unavailable_integration_emits_separate_nonpassing_vm_report(self):
+        target = 'linux-ubuntu24.04-amd64-gcc-emu'
+        row = dict(catalog.target(target), family='integration', execution_reason='executor unavailable')
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            with patch.object(catalog, 'target', return_value=row), \
+                    patch.object(sys, 'argv', ['unexecuted.py', '--target', target, '--output', temporary]):
+                runpy.run_path(str(catalog.ROOT / 'ci/unexecuted.py'), run_name='__main__')
+            report = release.read(output / (target + '-beam-vm.json'))
+            self.assertFalse(report['eligible'])
+            self.assertEqual({item['name'] for item in report['tests']}, release.VM_TESTS)
+            self.assertEqual({item['status'] for item in report['tests']}, {'unexecuted'})
+            self.assertTrue((output / (target + '-otp.json')).is_file())
+            self.assertFalse((output / (target + '-beam.json')).exists())
+
     def test_matrix_canonical_android_and_windows_variants(self):
         catalog.validate()
         android=[r for r in catalog.targets() if r['family']=='android']

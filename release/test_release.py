@@ -14,6 +14,19 @@ import promote
 
 
 class ReleaseTests(unittest.TestCase):
+    def vm_results(self, flavor):
+        return [{'file': suite + '/result.json', 'sha256': 'a' * 64, 'result': {
+            'suite': suite, 'complete': True, 'expected_cases': len(release._vm_manifest.CASES[suite]),
+            'expected_case_names': release._vm_manifest.CASES[suite],
+            'cases': [{'name': case, 'status': 'passed'} for case in release._vm_manifest.CASES[suite]],
+            'suites': {suite: {'passed': len(release._vm_manifest.CASES[suite]), 'failed': 0,
+                               'skipped': 0, 'user_skipped': 0, 'auto_skipped': 0}},
+            'source_sha256': {name: release.digest(release.ROOT / 'tests/vm' / name)
+                              for name in release._vm_manifest.INPUTS[suite]},
+            'installation': {'provenance_sha256': 'f' * 64},
+            'sdk': {'version': '17.0-r1-preview.1', 'build_id': 'd' * 64, 'flavor': flavor}}}
+            for suite in sorted(release.VM_SUITES)]
+
     def test_runtime_notices_preserve_archive_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             notices = Path(temporary) / 'share/doc/beam-erlang'
@@ -182,12 +195,14 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
                 'origin':{'repository':policy['repository'],'workflow':policy['candidate_workflow'],'run_id':'123','branch':'master'},
                 'inputs':copy.deepcopy(inputs)}
             for kind in release.report_kinds(target):
-                names=release.OTP_TESTS if kind=='otp' else release.PACKAGE_TESTS if kind=='package' else {'installed-sdk','installed-compile','installed-components','installed-run'}
+                names=release.OTP_TESTS if kind=='otp' else release.VM_TESTS if kind=='beam-vm' else release.PACKAGE_TESTS if kind=='package' else {'installed-sdk','installed-compile','installed-components','installed-run'}
                 if row['qualification']!='desktop':
                     names={'target-sdk-layout'} if kind=='beam' else {'acquired-sdk-consumer-build'} if row['executor']=='ios-device' else {'acquired-sdk-consumer-build','acquired-sdk-runtime','acquired-sdk-deployment','acquired-sdk-components','acquired-sdk-missing-and-identity','acquired-sdk-lifecycle'}
                     if kind=='acquired' and row['family']=='android':names.add('acquired-sdk-16k-pages')
                 manifest['qualification'][target+'-'+kind]={'kind':kind,'eligible':True,'candidate':'b'*64,
                     'tests':[{'name':n,'status':'passed'} for n in names]}
+                if kind == 'beam-vm':
+                    manifest['qualification'][target+'-'+kind]['vm_results'] = self.vm_results(flavor)
         return manifest,policy
 
     def test_mobile_required_execution_cannot_be_disabled_or_omitted(self):
@@ -253,6 +268,9 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
         for record in manifest['candidates'].values():
             record.update(version=version,**release.version_metadata(version))
             record['sdk']['identity']=version
+        for report in manifest['qualification'].values():
+            for item in report.get('vm_results', []):
+                item['result']['sdk']['version'] = version
         with self.assertRaisesRegex(ValueError,'source line'):release.eligible(manifest,policy)
         manifest['branch']='maint-17'
         for record in manifest['candidates'].values():record['origin']['branch']='maint-17'
@@ -278,6 +296,75 @@ file(WRITE "${CMAKE_CURRENT_LIST_DIR}/parsed.txt"
                          lambda m,p: m['qualification']['linux-ubuntu24.04-amd64-gcc-emu-otp']['tests'][0].update(status='skipped')]:
             m,p=copy.deepcopy(manifest),copy.deepcopy(policy);mutation(m,p)
             with self.assertRaises(ValueError): release.eligible(m,p)
+
+    def test_vm_qualification_requires_matching_complete_case_evidence(self):
+        manifest, policy = self.fixture()
+        key = 'linux-ubuntu24.04-amd64-gcc-emu-beam-vm'
+        mutations = [lambda m: m['qualification'].pop(key),
+            lambda m: m['qualification'][key].update(candidate='c' * 64),
+            lambda m: m['qualification'][key].update(tests=[]),
+            lambda m: m['qualification'][key].update(vm_results=[]),
+            lambda m: m['qualification'][key]['vm_results'][0]['result'].update(complete=False),
+            lambda m: m['qualification'][key]['vm_results'][0]['result'].update(cases=[]),
+            lambda m: m['qualification'][key]['vm_results'][0]['result']['sdk'].update(build_id='0' * 64),
+            lambda m: m['qualification'][key]['vm_results'][0]['result']['installation'].update(provenance_sha256='')]
+        for status in ['failed', 'skipped', 'unexecuted', 'untested']:
+            mutations += [lambda m, status=status: m['qualification'][key]['tests'][0].update(status=status),
+                          lambda m, status=status: m['qualification'][key]['vm_results'][0]['result']['cases'][0].update(status=status)]
+        def narrow_consistently(m):
+            result = m['qualification'][key]['vm_results'][0]['result']
+            result['expected_case_names'] = result['expected_case_names'][1:]
+            result['expected_cases'] -= 1
+            result['cases'] = result['cases'][1:]
+            result['suites'][result['suite']]['passed'] -= 1
+        mutations.append(narrow_consistently)
+        mutations.append(lambda m: m['qualification'][key]['vm_results'][0]['result']['source_sha256'].update(
+            {next(iter(m['qualification'][key]['vm_results'][0]['result']['source_sha256'])): '0' * 64}))
+        for index, mutate in enumerate(mutations):
+            with self.subTest(mutation=index):
+                invalid = copy.deepcopy(manifest)
+                mutate(invalid)
+                with self.assertRaises(ValueError):
+                    release.eligible(invalid, policy)
+
+    def test_passing_ctest_without_vm_evidence_remains_ineligible(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            report = root / 'beam-vm.json'
+            tests = [{'name': name, 'properties': []} for name in sorted(release.VM_TESTS)]
+            report.with_suffix('.xml').write_text('<testsuite>' + ''.join(
+                '<testcase name="' + item['name'] + '"/>' for item in tests) + '</testsuite>')
+            args = SimpleNamespace(kind='beam-vm', build=root, report=report, record=None)
+            with patch.object(release, 'inventory', return_value=tests), \
+                    patch.object(release.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+                    patch.object(release, 'qualification_host', return_value={}):
+                with self.assertRaisesRegex(ValueError, 'qualification failed'):
+                    release.ctest(args)
+            result = release.read(report)
+            self.assertFalse(result['eligible'])
+            self.assertIn('mandatory VM suite evidence missing', result['evidence_error'])
+
+    def test_disabled_vm_registration_cannot_reuse_passing_case_evidence(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            report = root / 'beam-vm.json'
+            tests = [{'name': name, 'properties': [{'name': 'DISABLED', 'value': True}]}
+                     for name in sorted(release.VM_TESTS)]
+            report.with_suffix('.xml').write_text('<testsuite>' + ''.join(
+                '<testcase name="' + item['name'] + '"/>' for item in tests) + '</testsuite>')
+            for item in self.vm_results('emu'):
+                release.write(root / 'results' / item['result']['suite'] / 'result.json', item['result'])
+            args = SimpleNamespace(kind='beam-vm', build=root, report=report, record=None)
+            with patch.object(release, 'inventory', return_value=tests), \
+                    patch.object(release.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+                    patch.object(release, 'qualification_host', return_value={}):
+                with self.assertRaisesRegex(ValueError, 'qualification failed'):
+                    release.ctest(args)
+            result = release.read(report)
+            self.assertFalse(result['eligible'])
+            self.assertEqual({test['status'] for test in result['tests']}, {'unexecuted'})
 
     def test_existing_release_conflict_refuses_upload_and_publish(self):
         from types import SimpleNamespace

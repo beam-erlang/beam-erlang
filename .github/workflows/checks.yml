@@ -32,4 +32,6 @@ jobs:
       run: |-
         python -m unittest discover -s ci -p 'test_*.py'
         python -m unittest discover -s release -p 'test_*.py'
+        cd tests
+        python -B -m unittest vm.common_test.test_runner
       shell: bash

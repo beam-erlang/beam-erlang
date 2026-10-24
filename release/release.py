@@ -2,6 +2,7 @@
 """Artifact transport and qualification. Native SDK schemas remain SDK-owned."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,11 @@ RELEASE_VERSION = re.compile(
     r'(?:-preview\.(?P<preview>[1-9][0-9]*))?')
 PACKAGE_TESTS = {'package-commands', 'package-builds', 'package-projects', 'package-tasks'}
 OTP_TESTS = set('installed-sdk-smoke installed-sdk-boundary otp-native-public-boundary otp-host-public-boundary otp-bootstrap-integrity source-built-compiler otp-native-activation otp-host-preparation otp-terminal-lifecycle otp-boot-observer otp-compatibility-transfer initial-product isolated-product otp-command-policy otp-development-support otp-et-event-file otp-installed-tree otp-standard-release'.split())
+_vm_spec = importlib.util.spec_from_file_location('beam_vm_manifest', ROOT / 'tests/vm/common_test/manifest.py')
+_vm_manifest = importlib.util.module_from_spec(_vm_spec)
+exec(compile((ROOT / 'tests/vm/common_test/manifest.py').read_text(), _vm_spec.origin, 'exec'), _vm_manifest.__dict__)
+VM_SUITES = set(_vm_manifest.CASES)
+VM_TESTS = {'vm-ct-' + suite for suite in VM_SUITES}
 ASSETS = {'reference-emu', 'reference-jit', 'provenance-emu', 'provenance-jit', 'rebar3', 'postgres', 'ldap', 'ftp'}
 
 
@@ -396,10 +402,60 @@ def upstream_results(build):
             for root in roots for path in sorted(root.rglob('result.json'))]
 
 
+def validate_vm_results(report, candidate=None):
+    """Require complete unchanged-suite evidence as well as passing CTest entries."""
+    records = report.get('vm_results', [])
+    if not isinstance(records, list):
+        raise ValueError('invalid VM suite evidence')
+    suites = {}
+    for item in records:
+        if not isinstance(item, dict) or not isinstance(item.get('result'), dict):
+            raise ValueError('invalid VM suite evidence')
+        result = item.get('result', {})
+        suite = result.get('suite')
+        if not isinstance(suite, str) or suite not in VM_SUITES or suite in suites:
+            raise ValueError('unexpected or duplicate VM suite evidence')
+        suites[suite] = result
+        expected = result.get('expected_case_names')
+        count = result.get('expected_cases')
+        cases = result.get('cases', [])
+        if (result.get('complete') is not True or type(count) is not int or count < 1
+                or expected != _vm_manifest.CASES[suite] or len(expected) != count
+                or any(not isinstance(name, str) or not name for name in expected)
+                or len(set(expected)) != count or not isinstance(cases, list)
+                or len(cases) != count or any(not isinstance(case, dict) for case in cases)
+                or any(not isinstance(case.get('name'), str) for case in cases)
+                or {case.get('name') for case in cases} != set(expected)
+                or any(case.get('status') != 'passed' for case in cases)):
+            raise ValueError('incomplete or nonpassing VM case evidence: ' + suite)
+        totals = result.get('suites', {})
+        totals = totals.get(suite, {}) if isinstance(totals, dict) else {}
+        if not isinstance(totals, dict) or totals.get('passed') != count or any(totals.get(name) != 0 for name in
+                ('failed', 'skipped', 'user_skipped', 'auto_skipped')):
+            raise ValueError('inconsistent VM suite totals: ' + suite)
+        sources = result.get('source_sha256', {})
+        installation = result.get('installation', {})
+        provenance = installation.get('provenance_sha256', '') if isinstance(installation, dict) else ''
+        expected_sources = {name: digest(ROOT / 'tests/vm' / name) for name in _vm_manifest.INPUTS[suite]}
+        if (not isinstance(sources, dict) or not sources
+                or sources != expected_sources
+                or any(not isinstance(value, str) or not DIGEST.fullmatch(value) for value in sources.values())
+                or not isinstance(provenance, str) or not DIGEST.fullmatch(provenance)
+                or not isinstance(item.get('sha256'), str) or not DIGEST.fullmatch(item['sha256'])):
+            raise ValueError('missing VM source or installation provenance: ' + suite)
+        if candidate is not None:
+            sdk = result.get('sdk', {})
+            if not isinstance(sdk, dict) or any(sdk.get(key) != candidate['sdk'][field] for key, field in
+                   [('version', 'identity'), ('build_id', 'build-id'), ('flavor', 'flavor')]):
+                raise ValueError('VM evidence uses a different SDK candidate: ' + suite)
+    if set(suites) != VM_SUITES:
+        raise ValueError('mandatory VM suite evidence missing')
+
+
 def ctest(args):
     tests = inventory(args.build)
     names = {t['name'] for t in tests}
-    required = OTP_TESTS if args.kind == 'otp' else PACKAGE_TESTS if args.kind == 'package' else {'installed-sdk', 'installed-compile', 'installed-components', 'compiler-artifacts'}
+    required = OTP_TESTS if args.kind == 'otp' else VM_TESTS if args.kind == 'beam-vm' else PACKAGE_TESTS if args.kind == 'package' else {'installed-sdk', 'installed-compile', 'installed-components', 'compiler-artifacts'}
     if args.kind == 'beam' and 'target-sdk-layout' in names:
         required = {'target-sdk-layout'}
     if not required <= names:
@@ -415,17 +471,30 @@ def ctest(args):
         e = executed.get(test['name'])
         disabled = any(p['name'] == 'DISABLED' and p['value'] for p in test['properties'])
         state = 'untested' if e is None else 'failed' if e.find('failure') is not None else 'skipped' if e.find('skipped') is not None else 'passed'
+        if disabled and args.kind == 'beam-vm':
+            state = 'unexecuted'
         # The owning CMake selection marks wx deferrals explicitly.
         if disabled and args.kind == 'otp' and ('wx' in test['name'] or any(p['name'] == 'LABELS' and 'deferred' in p['value'] for p in test['properties'])):
             state = 'deferred'
         results.append({'name': test['name'], 'status': state})
     allowed_skip = {'vm-ethread-thread_name'} if args.kind == 'beam' else set()
     eligible = status == 0 and all(t['status'] in ('passed', 'deferred') or (t['status'] == 'skipped' and t['name'] in allowed_skip) for t in results)
-    write(args.report, {'schema': 1, 'kind': args.kind, 'candidate': digest(args.record) if args.record else None,
+    report = {'schema': 1, 'kind': args.kind, 'candidate': digest(args.record) if args.record else None,
                         'exit_code': status, 'tests': results, 'eligible': eligible,
                         'host': qualification_host(),
-                        'upstream_results': upstream_results(args.build) if args.kind == 'otp' else []})
-    if not eligible:
+                        'upstream_results': upstream_results(args.build) if args.kind == 'otp' else []}
+    if args.kind == 'beam-vm':
+        report['vm_results'] = []
+        try:
+            for suite in sorted(VM_SUITES):
+                path = Path(args.build) / 'results' / suite / 'result.json'
+                if path.is_file():
+                    report['vm_results'].append({'file': str(path), 'sha256': digest(path), 'result': read(path)})
+            validate_vm_results(report, read(args.record) if args.record else None)
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            report.update(eligible=False, evidence_error=str(error))
+    write(args.report, report)
+    if not report['eligible']:
         raise ValueError('qualification failed or contains mandatory skipped/untested coverage')
 
 
@@ -438,7 +507,7 @@ def check_line(version, branch, policy):
 
 def report_kinds(target):
     row = catalog.target(target)
-    if row['family'] == 'integration': return ['beam', 'acquired', 'package', 'otp']
+    if row['family'] == 'integration': return ['beam', 'acquired', 'package', 'otp', 'beam-vm']
     return ['beam', 'acquired', 'package'] if row['qualification'] == 'desktop' else ['beam', 'acquired']
 
 
@@ -483,12 +552,13 @@ def eligible(manifest, policy):
                 raise ValueError('qualification is for a different candidate')
             names={t['name'] for t in report['tests']}
             if len(names)!=len(report['tests']): raise ValueError('duplicate test entries')
-            required=OTP_TESTS if kind=='otp' else PACKAGE_TESTS if kind=='package' else set()
+            required=OTP_TESTS if kind=='otp' else VM_TESTS if kind=='beam-vm' else PACKAGE_TESTS if kind=='package' else set()
             if row['qualification']!='desktop':
                 required={'target-sdk-layout'} if kind=='beam' else {'acquired-sdk-consumer-build'}
                 if kind=='acquired' and row['executor']!='ios-device':required.update({'acquired-sdk-runtime','acquired-sdk-deployment','acquired-sdk-components','acquired-sdk-missing-and-identity','acquired-sdk-lifecycle'})
                 if kind=='acquired' and row['family']=='android':required.add('acquired-sdk-16k-pages')
             if not required <= names: raise ValueError('mandatory tests missing')
+            if kind == 'beam-vm': validate_vm_results(report, record)
             for test in report['tests']:
                 if test['status']=='passed': continue
                 if kind=='otp' and test['status']=='deferred' and (test['name']=='wx-product' or test['name'].startswith('upstream-wx_')): continue
@@ -532,7 +602,7 @@ def main():
     a = sub.add_parser('acquired')
     for flag in ['record', 'work', 'report']: a.add_argument('--'+flag, required=True)
     a.set_defaults(func=acquired)
-    a = sub.add_parser('ctest'); a.add_argument('--kind', choices=['beam','package','otp'], required=True); a.add_argument('--build', required=True); a.add_argument('--report', required=True); a.add_argument('--record'); a.set_defaults(func=ctest)
+    a = sub.add_parser('ctest'); a.add_argument('--kind', choices=['beam','package','otp','beam-vm'], required=True); a.add_argument('--build', required=True); a.add_argument('--report', required=True); a.add_argument('--record'); a.set_defaults(func=ctest)
     a = sub.add_parser('collect'); a.add_argument('--directory', required=True); a.add_argument('--output', required=True); a.add_argument('--policy', default=ROOT/'release/policy.json'); a.set_defaults(func=collect)
     args = p.parse_args()
     try: args.func(args)

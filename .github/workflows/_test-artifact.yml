@@ -56,7 +56,8 @@ jobs:
         name: acceptance-diagnostics-${{ inputs.target }}
         path: |-
           ${{ runner.temp }}/beam/acquired/*.log
-          ${{ runner.temp }}/beam/otp/build/Testing/
+          ${{ runner.temp }}/beam/otp/qualification-*/logs/
+          ${{ runner.temp }}/beam/otp/qualification-*/cleanup.json
           ${{ runner.temp }}/beam/package/build/Testing/
         if-no-files-found: warn
         retention-days: 14

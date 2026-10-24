@@ -68,6 +68,10 @@ When focusing on this tree, launch from `~/Workspace/beam-erlang/beam-erlang` so
 
 Retained upstream trees preserve their relative paths beneath `src/`: `src/erts/`
 and `src/lib/`. Modern component and tooling organization remains in `src/beam/`.
+The retained emulator test corpus is the explicit exception: its unchanged
+suites, helpers and data live under `tests/vm/emulator/`. The separate
+`tests/vm/common_test/` harness uses an explicitly selected installed OTP product
+and its matching installed BEAM SDK; ordinary BEAM builds/tests require neither.
 All nine embedded Erlang modules and their verified bytecode live under
 `src/erts/preloaded/`; this placement does not change VM composition. See the
 [source map](../dev-documents/source-map.md#upstream-relative-source-layout) for
@@ -377,6 +381,10 @@ of VM-owned core modules. See [runtime artifact SDK](docs/c-api/deployment.md).
 Use the preset build directories `build/linux-emu` and `build/linux-jit`, with
 separate development installations under `install/<preset>`. Scratch builds,
 installations and logs belong in `../tmp/`, never in reference trees.
+Before declaring a dependency missing, inspect and verify the workspace
+`downloads/` manifests, then select suitable cached tool paths explicitly. Follow
+the [workspace dependency and storage rules](../AGENTS.md#validation-storage-lifecycle);
+dependency inputs must not rely on disposable `tmp/` runs.
 
 The private `beam_seed_compiler` and `beam_bootstrap` compile and deterministically
 verify owned compiler/support sources, then compile modern components and CLI
@@ -626,6 +634,10 @@ Keep target compiler flags in CMake, runner provisioning in `ci/`, behavioral
 fixtures in `tests/`, and image recipes in `containers/`. Do not reduce the
 catalog to platforms currently passing. Report actual failures and disabled
 execution explicitly; neither satisfies a required release gate.
+Both Linux integration targets require separate `beam-vm` evidence for the
+registered emulator suites, in addition to existing BEAM, acquired SDK, package
+and OTP reports. Preserve unchanged upstream assertions and report every
+selected case; missing inputs, failures and skips cannot become a passing gate.
 
 Cross compilation uses isolated source-attested native host tools. Never execute
 target binaries for generation or install native host tools into a target SDK.

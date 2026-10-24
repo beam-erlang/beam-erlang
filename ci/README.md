@@ -58,7 +58,7 @@ infrastructure. An unexecuted required check never satisfies qualification.
 | `ci-macos.yml` | PR, push, merge queue, manual | Apple Silicon × flavor |
 | `ci-android.yml` | PR, push, merge queue, manual | Three build hosts × architecture × flavor; transported emulator tests |
 | `ci-ios.yml` | PR, push, merge queue, manual | Device and simulator SDKs; simulator embedding |
-| `integration.yml` | PR, push, merge queue, manual | Package acceptance and installed-only OTP compatibility on both Linux flavors |
+| `integration.yml` | PR, push, merge queue, manual | Package acceptance, installed-only OTP compatibility and the BEAM-owned emulator selection on both Linux flavors |
 | `qualification.yml` | Nightly, manual | Registered maintenance lines, whole matrix, sanitizers, repeated lifecycle tests, 16 KB Android |
 | `release-candidate.yml` | Manual | Exact checkout, signing, archives, acquired qualification, evidence and attestations |
 | `release-publish.yml` | Manual, protected environment | Verify and publish exact qualified bytes; emit index handoff |
@@ -73,6 +73,18 @@ Schedules execute from the default branch. Qualification dispatches the branches
 registered in [release policy](../release/policy.json), including maintenance
 lines. A branch name alone never establishes support. A missing registered branch
 is an actionable dispatch failure; audit jobs do not create branches.
+
+The two Linux integration targets also run the standalone
+[BEAM VM Common Test project](../tests/README.md#installed-otp-host-for-emulator-suites)
+against the assembled installed OTP product and its selected SDK. This produces
+a required `beam-vm` report alongside the existing `beam`, `acquired`, `package`
+and `otp` reports. OTP supplies Common Test and the execution host; suite sources
+and assertions remain BEAM-owned. Qualification stages the matching installation
+and external provenance, runs the bounded VM batch, then runs the broader OTP
+checks. Both outcomes remain independent: a VM failure does not suppress OTP,
+and an OTP failure does not waive or replace the VM result. Missing or
+mismatched inputs and incomplete case evidence fail the VM gate. Ordinary
+BEAM build/test presets acquire no OTP dependency.
 
 ## Infrastructure and credentials
 

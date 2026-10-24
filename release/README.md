@@ -69,6 +69,19 @@ configured suite. `preflight.py` requires an unprivileged account, namespaces
 and private loopback for that Linux integration executor. Hosted provisioning
 requires enough disposable scratch space; it does not alter developer machines.
 
+Both Linux integration targets additionally require a `beam-vm` report from the
+[BEAM-owned emulator selection](../tests/README.md#installed-otp-host-for-emulator-suites).
+`qualify-otp.py` accepts `--vm-report` alongside its existing `--report`, stages
+the matching OTP installation and external provenance, and runs the standalone
+Common Test project against the installed OTP/SDK pair before the broader OTP
+checks. Their longer timeout cannot suppress the bounded VM batch. VM preparation
+or execution failure still allows OTP execution, and both outcomes remain
+independent. The VM
+report binds the candidate, flavor, producer provenance, selected test inputs
+and individual case results. All selected cases must pass without skips or
+missing results. A VM pass does not waive an OTP failure. Missing VM evidence
+blocks qualification.
+
 Mobile producers run host inventory checks without executing target code.
 Acquired mobile consumers use the selected NDK/Apple toolchain and an emulator or
 simulator. Device SDK compilation and packaging are checked; physical execution
