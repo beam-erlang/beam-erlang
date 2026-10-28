@@ -10,7 +10,7 @@ function(beam_platform_library target name)
             MACOSX_FRAMEWORK_BUNDLE_VERSION "${PROJECT_VERSION}"
             INSTALL_NAME_DIR "@rpath" BUILD_WITH_INSTALL_NAME_DIR TRUE)
         if(name STREQUAL "BEAM")
-            foreach(_header IN ITEMS beam.h runtime.h boot.h native.h sdk/bytecode.h sdk/inventories.h)
+            foreach(_header IN LISTS BEAM_PUBLIC_HEADERS)
                 set(_source "${CMAKE_SOURCE_DIR}/include/beam/${_header}")
                 get_filename_component(_directory "${_header}" DIRECTORY)
                 target_sources(${target} PRIVATE "${_source}")

@@ -46,22 +46,26 @@ apple-variant = \"${_apple_variant}\"
 native-kinds = [${_native_kinds}]
 compiler-generation = \"${BEAM_COMPILER_GENERATION}\"
 ${_android_facts}" NEWLINE_STYLE UNIX @ONLY)
-install(FILES "${CMAKE_BINARY_DIR}/target.toml" DESTINATION lib/beam)
-install(FILES "${_compiler_manifest}" DESTINATION lib/beam RENAME compiler-generation.json)
-install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMVerifySDK.cmake" DESTINATION lib/cmake/BEAM/support)
+_beam_install_sdk_file(sdk.target target-metadata "${CMAKE_BINARY_DIR}/target.toml"
+    lib/beam/target.toml REQUIRES compiler.generation)
+_beam_install_sdk_file(compiler.generation compiler-provenance "${_compiler_manifest}"
+    lib/beam/compiler-generation.json)
+install(FILES "${CMAKE_SOURCE_DIR}/cmake/sdk/BEAMVerifySDK.cmake" DESTINATION lib/cmake/BEAM/support)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(BEAM_CONSUMER_SYSROOT iphoneos)
     if(BEAM_APPLE_VARIANT STREQUAL "simulator")
         set(BEAM_CONSUMER_SYSROOT iphonesimulator)
     endif()
-    configure_file("${CMAKE_SOURCE_DIR}/cmake/BEAMToolchain.cmake.in"
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/sdk/BEAMiOSToolchain.cmake.in"
         "${CMAKE_BINARY_DIR}/BEAMToolchain.cmake" @ONLY)
-    install(FILES "${CMAKE_BINARY_DIR}/BEAMToolchain.cmake" DESTINATION lib/cmake/BEAM)
+    _beam_install_sdk_file(sdk.toolchain consumer-toolchain "${CMAKE_BINARY_DIR}/BEAMToolchain.cmake"
+        lib/cmake/BEAM/BEAMToolchain.cmake REQUIRES sdk.target)
 endif()
 
 if(ANDROID)
-    configure_file("${CMAKE_SOURCE_DIR}/cmake/BEAMAndroidToolchain.cmake.in"
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/sdk/BEAMAndroidToolchain.cmake.in"
         "${CMAKE_BINARY_DIR}/BEAMToolchain.cmake" @ONLY)
-    install(FILES "${CMAKE_BINARY_DIR}/BEAMToolchain.cmake" DESTINATION lib/cmake/BEAM)
+    _beam_install_sdk_file(sdk.toolchain consumer-toolchain "${CMAKE_BINARY_DIR}/BEAMToolchain.cmake"
+        lib/cmake/BEAM/BEAMToolchain.cmake REQUIRES sdk.target)
 endif()

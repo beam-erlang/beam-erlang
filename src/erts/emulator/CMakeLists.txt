@@ -1,6 +1,6 @@
 # The BEAM virtual machine. The product targets are libbeam.so and the beam executable.
 
-include(${CMAKE_SOURCE_DIR}/cmake/ErlangGenerators.cmake)
+include(${CMAKE_SOURCE_DIR}/src/erts/emulator/cmake/Generators.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/CompileFlags.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/Ycf.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/EmulatorSources.cmake)
@@ -111,8 +111,6 @@ erts_add_emulator_third_party_libraries()
 erts_add_ethread_library()
 
 erts_add_core_preload_target(beam_core_preload "${EMULATOR_GENERATED_DIR}")
-include(${CMAKE_SOURCE_DIR}/cmake/ComponentBuildId.cmake)
-set(BEAM_COMPONENT_BUILD_ID "${BEAM_COMPONENT_BUILD_ID}" PARENT_SCOPE)
 target_include_directories(beam_emulator PRIVATE "${CMAKE_BINARY_DIR}/components/include")
 # Object targets are direct dependencies so every native entry is retained.
 function(beam_link_runtime TARGET)
@@ -126,17 +124,6 @@ function(beam_link_runtime TARGET)
         set_target_properties(${TARGET} PROPERTIES LINKER_LANGUAGE CXX)
     endif()
 endfunction()
-
-# Compile returning policy in an isolated public-header target. Its object is
-# included for the existing SDK convenience exports, never used by VM internals.
-foreach(_header IN ITEMS beam runtime boot)
-    configure_file("${CMAKE_SOURCE_DIR}/include/beam/${_header}.h"
-        "${CMAKE_BINARY_DIR}/public-sdk/include/beam/${_header}.h" COPYONLY)
-endforeach()
-add_library(beam_return_helper OBJECT ${BEAM_BOOT_NATIVE_SOURCES})
-target_include_directories(beam_return_helper PRIVATE "${CMAKE_BINARY_DIR}/public-sdk/include")
-target_compile_features(beam_return_helper PRIVATE c_std_11)
-set_target_properties(beam_return_helper PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # libbeam.so is the VM. beam is a thin executable that calls it.
 add_library(libbeam SHARED $<TARGET_OBJECTS:beam_return_helper>
@@ -228,69 +215,6 @@ foreach(_pair IN ITEMS "libbeam;shared" "beam_runtime_static;static")
     set_property(TARGET ${_target} APPEND PROPERTY COMPATIBLE_INTERFACE_STRING BEAM_RUNTIME_LINKAGE)
 endforeach()
 
-# Distribution layout, artifact acquisition and startup recipes belong to hosts.
-# The support archive uses only the public runtime API and is not linked into it.
-add_library(beam_cli_recipe STATIC
-    "${CMAKE_SOURCE_DIR}/src/beam_cli_recipe.c")
-target_include_directories(beam_cli_recipe PRIVATE ${BEAM_RUN_INCLUDE_DIRECTORY} ${BEAM_CLI_INCLUDE_DIRECTORY} ${BEAM_INTERACTIVE_INCLUDE_DIRECTORY})
-target_link_libraries(beam_cli_recipe PUBLIC BEAM::Runtime)
-set(_cli_component_directory lib)
-if(WIN32)
-    set(_cli_component_directory bin)
-endif()
-target_compile_definitions(beam_cli_recipe PRIVATE
-    BEAM_CLI_COMPONENT_DIRECTORY="${_cli_component_directory}"
-    BEAM_CLI_LIBRARY_PREFIX="${CMAKE_SHARED_LIBRARY_PREFIX}"
-    BEAM_CLI_LIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}")
-set_target_properties(beam_cli_recipe PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-
-if(BEAM_BUILD_CLI)
-add_executable(beam
-    ${CMAKE_SOURCE_DIR}/src/beam_main.c
-    ${BEAM_BOOT_CLI_SOURCES}
-    ${BEAM_COMPILER_NATIVE_SOURCES})
-target_include_directories(beam PRIVATE "${CMAKE_SOURCE_DIR}/src" ${BEAM_COMPILER_INCLUDE_DIRECTORY})
-target_link_libraries(beam PRIVATE beam_cli_recipe)
-set_target_properties(beam PROPERTIES
-    EXPORT_NAME CLI
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    BUILD_RPATH "${BEAM_LOADER_ORIGIN}/../lib"
-    INSTALL_RPATH "${BEAM_LOADER_ORIGIN}/../lib"
-    BUILD_RPATH_USE_ORIGIN TRUE
-)
-if(MINGW)
-    target_link_options(beam PRIVATE -municode)
-endif()
-
-endif()
-
-foreach(_compiler IN ITEMS beam_seed_compiler beam_bootstrap)
-    if(TARGET ${_compiler})
-        continue()
-    endif()
-    add_executable(${_compiler}
-        "${CMAKE_SOURCE_DIR}/src/beam/compiler/beam_build_compiler.c"
-        ${BEAM_COMPILER_NATIVE_SOURCES})
-    target_include_directories(${_compiler} PRIVATE "${BEAM_COMPILER_INCLUDE_DIRECTORY}")
-    target_link_libraries(${_compiler} PRIVATE BEAM::Runtime)
-    if(MINGW)
-        target_link_options(${_compiler} PRIVATE -municode)
-    endif()
-    if(_compiler STREQUAL beam_seed_compiler)
-        set(_compiler_root "${BEAM_COMPILER_SEED_ROOT}")
-        add_dependencies(${_compiler} beam_compiler_seed)
-    else()
-        set(_compiler_root "${CMAKE_BINARY_DIR}")
-        add_dependencies(${_compiler} beam_compiler_tooling)
-    endif()
-    target_compile_definitions(${_compiler} PRIVATE
-        BEAM_COMPILER_COMMAND_FUNCTION="bootstrap" BEAM_BUILD_COMPILER_ROOT="${_compiler_root}")
-    set_target_properties(${_compiler} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-        BUILD_RPATH "${BEAM_LOADER_ORIGIN}/../lib" BUILD_RPATH_USE_ORIGIN TRUE)
-endforeach()
-
 # The VM forks this program at startup. It is not a user-facing command.
 if(BEAM_HAS_CHILD_SETUP)
 add_executable(erl_child_setup
@@ -329,3 +253,33 @@ endif()
 
 message(STATUS "libbeam: ${CMAKE_BINARY_DIR}/lib/libbeam.so (${ERTS_BUILD_FLAVOR})")
 message(STATUS "beam executable: ${CMAKE_BINARY_DIR}/bin/beam (${ERTS_BUILD_FLAVOR})")
+
+set(_core_refresh_dir "${CMAKE_BINARY_DIR}/core-artifacts")
+set(_core_refresh_outputs)
+foreach(_module IN LISTS BEAM_CORE_MODULES)
+    list(APPEND _core_refresh_outputs "${_core_refresh_dir}/${_module}.beam")
+endforeach()
+set(_core_check_stamp "${CMAKE_BINARY_DIR}/core-verification/verified.stamp")
+add_custom_command(OUTPUT "${_core_check_stamp}"
+    COMMAND ${CMAKE_COMMAND}
+        -DBOOTSTRAP=$<TARGET_FILE:beam_bootstrap> -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DOUTPUT_DIR=${CMAKE_BINARY_DIR}/core-verification -DVERIFY=ON
+        -P ${CMAKE_SOURCE_DIR}/cmake/RefreshCoreArtifacts.cmake
+    COMMAND ${CMAKE_COMMAND} -E touch "${_core_check_stamp}"
+    DEPENDS beam_bootstrap
+        ${BEAM_CORE_SOURCES} ${BEAM_CORE_BEAM_FILES}
+        "${CMAKE_SOURCE_DIR}/cmake/RuntimeCoreModules.cmake"
+        "${CMAKE_SOURCE_DIR}/cmake/RefreshCoreArtifacts.cmake"
+    COMMENT "Verifying embedded core bytecode and inspection metadata" VERBATIM)
+add_custom_target(beam_verify_core_artifacts ALL DEPENDS "${_core_check_stamp}")
+add_dependencies(beam_run beam_verify_core_artifacts)
+add_custom_target(beam_refresh_core_artifacts
+    COMMAND ${CMAKE_COMMAND}
+        -DBOOTSTRAP=$<TARGET_FILE:beam_bootstrap>
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DOUTPUT_DIR=${_core_refresh_dir}
+        -P ${CMAKE_SOURCE_DIR}/cmake/RefreshCoreArtifacts.cmake
+    BYPRODUCTS ${_core_refresh_outputs}
+    DEPENDS beam_bootstrap
+    COMMENT "Refreshing shared core artifact candidates with inspection metadata"
+    VERBATIM)

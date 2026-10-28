@@ -30,4 +30,43 @@ function(beam_add_erlang_component TARGET)
         COMMENT "Compiling ${TARGET} with the BEAM build compiler"
         VERBATIM)
     add_custom_target(${TARGET} DEPENDS ${_outputs})
+    set_target_properties(${TARGET} PROPERTIES BEAM_INVENTORY_FILES "${_outputs}")
+endfunction()
+
+# Producer-owned ordinary bytecode expectations, generated after compilation.
+function(beam_add_bytecode_inventory target)
+    cmake_parse_arguments(PARSE_ARGV 1 INV "" "NAME;INPUT_DIRECTORY;INSTALL_ROOT" "MODULES;DEPENDS")
+    if(INV_UNPARSED_ARGUMENTS OR INV_KEYWORDS_MISSING_VALUES OR
+       NOT INV_NAME MATCHES "^(base|boot|services)$" OR NOT INV_MODULES OR
+       NOT INV_INPUT_DIRECTORY OR NOT INV_INSTALL_ROOT)
+        message(FATAL_ERROR "${target}: provide inventory NAME, MODULES, INPUT_DIRECTORY and INSTALL_ROOT")
+    endif()
+    string(SUBSTRING "${INV_NAME}" 0 1 _initial)
+    string(TOUPPER "${_initial}" _initial)
+    string(SUBSTRING "${INV_NAME}" 1 -1 _rest)
+    set(_output "${CMAKE_BINARY_DIR}/bytecode/include")
+    set(_header "${_output}/beam_${INV_NAME}_inventory.inc")
+    set(_expectations "${_output}/BEAM${_initial}${_rest}Inventory.cmake")
+    set(_manifest "${CMAKE_BINARY_DIR}/${INV_INSTALL_ROOT}/modules.txt")
+    set(_files)
+    foreach(_module IN LISTS INV_MODULES)
+        list(APPEND _files "${INV_INPUT_DIRECTORY}/${_module}.beam")
+    endforeach()
+    add_custom_command(OUTPUT "${_header}" "${_expectations}" "${_manifest}"
+        BYPRODUCTS "${_output}/${INV_NAME}-modules.txt"
+        COMMAND ${CMAKE_COMMAND}
+            "-DNAME=${INV_NAME}" "-DBUILD_ID=${BEAM_COMPONENT_BUILD_ID}"
+            "-DMODULES=${INV_MODULES}" "-DINPUT_DIR=${INV_INPUT_DIRECTORY}"
+            "-DOUTPUT_DIR=${_output}" "-DRELATIVE_ROOT=${INV_INSTALL_ROOT}"
+            -P "${CMAKE_SOURCE_DIR}/cmake/GenerateBytecodeInventory.cmake"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_output}/${INV_NAME}-modules.txt" "${_manifest}"
+        DEPENDS ${INV_DEPENDS} ${_files}
+            "${CMAKE_SOURCE_DIR}/cmake/GenerateBytecodeInventory.cmake"
+        COMMENT "Generating verified ${INV_NAME} inventory expectations" VERBATIM)
+    add_custom_target(${target} DEPENDS "${_header}" "${_expectations}" "${_manifest}")
+    set_target_properties(${target} PROPERTIES
+        BEAM_INVENTORY_MODULES "${INV_MODULES}" BEAM_INVENTORY_FILES "${_files}"
+        BEAM_INVENTORY_MANIFEST "${_manifest}" BEAM_INVENTORY_EXPECTATIONS "${_expectations}"
+        BEAM_INVENTORY_HEADER "${_header}" BEAM_INVENTORY_INSTALL_ROOT "${INV_INSTALL_ROOT}")
 endfunction()

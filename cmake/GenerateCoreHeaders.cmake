@@ -3,6 +3,9 @@
 # Target compile/link probes. The native Darwin poll behavior check runs only
 # when not cross-compiling; cross builds retain its conservative select fallback.
 
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/erts/beam_release_version.h"
+    CONTENT "#define BEAM_RELEASE_VERSION \"${BEAM_RELEASE_VERSION}\"\n" NEWLINE_STYLE UNIX @ONLY)
+
 include(CheckTypeSize)
 include(CheckIncludeFile)
 include(CheckSymbolExists)
@@ -132,7 +135,7 @@ check_c_source_compiles([=[
     int main(void) { return 0; }
 ]=] HAVE_MULTICAST_SUPPORT)
 
-# Linux glibc seed for a vanilla build.
+# Platform-specific configuration precedes the shared target probes.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     include("${CMAKE_CURRENT_LIST_DIR}/platform/LinuxFeatures.cmake")
 elseif(ANDROID)
@@ -142,7 +145,7 @@ elseif(APPLE)
 elseif(WIN32)
     include("${CMAKE_CURRENT_LIST_DIR}/platform/WindowsFeatures.cmake")
 endif()
-include("${CMAKE_CURRENT_LIST_DIR}/platform/Features.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/platform/CommonFeatures.cmake")
 
 foreach(_erts_termcap_lib tinfo ncurses curses termcap termlib)
     check_library_exists(${_erts_termcap_lib} tgetent ""

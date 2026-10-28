@@ -1,3 +1,10 @@
+if(CMAKE_CROSSCOMPILING)
+    include(cross-inputs.cmake)
+    return()
+endif()
+get_target_property(BEAM_INSTALLED_BEAM_FILES beam_service_artifacts BEAM_INVENTORY_FILES)
+get_target_property(BEAM_SUPPORT_INCLUDE_DIRECTORY beam_support_modules BEAM_GENERATED_INCLUDE_DIRECTORY)
+
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 set(_package_test_args)
 if(NOT BEAM_BUNDLE_PACKAGE_TOOL)

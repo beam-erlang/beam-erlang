@@ -1,5 +1,32 @@
+# SDK exports and installed artifacts. File declarations own placement and catalog
+# metadata; target installation and exports remain ordinary CMake declarations.
+set(BEAM_RUNTIME_ARTIFACT_RECORDS)
+function(_beam_install_sdk_file id kind source relative)
+    cmake_parse_arguments(PARSE_ARGV 4 FILE "PROGRAM" "" "REQUIRES")
+    if(FILE_UNPARSED_ARGUMENTS OR FILE_KEYWORDS_MISSING_VALUES)
+        message(FATAL_ERROR "Invalid SDK file declaration: ${id}")
+    endif()
+    get_filename_component(_directory "${relative}" DIRECTORY)
+    get_filename_component(_name "${relative}" NAME)
+    if(FILE_PROGRAM)
+        install(PROGRAMS "${source}" DESTINATION "${_directory}" RENAME "${_name}")
+    else()
+        install(FILES "${source}" DESTINATION "${_directory}" RENAME "${_name}")
+    endif()
+    set(_requires "-")
+    if(FILE_REQUIRES)
+        list(JOIN FILE_REQUIRES "," _requires)
+    endif()
+    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS "${id}|${kind}|${relative}|${_requires}")
+    set(BEAM_RUNTIME_ARTIFACT_RECORDS "${BEAM_RUNTIME_ARTIFACT_RECORDS}" PARENT_SCOPE)
+endfunction()
+
+set(_component_targets beam_file_component beam_network_component beam_zlib_component)
+set(_native_targets beam_erl_tracer_nif)
 if(TARGET erl_child_setup)
     install(TARGETS erl_child_setup RUNTIME DESTINATION libexec/beam)
+    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
+        "helper.child_setup|executable-helper|libexec/beam/erl_child_setup|-")
 endif()
 install(TARGETS libbeam EXPORT BEAMSharedTargets
     RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib FRAMEWORK DESTINATION lib)
@@ -7,58 +34,109 @@ install(TARGETS libbeam_static beam_runtime_static EXPORT BEAMStaticTargets ARCH
 install(FILES "${CMAKE_SOURCE_DIR}/cmake/RuntimeExports.list" DESTINATION lib/beam)
 if(BEAM_BUILD_CLI)
     install(TARGETS beam EXPORT BEAMCLITargets RUNTIME DESTINATION bin)
-    add_executable(beam_launch "${CMAKE_SOURCE_DIR}/src/beam_launcher.c")
-    set_target_properties(beam_launch PROPERTIES OUTPUT_NAME beam-launch)
-    if(MINGW)
-        target_link_options(beam_launch PRIVATE -municode)
-    endif()
     install(TARGETS beam_launch RUNTIME DESTINATION bin)
+    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
+        "command.beam|executable-helper|bin/beam${CMAKE_EXECUTABLE_SUFFIX}|runtime"
+        "command.launcher|executable-helper|bin/beam-launch${CMAKE_EXECUTABLE_SUFFIX}|-")
 endif()
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/include/beam" DESTINATION include)
 install(TARGETS beam_sdk_support EXPORT BEAMTargets)
-install(FILES "${CMAKE_SOURCE_DIR}/src/beam_bytecode_verify.c"
-    "${CMAKE_SOURCE_DIR}/src/beam_bytecode_internal.h" "${_sdk_inventories}" DESTINATION share/beam/sdk)
-install(FILES "${_base_expectations}" "${CMAKE_SOURCE_DIR}/cmake/BEAMBytecode.cmake"
-    DESTINATION lib/cmake/BEAM/support)
-install(FILES ${_base_outputs} DESTINATION lib/beam/library/ebin)
-install(FILES "${_base_manifest}" DESTINATION lib/beam/library)
-install(FILES "${_beam_host_beam}" DESTINATION lib/beam/ebin)
-install(TARGETS ${BEAM_COMPONENT_TARGETS} LIBRARY DESTINATION lib RUNTIME DESTINATION bin FRAMEWORK DESTINATION lib)
-install(FILES ${BEAM_INSTALLED_BEAM_FILES} DESTINATION lib/beam/runtime/beam/ebin)
-install(FILES "${CMAKE_BINARY_DIR}/lib/beam/runtime/beam/modules.txt" DESTINATION lib/beam/runtime/beam)
-install(TARGETS ${BEAM_NATIVE_NIF_TARGETS}
-    LIBRARY DESTINATION lib/beam/runtime/beam/priv
-    RUNTIME DESTINATION lib/beam/runtime/beam/priv)
+get_target_property(_inventory_source beam_sdk_support BEAM_SDK_INVENTORY_SOURCE)
+_beam_install_sdk_file(sdk.inventories embedding-source "${_inventory_source}"
+    share/beam/sdk/inventories.c REQUIRES api.inventories)
+_beam_install_sdk_file(sdk.bytecode.private embedding-source "${CMAKE_SOURCE_DIR}/src/beam_bytecode_internal.h"
+    share/beam/sdk/beam_bytecode_internal.h REQUIRES api.bytecode)
+_beam_install_sdk_file(api.verifier embedding-source "${CMAKE_SOURCE_DIR}/src/beam_bytecode_verify.c"
+    share/beam/sdk/beam_bytecode_verify.c REQUIRES api.bytecode sdk.bytecode.private)
+foreach(_inventory IN ITEMS base boot services)
+    foreach(_field IN ITEMS MODULES FILES MANIFEST EXPECTATIONS INSTALL_ROOT)
+        get_target_property(_${_field} beam_${_inventory}_inventory BEAM_INVENTORY_${_field})
+        if(NOT _${_field})
+            message(FATAL_ERROR "Incomplete SDK ${_inventory} inventory: ${_field}")
+        endif()
+    endforeach()
+    string(TOUPPER "${_inventory}" _upper)
+    set(BEAM_${_upper}_MODULES "${_MODULES}")
+    set(BEAM_${_upper}_INSTALL_ROOT "${_INSTALL_ROOT}")
+    install(FILES ${_FILES} DESTINATION "${_INSTALL_ROOT}/ebin")
+    install(FILES "${_MANIFEST}" DESTINATION "${_INSTALL_ROOT}")
+    install(FILES "${_EXPECTATIONS}" DESTINATION lib/cmake/BEAM/support)
+endforeach()
+get_target_property(_host_artifact beam_host_artifact BEAM_HOST_ARTIFACT)
+install(FILES "${_host_artifact}" DESTINATION lib/beam/ebin)
+get_target_property(_service_files beam_service_artifacts BEAM_INVENTORY_FILES)
+get_target_property(_service_manifest beam_service_artifacts BEAM_INVENTORY_MANIFEST)
+get_target_property(_service_root beam_service_artifacts BEAM_INVENTORY_INSTALL_ROOT)
+install(FILES ${_service_files} DESTINATION "${_service_root}/ebin")
+install(FILES "${_service_manifest}" DESTINATION "${_service_root}")
+install(TARGETS ${_component_targets} LIBRARY DESTINATION lib RUNTIME DESTINATION bin FRAMEWORK DESTINATION lib)
+install(TARGETS ${_native_targets}
+    LIBRARY DESTINATION lib/beam/runtime/beam/priv RUNTIME DESTINATION lib/beam/runtime/beam/priv)
 
 # Public native-extension inputs; symbols resolve in the running VM.
-add_library(beam_nif_sdk INTERFACE)
-set_target_properties(beam_nif_sdk PROPERTIES EXPORT_NAME NIF)
-target_include_directories(beam_nif_sdk INTERFACE $<INSTALL_INTERFACE:include/beam/nif> $<INSTALL_INTERFACE:include>)
-install(TARGETS beam_nif_sdk EXPORT BEAMTargets)
-add_library(beam_driver_sdk INTERFACE)
-set_target_properties(beam_driver_sdk PROPERTIES EXPORT_NAME Driver)
-target_include_directories(beam_driver_sdk INTERFACE $<INSTALL_INTERFACE:include/beam/nif> $<INSTALL_INTERFACE:include>)
-install(TARGETS beam_driver_sdk EXPORT BEAMTargets)
-if(APPLE)
-    foreach(_native_sdk beam_nif_sdk beam_driver_sdk)
-        # Native modules resolve the selected host's public API at load time.
-        # Executables and static libraries must retain ordinary link checking.
-        target_link_options(${_native_sdk} INTERFACE
+foreach(_kind IN ITEMS nif driver)
+    add_library(beam_${_kind}_sdk INTERFACE)
+    set(_export NIF)
+    if(_kind STREQUAL driver)
+        set(_export Driver)
+    endif()
+    set_target_properties(beam_${_kind}_sdk PROPERTIES EXPORT_NAME "${_export}")
+    target_include_directories(beam_${_kind}_sdk INTERFACE
+        $<INSTALL_INTERFACE:include/beam/nif> $<INSTALL_INTERFACE:include>)
+    install(TARGETS beam_${_kind}_sdk EXPORT BEAMTargets)
+    if(APPLE)
+        # Executables/static libraries retain normal link checking.
+        target_link_options(beam_${_kind}_sdk INTERFACE
             "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,MODULE_LIBRARY>:LINKER:-undefined,dynamic_lookup>"
             "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>:LINKER:-undefined,dynamic_lookup>")
-    endforeach()
-endif()
-install(FILES
-    "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_nif.h"
-    "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_driver.h"
-    "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_drv_nif.h"
-    "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_nif_api_funcs.h"
-    "${CMAKE_BINARY_DIR}/erts/include/erl_int_sizes_config.h"
-    DESTINATION include/beam/nif)
-if(WIN32)
-    install(FILES "${CMAKE_SOURCE_DIR}/src/erts/emulator/sys/win32/erl_win_dyn_driver.h"
-        DESTINATION include/beam/nif)
-endif()
+    endif()
+endforeach()
+foreach(_header IN LISTS BEAM_PUBLIC_HEADERS)
+    get_filename_component(_id "${_header}" NAME_WE)
+    set(_kind embedding-header)
+    set(_requires "-")
+    if(_id STREQUAL beam)
+        set(_requires api.runtime api.boot)
+    elseif(_id STREQUAL boot OR _id STREQUAL bytecode)
+        set(_requires api.runtime)
+    elseif(_id STREQUAL inventories)
+        set(_requires api.bytecode)
+    endif()
+    set(_id "api.${_id}")
+    if(_header STREQUAL native.h)
+        set(_id header.beam_native)
+        set(_kind native-header)
+    endif()
+    _beam_install_sdk_file("${_id}" "${_kind}" "${CMAKE_SOURCE_DIR}/include/beam/${_header}"
+        "include/beam/${_header}" REQUIRES ${_requires})
+    if(BEAM_APPLE_FRAMEWORKS)
+        get_filename_component(_framework_id "${_header}" NAME_WE)
+        list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
+            "framework.runtime.${_framework_id}|framework-header|lib/BEAM.framework/Headers/beam/${_header}|${_id}")
+    endif()
+endforeach()
+foreach(_header IN ITEMS erl_nif erl_driver erl_drv_nif erl_nif_api_funcs erl_int_sizes_config erl_win_dyn_driver)
+    set(_source "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/${_header}.h")
+    set(_requires "-")
+    if(_header STREQUAL erl_nif)
+        set(_requires header.erl_drv_nif header.erl_nif_api_funcs)
+    elseif(_header STREQUAL erl_driver)
+        set(_requires header.erl_drv_nif)
+        if(WIN32)
+            list(APPEND _requires header.erl_win_dyn_driver)
+        endif()
+    elseif(_header STREQUAL erl_drv_nif)
+        set(_requires header.erl_int_sizes_config)
+    elseif(_header STREQUAL erl_int_sizes_config)
+        set(_source "${CMAKE_BINARY_DIR}/erts/include/${_header}.h")
+    elseif(_header STREQUAL erl_win_dyn_driver)
+        if(NOT WIN32)
+            continue()
+        endif()
+        set(_source "${CMAKE_SOURCE_DIR}/src/erts/emulator/sys/win32/${_header}.h")
+    endif()
+    _beam_install_sdk_file("header.${_header}" native-header "${_source}"
+        "include/beam/nif/${_header}.h" REQUIRES ${_requires})
+endforeach()
 file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/sdk.toml" CONTENT
 "format = 1
 identity = \"${BEAM_RELEASE_VERSION}\"
@@ -69,34 +147,80 @@ triple = \"${ERTS_HOST_TRIPLE}\"
 flavor = \"${ERTS_BUILD_FLAVOR}\"
 " NEWLINE_STYLE UNIX @ONLY)
 install(FILES "${CMAKE_BINARY_DIR}/sdk.toml" DESTINATION lib/beam)
-include("${CMAKE_SOURCE_DIR}/cmake/SDKTarget.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/InstallTargetMetadata.cmake")
 
 set(BEAM_RUNTIME_RELATIVE "lib/${CMAKE_SHARED_LIBRARY_PREFIX}beam${CMAKE_SHARED_LIBRARY_SUFFIX}")
 set(BEAM_STATIC_RELATIVE "lib/${CMAKE_STATIC_LIBRARY_PREFIX}beam${CMAKE_STATIC_LIBRARY_SUFFIX}")
+set(_component_install_dir lib)
 if(WIN32)
     set(BEAM_RUNTIME_RELATIVE "bin/${CMAKE_SHARED_LIBRARY_PREFIX}beam${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(BEAM_STATIC_RELATIVE "lib/${CMAKE_STATIC_LIBRARY_PREFIX}beam_static${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    set(_component_install_dir bin)
 elseif(BEAM_APPLE_FRAMEWORKS)
-    set(BEAM_RUNTIME_RELATIVE "lib/BEAM.framework/BEAM")
+    set(BEAM_RUNTIME_RELATIVE lib/BEAM.framework/BEAM)
 endif()
-set(BEAM_COMPONENT_INSTALL_DIR lib)
-if(WIN32)
-    set(BEAM_COMPONENT_INSTALL_DIR bin)
+set(_runtime_requires "-")
+if(ANDROID)
+    find_file(_android_cxx_runtime libc++_shared.so
+        PATHS "${CMAKE_SYSROOT}/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
+              "${CMAKE_SYSROOT}/usr/lib/${ANDROID_TOOLCHAIN_NAME}"
+        NO_DEFAULT_PATH REQUIRED)
+    _beam_install_sdk_file(runtime.cxx runtime-dependency "${_android_cxx_runtime}" lib/libc++_shared.so)
+    set(_runtime_requires runtime.cxx)
 endif()
-set(BEAM_FILE_RELATIVE "${BEAM_COMPONENT_INSTALL_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}beam-file${CMAKE_SHARED_LIBRARY_SUFFIX}")
-set(BEAM_NETWORK_RELATIVE "${BEAM_COMPONENT_INSTALL_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}beam-network${CMAKE_SHARED_LIBRARY_SUFFIX}")
+set(_static_exports RuntimeExports.list)
+if(APPLE)
+    set(_static_exports RuntimeExports.macho)
+endif()
+list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
+    "runtime|runtime|${BEAM_RUNTIME_RELATIVE}|${_runtime_requires}"
+    "runtime.static|runtime-static|${BEAM_STATIC_RELATIVE}|link.static,link.static.configuration,link.static.exports"
+    "link.static|link-support|lib/cmake/BEAM/BEAMStaticTargets.cmake|-"
+    "link.static.configuration|link-support|lib/cmake/BEAM/BEAMStaticTargets-%CONFIG%.cmake|-"
+    "link.static.exports|link-support|lib/beam/${_static_exports}|-")
+foreach(_component IN ITEMS file network zlib)
+    set(_relative "${_component_install_dir}/${CMAKE_SHARED_LIBRARY_PREFIX}beam-${_component}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    if(BEAM_APPLE_FRAMEWORKS)
+        set(_relative "lib/BEAM${_component}.framework/BEAM${_component}")
+        list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
+            "framework.${_component}.info|framework-metadata|lib/BEAM${_component}.framework/Info.plist|-")
+    endif()
+    string(TOUPPER "${_component}" _upper)
+    set(BEAM_${_upper}_RELATIVE "${_relative}")
+    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS "component.${_component}|native-component|${_relative}|runtime")
+endforeach()
 if(BEAM_APPLE_FRAMEWORKS)
-    set(BEAM_FILE_RELATIVE lib/BEAMfile.framework/BEAMfile)
-    set(BEAM_NETWORK_RELATIVE lib/BEAMnetwork.framework/BEAMnetwork)
+    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
+        "framework.runtime.modulemap|framework-metadata|lib/BEAM.framework/Modules/module.modulemap|api.beam"
+        "framework.runtime.info|framework-metadata|lib/BEAM.framework/Info.plist|-")
 endif()
+# These are the exact inputs embedded in libbeam, exposed for inspection only.
+foreach(_module IN LISTS BEAM_CORE_MODULES)
+    _beam_install_sdk_file("core.${_module}" core-module
+        "${CMAKE_SOURCE_DIR}/src/erts/preloaded/ebin/${_module}.beam" "lib/beam/core/ebin/${_module}.beam")
+    _beam_install_sdk_file("core-source.${_module}" core-source
+        "${CMAKE_SOURCE_DIR}/src/erts/preloaded/src/${_module}.erl" "lib/beam/core/src/${_module}.erl")
+endforeach()
+foreach(_record IN ITEMS
+        "native|BEAMNif.cmake" "target.check|BEAMTarget.cmake" "application|BEAMiOS.cmake"
+        "android|BEAMAndroid.cmake" "android.native|BEAMVerifyAndroidNative.cmake")
+    string(REPLACE "|" ";" _fields "${_record}")
+    list(GET _fields 0 _id)
+    list(GET _fields 1 _file)
+    _beam_install_sdk_file("sdk.${_id}" consumer-metadata "${CMAKE_CURRENT_LIST_DIR}/sdk/${_file}"
+        "lib/cmake/BEAM/support/${_file}")
+endforeach()
+install(FILES "${CMAKE_CURRENT_LIST_DIR}/sdk/BEAMBytecode.cmake"
+    "${CMAKE_CURRENT_LIST_DIR}/sdk/BEAMDeployment.cmake"
+    "${CMAKE_CURRENT_LIST_DIR}/sdk/BEAMRuntimeArtifacts.cmake" DESTINATION lib/cmake/BEAM/support)
+_beam_install_sdk_file(sdk.android.assembly consumer-tool "${CMAKE_SOURCE_DIR}/tools/beam-android.py"
+    share/beam/tools/beam-android.py PROGRAM)
+
 include(CMakePackageConfigHelpers)
-configure_package_config_file(
-    "${CMAKE_SOURCE_DIR}/cmake/BEAMConfig.cmake.in"
-    "${CMAKE_BINARY_DIR}/BEAMConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/BEAM)
+configure_package_config_file("${CMAKE_CURRENT_LIST_DIR}/sdk/BEAMConfig.cmake.in"
+    "${CMAKE_BINARY_DIR}/BEAMConfig.cmake" INSTALL_DESTINATION lib/cmake/BEAM)
 # The runtime release number is not a promise of C API compatibility.
-write_basic_package_version_file(
-    "${CMAKE_BINARY_DIR}/BEAMConfigVersion.cmake"
+write_basic_package_version_file("${CMAKE_BINARY_DIR}/BEAMConfigVersion.cmake"
     VERSION ${PROJECT_VERSION} COMPATIBILITY ExactVersion)
 install(EXPORT BEAMTargets NAMESPACE BEAM:: DESTINATION lib/cmake/BEAM)
 install(EXPORT BEAMSharedTargets NAMESPACE BEAM:: DESTINATION lib/cmake/BEAM)
@@ -104,143 +228,28 @@ install(EXPORT BEAMStaticTargets NAMESPACE BEAM:: DESTINATION lib/cmake/BEAM)
 if(BEAM_BUILD_CLI)
     install(EXPORT BEAMCLITargets NAMESPACE BEAM:: DESTINATION lib/cmake/BEAM)
 endif()
-install(FILES
-    "${CMAKE_BINARY_DIR}/BEAMConfig.cmake"
-    "${CMAKE_BINARY_DIR}/BEAMConfigVersion.cmake"
+install(FILES "${CMAKE_BINARY_DIR}/BEAMConfig.cmake" "${CMAKE_BINARY_DIR}/BEAMConfigVersion.cmake"
     DESTINATION lib/cmake/BEAM)
 
-install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMDeployment.cmake" DESTINATION lib/cmake/BEAM/support)
-
-install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMNif.cmake" DESTINATION lib/cmake/BEAM/support)
-install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMTarget.cmake" DESTINATION lib/cmake/BEAM/support)
-
-install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMiOS.cmake" DESTINATION lib/cmake/BEAM/support)
-
-# VM, public native headers, generic process helper and core inspection bytes.
-set(_static_exports RuntimeExports.list)
-if(APPLE)
-    set(_static_exports RuntimeExports.macho)
-endif()
-set(BEAM_RUNTIME_ARTIFACT_RECORDS
-    "api.beam|embedding-header|include/beam/beam.h|api.runtime,api.boot"
-    "api.runtime|embedding-header|include/beam/runtime.h|-"
-    "api.boot|embedding-header|include/beam/boot.h|api.runtime"
-    "api.bytecode|embedding-header|include/beam/sdk/bytecode.h|api.runtime"
-    "api.inventories|embedding-header|include/beam/sdk/inventories.h|api.bytecode"
-    "sdk.inventories|embedding-source|share/beam/sdk/inventories.c|api.inventories"
-    "sdk.bytecode.private|embedding-source|share/beam/sdk/beam_bytecode_internal.h|api.bytecode"
-    "api.verifier|embedding-source|share/beam/sdk/beam_bytecode_verify.c|api.bytecode,sdk.bytecode.private"
-    "sdk.native|consumer-metadata|lib/cmake/BEAM/support/BEAMNif.cmake|-"
-    "sdk.target.check|consumer-metadata|lib/cmake/BEAM/support/BEAMTarget.cmake|-"
-    "sdk.application|consumer-metadata|lib/cmake/BEAM/support/BEAMiOS.cmake|-"
-    "sdk.android|consumer-metadata|lib/cmake/BEAM/support/BEAMAndroid.cmake|-"
-    "sdk.android.native|consumer-metadata|lib/cmake/BEAM/support/BEAMVerifyAndroidNative.cmake|-"
-    "sdk.android.assembly|consumer-tool|share/beam/tools/beam-android.py|-"
-    "sdk.target|target-metadata|lib/beam/target.toml|compiler.generation"
-    "compiler.generation|compiler-provenance|lib/beam/compiler-generation.json|-"
-    "runtime|runtime|${BEAM_RUNTIME_RELATIVE}|-"
-    "runtime.static|runtime-static|${BEAM_STATIC_RELATIVE}|link.static,link.static.configuration,link.static.exports"
-    "link.static|link-support|lib/cmake/BEAM/BEAMStaticTargets.cmake|-"
-    "link.static.configuration|link-support|lib/cmake/BEAM/BEAMStaticTargets-%CONFIG%.cmake|-"
-    "link.static.exports|link-support|lib/beam/${_static_exports}|-"
-)
-if(BEAM_APPLE_FRAMEWORKS)
-    foreach(_pair IN ITEMS "beam|beam.h" "runtime|runtime.h" "boot|boot.h" "bytecode|sdk/bytecode.h" "inventories|sdk/inventories.h")
-        string(REPLACE "|" ";" _fields "${_pair}")
-        list(GET _fields 0 _id)
-        list(GET _fields 1 _header)
-        list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-            "framework.runtime.${_id}|framework-header|lib/BEAM.framework/Headers/beam/${_header}|api.${_id}")
-    endforeach()
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-        "framework.runtime.native|framework-header|lib/BEAM.framework/Headers/beam/native.h|header.beam_native"
-        "framework.runtime.modulemap|framework-metadata|lib/BEAM.framework/Modules/module.modulemap|api.beam"
-        "framework.runtime.info|framework-metadata|lib/BEAM.framework/Info.plist|-")
-    foreach(_component IN ITEMS file network zlib)
-        list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-            "framework.${_component}.info|framework-metadata|lib/BEAM${_component}.framework/Info.plist|-")
-    endforeach()
-endif()
-if(CMAKE_SYSTEM_NAME MATCHES "^(iOS|Android)$")
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-        "sdk.toolchain|consumer-toolchain|lib/cmake/BEAM/BEAMToolchain.cmake|sdk.target")
-endif()
-if(BEAM_BUILD_CLI)
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-        "command.beam|executable-helper|bin/beam${CMAKE_EXECUTABLE_SUFFIX}|runtime"
-        "command.launcher|executable-helper|bin/beam-launch${CMAKE_EXECUTABLE_SUFFIX}|-")
-endif()
-if(TARGET erl_child_setup)
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS "helper.child_setup|executable-helper|libexec/beam/erl_child_setup|-")
-endif()
-list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-    "header.beam_native|native-header|include/beam/native.h|-"
-    "header.erl_nif|native-header|include/beam/nif/erl_nif.h|header.erl_drv_nif,header.erl_nif_api_funcs"
-    "header.erl_driver|native-header|include/beam/nif/erl_driver.h|header.erl_drv_nif"
-    "header.erl_drv_nif|native-header|include/beam/nif/erl_drv_nif.h|header.erl_int_sizes_config"
-    "header.erl_nif_api_funcs|native-header|include/beam/nif/erl_nif_api_funcs.h|-"
-    "header.erl_int_sizes_config|native-header|include/beam/nif/erl_int_sizes_config.h|-")
-if(WIN32)
-    list(REMOVE_ITEM BEAM_RUNTIME_ARTIFACT_RECORDS
-        "header.erl_driver|native-header|include/beam/nif/erl_driver.h|header.erl_drv_nif")
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-        "header.erl_driver|native-header|include/beam/nif/erl_driver.h|header.erl_drv_nif,header.erl_win_dyn_driver"
-        "header.erl_win_dyn_driver|native-header|include/beam/nif/erl_win_dyn_driver.h|-")
-endif()
-# Export the exact inputs embedded into libbeam for distribution tools that
-# inspect preloaded code on disk. These files never extend runtime composition.
-install(FILES ${BEAM_CORE_BEAM_FILES} DESTINATION lib/beam/core/ebin)
-install(FILES ${BEAM_CORE_SOURCES} DESTINATION lib/beam/core/src)
-foreach(_module IN LISTS BEAM_CORE_MODULES)
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-        "core.${_module}|core-module|lib/beam/core/ebin/${_module}.beam|-"
-        "core-source.${_module}|core-source|lib/beam/core/src/${_module}.erl|-")
+_beam_install_sdk_file(license.BEAM license "${CMAKE_SOURCE_DIR}/LICENSE.txt" share/licenses/BEAM/LICENSE.txt)
+_beam_install_sdk_file(license.authors license "${CMAKE_SOURCE_DIR}/AUTHORS" share/licenses/BEAM/AUTHORS)
+file(GLOB_RECURSE _licenses LIST_DIRECTORIES FALSE RELATIVE "${CMAKE_SOURCE_DIR}/LICENSES"
+    "${CMAKE_SOURCE_DIR}/LICENSES/*")
+foreach(_license IN LISTS _licenses)
+    _beam_install_sdk_file("license.root.${_license}" license "${CMAKE_SOURCE_DIR}/LICENSES/${_license}"
+        "share/licenses/BEAM/LICENSES/${_license}")
 endforeach()
-foreach(_component IN ITEMS file network zlib)
-    set(_relative "${BEAM_COMPONENT_INSTALL_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}beam-${_component}${CMAKE_SHARED_LIBRARY_SUFFIX}")
-    if(BEAM_APPLE_FRAMEWORKS)
-        set(_relative "lib/BEAM${_component}.framework/BEAM${_component}")
-    endif()
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS "component.${_component}|native-component|${_relative}|runtime")
+foreach(_license IN ITEMS "asmjit/LICENSE.md" "ryu/LICENSE-Apache2" "ryu/LICENSE-Boost"
+        "ryu/xcharconv_ryu.h.sha.license" "pcre/LICENCE" "zstd/LICENSE" "zstd/COPYING")
+    _beam_install_sdk_file("license.${_license}" license "${CMAKE_SOURCE_DIR}/src/erts/emulator/${_license}"
+        "share/licenses/BEAM/${_license}")
 endforeach()
-if(ANDROID)
-    find_file(BEAM_ANDROID_CXX_RUNTIME libc++_shared.so
-        PATHS "${CMAKE_SYSROOT}/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
-              "${CMAKE_SYSROOT}/usr/lib/${ANDROID_TOOLCHAIN_NAME}"
-        NO_DEFAULT_PATH REQUIRED)
-    install(FILES "${BEAM_ANDROID_CXX_RUNTIME}" DESTINATION lib)
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-        "runtime.cxx|runtime-dependency|lib/libc++_shared.so|-")
-    list(REMOVE_ITEM BEAM_RUNTIME_ARTIFACT_RECORDS "runtime|runtime|${BEAM_RUNTIME_RELATIVE}|-")
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS "runtime|runtime|${BEAM_RUNTIME_RELATIVE}|runtime.cxx")
-endif()
-install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMAndroid.cmake" DESTINATION lib/cmake/BEAM/support)
-install(PROGRAMS "${CMAKE_SOURCE_DIR}/tools/beam-android.py" DESTINATION share/beam/tools)
-install(FILES "${CMAKE_SOURCE_DIR}/LICENSE.txt" DESTINATION share/licenses/BEAM)
-install(FILES "${CMAKE_SOURCE_DIR}/AUTHORS" DESTINATION share/licenses/BEAM)
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/LICENSES" DESTINATION share/licenses/BEAM)
-list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-    "license.BEAM|license|share/licenses/BEAM/LICENSE.txt|-"
-    "license.authors|license|share/licenses/BEAM/AUTHORS|-"
-    "license.zlib|license|share/licenses/BEAM/zlib/LICENSE.txt|-")
-file(GLOB_RECURSE _beam_licenses RELATIVE "${CMAKE_SOURCE_DIR}/LICENSES" "${CMAKE_SOURCE_DIR}/LICENSES/*")
-foreach(_license IN LISTS _beam_licenses)
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS "license.root.${_license}|license|share/licenses/BEAM/LICENSES/${_license}|-")
-endforeach()
-foreach(_license IN ITEMS "asmjit/LICENSE.md" "ryu/LICENSE-Apache2" "ryu/LICENSE-Boost" "ryu/xcharconv_ryu.h.sha.license" "pcre/LICENCE" "zstd/LICENSE" "zstd/COPYING")
-    get_filename_component(_directory "${_license}" DIRECTORY)
-    install(FILES "${CMAKE_SOURCE_DIR}/src/erts/emulator/${_license}" DESTINATION "share/licenses/BEAM/${_directory}")
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS "license.${_license}|license|share/licenses/BEAM/${_license}|-")
-endforeach()
-
-install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMVerifyAndroidNative.cmake" DESTINATION lib/cmake/BEAM/support)
-
 file(READ "${CMAKE_SOURCE_DIR}/src/erts/emulator/zlib/zlib.h" _zlib_header)
 string(FIND "${_zlib_header}" "*/" _zlib_notice_end)
 math(EXPR _zlib_notice_end "${_zlib_notice_end} + 2")
 string(SUBSTRING "${_zlib_header}" 0 ${_zlib_notice_end} _zlib_notice)
 file(WRITE "${CMAKE_BINARY_DIR}/zlib-LICENSE.txt" "${_zlib_notice}\n")
-install(FILES "${CMAKE_BINARY_DIR}/zlib-LICENSE.txt" DESTINATION share/licenses/BEAM/zlib RENAME LICENSE.txt)
+_beam_install_sdk_file(license.zlib license "${CMAKE_BINARY_DIR}/zlib-LICENSE.txt" share/licenses/BEAM/zlib/LICENSE.txt)
 if(MINGW)
     get_filename_component(BEAM_WINDOWS_RUNTIME_DIRECTORY "${CMAKE_C_COMPILER}" DIRECTORY)
     set(BEAM_WINDOWS_CXX_RUNTIME "")
@@ -250,49 +259,40 @@ if(MINGW)
         set(BEAM_WINDOWS_CXX_RUNTIME "${_beam_windows_cxx_runtime}")
     endif()
     set(BEAM_WINDOWS_PRODUCT_DLLS)
-    foreach(_target IN ITEMS libbeam ${BEAM_COMPONENT_TARGETS} ${BEAM_NATIVE_NIF_TARGETS})
+    foreach(_target IN ITEMS libbeam ${_component_targets} ${_native_targets})
         list(APPEND BEAM_WINDOWS_PRODUCT_DLLS "$<TARGET_FILE_NAME:${_target}>")
     endforeach()
-    configure_file("${CMAKE_SOURCE_DIR}/cmake/InstallWindowsRuntime.cmake.in"
+    configure_file("${CMAKE_CURRENT_LIST_DIR}/InstallWindowsRuntime.cmake.in"
         "${CMAKE_BINARY_DIR}/InstallWindowsRuntime.cmake" @ONLY)
     file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/InstallWindowsRuntime-$<CONFIG>.cmake"
         INPUT "${CMAKE_BINARY_DIR}/InstallWindowsRuntime.cmake")
     install(SCRIPT "${CMAKE_BINARY_DIR}/InstallWindowsRuntime-$<CONFIG>.cmake")
-    foreach(_license_package IN ITEMS gcc-libs winpthreads libwinpthread)
-        set(_license_directory "${BEAM_WINDOWS_RUNTIME_DIRECTORY}/../share/licenses/${_license_package}")
-        if(EXISTS "${_license_directory}")
-            install(DIRECTORY "${_license_directory}/" DESTINATION "share/licenses/BEAM/${_license_package}")
-            file(GLOB_RECURSE _licenses LIST_DIRECTORIES FALSE RELATIVE "${_license_directory}" "${_license_directory}/*")
+    foreach(_package IN ITEMS gcc-libs winpthreads libwinpthread)
+        set(_directory "${BEAM_WINDOWS_RUNTIME_DIRECTORY}/../share/licenses/${_package}")
+        if(EXISTS "${_directory}")
+            file(GLOB_RECURSE _licenses LIST_DIRECTORIES FALSE RELATIVE "${_directory}" "${_directory}/*")
             foreach(_license IN LISTS _licenses)
-                list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-                    "license.windows.${_license_package}.${_license}|license|share/licenses/BEAM/${_license_package}/${_license}|-")
+                _beam_install_sdk_file("license.windows.${_package}.${_license}" license "${_directory}/${_license}"
+                    "share/licenses/BEAM/${_package}/${_license}")
             endforeach()
         endif()
     endforeach()
 endif()
-# Portable desktop discovery is limited to shared runtime linkage.
 if(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Windows)$")
-    configure_file("${CMAKE_SOURCE_DIR}/cmake/beam.pc.in" "${CMAKE_BINARY_DIR}/beam.pc" @ONLY)
-    install(FILES "${CMAKE_BINARY_DIR}/beam.pc" DESTINATION lib/pkgconfig)
-    list(APPEND BEAM_RUNTIME_ARTIFACT_RECORDS
-        "sdk.pkgconfig|consumer-metadata|lib/pkgconfig/beam.pc|-")
+    configure_file("${CMAKE_CURRENT_LIST_DIR}/sdk/beam.pc.in" "${CMAKE_BINARY_DIR}/beam.pc" @ONLY)
+    _beam_install_sdk_file(sdk.pkgconfig consumer-metadata "${CMAKE_BINARY_DIR}/beam.pc" lib/pkgconfig/beam.pc)
 endif()
-
-configure_file("${CMAKE_SOURCE_DIR}/cmake/InstallRuntimeArtifacts.cmake.in"
+# Hash final installed bytes after platform dependency discovery and RPATH edits.
+configure_file("${CMAKE_CURRENT_LIST_DIR}/InstallRuntimeArtifacts.cmake.in"
     "${CMAKE_BINARY_DIR}/InstallRuntimeArtifacts.cmake" @ONLY)
 install(SCRIPT "${CMAKE_BINARY_DIR}/InstallRuntimeArtifacts.cmake")
-install(FILES "${CMAKE_SOURCE_DIR}/cmake/BEAMRuntimeArtifacts.cmake" DESTINATION lib/cmake/BEAM/support)
-
 if(MSVC AND BEAM_RELEASE_DEBUG_INFO)
-    foreach(_debug_target IN ITEMS libbeam beam ${BEAM_COMPONENT_TARGETS} ${BEAM_NATIVE_NIF_TARGETS})
-        if(TARGET ${_debug_target})
-            install(FILES "$<TARGET_PDB_FILE:${_debug_target}>" DESTINATION bin OPTIONAL)
+    foreach(_target IN ITEMS libbeam beam ${_component_targets} ${_native_targets})
+        if(TARGET ${_target})
+            install(FILES "$<TARGET_PDB_FILE:${_target}>" DESTINATION bin OPTIONAL)
         endif()
     endforeach()
 endif()
-
-install(PROGRAMS "${CMAKE_SOURCE_DIR}/tools/beam-application.py" DESTINATION share/beam/tools)
-
-install(PROGRAMS "${CMAKE_SOURCE_DIR}/tools/beam-xcframework.py" DESTINATION share/beam/tools)
-
-include("${CMAKE_SOURCE_DIR}/cmake/InstallDocumentation.cmake")
+install(PROGRAMS "${CMAKE_SOURCE_DIR}/tools/beam-application.py"
+    "${CMAKE_SOURCE_DIR}/tools/beam-xcframework.py" DESTINATION share/beam/tools)
+include("${CMAKE_CURRENT_LIST_DIR}/InstallDocumentation.cmake")

@@ -62,3 +62,12 @@ and mechanisms; their presence does not add library modules or capabilities to a
 host composition.
 
 - [Building the SDK](getting-started/building.md): target presets, native host tools and cross compilation.
+
+## Contributor documentation
+
+- [Architecture](architecture.md): source ownership, runtime inventories and lifetime boundaries.
+- [Build maintenance](../cmake/README.md): source-attested compiler bootstrap and reviewed artifact refresh.
+- [Test guide](../tests/README.md): runnable coverage and independent acceptance owners.
+- [CI architecture](../ci/README.md): platform routes and provisioning.
+- [Release operations](../release/README.md): version/support policy and qualification/publication.
+- [Upstream synchronization](../release/upstream-sync.md): source mapping, branch roles and propagation.

@@ -1,4 +1,4 @@
-include("${CMAKE_CURRENT_LIST_DIR}/../BEAMTarget.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../sdk/BEAMTarget.cmake")
 beam_check_compiler_target(SYSTEM Linux ARCHITECTURE "${BEAM_TARGET_ARCH}"
     LIBC "${BEAM_TARGET_LIBC}" DETECTED_LIBC _beam_detected_libc)
 set(BEAM_TARGET_LIBC "${_beam_detected_libc}" CACHE STRING "Target C library" FORCE)

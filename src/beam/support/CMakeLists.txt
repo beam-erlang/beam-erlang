@@ -20,3 +20,6 @@ beam_add_erlang_component(beam_support_modules
 foreach(_value IN ITEMS MODULES OUTPUT_DIRECTORY INCLUDE_DIRECTORY)
     set(BEAM_SUPPORT_${_value} "${BEAM_SUPPORT_${_value}}" PARENT_SCOPE)
 endforeach()
+
+set_target_properties(beam_support_modules PROPERTIES
+    BEAM_GENERATED_INCLUDE_DIRECTORY "${BEAM_SUPPORT_INCLUDE_DIRECTORY}")

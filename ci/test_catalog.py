@@ -56,6 +56,8 @@ class Contracts(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('host_tools',catalog.ROOT/'cmake/host_tools.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp).resolve();source=root/'source';source.mkdir();(source/'CMakeLists.txt').write_text('project(test)');(source/'BEAM_VERSION').write_text('17.0-r1')
+            (source/'tools').mkdir()
+            (source/'tools/stage-documentation.py').write_text('documentation staging')
             build=root/'build';(build/'bin').mkdir(parents=True);(build/'compiler').mkdir();(build/'compiler/verified.stamp').touch();(build/'CMakeCache.txt').write_text('BEAM_HOST_TOOLS_ROOT:PATH=\n')
             import platform
             suffix='.exe' if platform.system()=='Windows' else ''
@@ -73,6 +75,12 @@ class Contracts(unittest.TestCase):
             with patch.object(sys,'argv',arguments), self.assertRaisesRegex(ValueError,'differ'):
                 module.main()
             relocated.write_bytes(b'core')
+            documentation_tool = source / 'tools/stage-documentation.py'
+            documentation_tool.write_text('changed documentation staging')
+            self.assertNotEqual(expected['source'],module.record(source,build)['source'])
+            with patch.object(sys,'argv',arguments), self.assertRaisesRegex(ValueError,'differ'):
+                module.main()
+            documentation_tool.write_text('documentation staging')
             (build/'bin'/('beam_bootstrap'+suffix)).write_bytes(b'changed')
             self.assertNotEqual(expected,module.record(source,build))
             with patch.object(sys,'argv',arguments), self.assertRaisesRegex(ValueError,'differ'):

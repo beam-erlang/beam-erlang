@@ -18,8 +18,8 @@ routes. Android has three build hosts, but only its Linux producer publishes.
 
 These are implemented build routes and intended support obligations, not a claim
 that every platform port currently builds or passes. Platform compiler and runtime
-failures remain visible. Current validation belongs in the
-[architecture evidence](../../dev-documents/workflow-cmake-architecture.md).
+failures remain visible. Execution reports must identify the exact source, SDK
+and target and distinguish exercised behavior from unexecuted coverage.
 
 ## Everyday development
 

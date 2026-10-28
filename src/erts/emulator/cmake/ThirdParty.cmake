@@ -12,7 +12,7 @@ function(erts_add_emulator_third_party_libraries)
         ${PCRE_GEN_DIR}/pcre2_match_yield_coverage.gen.h
     )
     set(PCRE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/pcre/pcre2_match.c)
-    set(PCRE_GENS_SCRIPT ${CMAKE_SOURCE_DIR}/cmake/generate_pcre_headers.pl)
+    set(PCRE_GENS_SCRIPT ${CMAKE_SOURCE_DIR}/src/erts/emulator/cmake/generate_pcre_headers.pl)
 
     add_custom_command(
         OUTPUT ${PCRE_GEN_HEADERS}

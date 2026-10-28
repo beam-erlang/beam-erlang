@@ -6,6 +6,7 @@ list(FILTER _component_identity_sources EXCLUDE REGEX "(__pycache__|[.]pyc$)")
 list(APPEND _component_identity_sources
     "${CMAKE_SOURCE_DIR}/CMakeLists.txt"
     "${CMAKE_SOURCE_DIR}/BEAM_VERSION"
+    "${CMAKE_SOURCE_DIR}/tools/stage-documentation.py"
     ${BEAM_CORE_BEAM_FILES})
 list(REMOVE_DUPLICATES _component_identity_sources)
 list(SORT _component_identity_sources)

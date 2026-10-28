@@ -131,8 +131,8 @@ ctest --preset macos-arm64-appleclang-jit
 cmake --install build/macos-arm64-appleclang-jit
 ```
 
-The deployment target is 15.0. Execution on macOS 26.6.2 does not establish macOS
-15 runtime support, including compatibility of selected external dependencies.
+The deployment target is 15.0. Qualification must exercise the supported runtime
+baseline, including compatibility of selected external dependencies.
 Darwin native modules use their actual installed artifact names; SDK consumers
 must use exported targets and artifact inventories rather than infer a suffix.
 Static hosts export the applicable public runtime symbol inventory for admitted
@@ -143,3 +143,76 @@ Ordinary BEAM builds and tests need no OTP installation. The independent
 installed-OTP-hosted VM selection remains a separate project under
 `tests/vm/common_test`. Linux integration and full OTP compatibility remain
 separate from native development acceptance.
+
+## Native Windows development
+
+Windows 11 AMD64 development uses Visual Studio 2022 MSVC, CMake, Ninja and Perl.
+Desktop SDK acceptance also requires pkg-config or pkgconf; MSVC uses native
+pkgconf with `--msvc-syntax`. Select its executable explicitly with
+`-DBEAM_TEST_PKG_CONFIG=/absolute/path/to/pkgconf` when needed.
+Set `PackageSources` to the absolute matching package-tool checkout path.
+From an x64 Visual Studio developer environment:
+
+```powershell
+cmake --preset windows-amd64-msvc-emu `
+  "-DBEAM_PACKAGE_SOURCE_DIR=$PackageSources"
+cmake --build --preset windows-amd64-msvc-emu --parallel 8
+cmake --install build/windows-amd64-msvc-emu
+```
+
+Use `windows-amd64-msvc-jit` for a separate JIT installation. Both bundle the
+package application and install shared/static BEAM/Erlang SDKs. Add the selected
+installation's `bin` directory to `PATH` in ordinary PowerShell to use `beam`
+and `beam-pkg`. Native package builds also need the MSVC developer environment.
+The build recipe selects a native SDK; complete platform and release
+qualification use the independently owned product fixtures and release gates.
+
+### Windows UCRT64 GCC
+
+Use the native MSYS2 UCRT64 tools from ordinary PowerShell. Select their paths
+explicitly, and keep the UCRT64 `bin` directory on the build-time `PATH` so GCC's
+own helper programs can find their DLLs. Do not select compilers from MSYS `/usr`.
+
+Some packaged GCC companion tools lack a UTF-8 process manifest and lose Unicode
+filenames. Prepare a separate copy once with the Windows SDK manifest tool:
+
+```powershell
+python tools/prepare-windows-ucrt64.py `
+  --source "$env:USERPROFILE/msys64/ucrt64" `
+  --destination $PreparedUcrt --manifest-tool $ManifestTool
+```
+
+`PreparedUcrt` is an absolute workspace dependency path ending in `ucrt64`;
+`ManifestTool` selects the installed Windows SDK's `x64/mt.exe`. The original
+installation is read-only. The script preserves existing manifest settings,
+checks that executable code is unchanged, and records hashes and package versions.
+Use `--verify-existing` to validate a prepared copy. This follows the
+[GCC Unicode-path workaround](https://gcc.gnu.org/pipermail/gcc-bugs/2023-February/813518.html)
+without changing package versions or the machine's locale.
+
+```powershell
+$Ucrt = $PreparedUcrt
+$env:PATH = "$Ucrt/bin;$env:PATH"
+$Preset = 'windows-amd64-ucrt64-emu' # or windows-amd64-ucrt64-jit
+& "$Ucrt/bin/cmake.exe" --preset $Preset `
+  "-DCMAKE_C_COMPILER=$Ucrt/bin/gcc.exe" `
+  "-DCMAKE_CXX_COMPILER=$Ucrt/bin/g++.exe" `
+  "-DCMAKE_RC_COMPILER=$Ucrt/bin/windres.exe" `
+  "-DCMAKE_MAKE_PROGRAM=$Ucrt/bin/ninja.exe" `
+  "-DCMAKE_OBJDUMP=$Ucrt/bin/objdump.exe" `
+  "-DCMAKE_AR=$Ucrt/bin/ar.exe" "-DCMAKE_RANLIB=$Ucrt/bin/ranlib.exe" `
+  "-DCMAKE_LINKER=$Ucrt/bin/ld.exe" "-DCMAKE_NM=$Ucrt/bin/nm.exe" `
+  "-DPython3_EXECUTABLE=$Python" "-DPERL_EXECUTABLE=$Perl" `
+  -DBEAM_BUNDLE_PACKAGE_TOOL=ON `
+  "-DBEAM_PACKAGE_SOURCE_DIR=$PackageSources"
+& "$Ucrt/bin/cmake.exe" --build "build/$Preset" --parallel 6
+& "$Ucrt/bin/cmake.exe" --install "build/$Preset"
+```
+
+`Python`, `Perl` and `PackageSources` select absolute paths to the retained native
+Python/Perl executables and the package repository.
+EMU and JIT install separately. GCC and MSVC SDKs and native extensions must use
+their matching compiler environment. The installation bundles its required native
+GCC runtime DLLs; using installed commands does not require MSYS2 on `PATH`.
+Installed SDK and package acceptance use the matching compiler environment;
+compilation alone does not establish GUI, full OTP or release qualification.

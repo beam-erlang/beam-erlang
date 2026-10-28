@@ -158,6 +158,10 @@ Declare deployment once on an executable, then install it once. Stage with
 ordinary `cmake --install --prefix`; application resources use normal CMake
 install rules. Unknown/incompatible selections and missing selected assets fail
 configuration. Ordinary SDK discovery does not require those optional assets.
+Deployment uses the selected runtime artifact dependency closure and the
+producer's ordinary bytecode expectations. Installation checks those hashes
+again before copying assets; changing the SDK requires reconfiguration.
+Frameworks remain complete deployment units.
 
 | Profile | Packaged assets |
 | --- | --- |

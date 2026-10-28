@@ -1,4 +1,4 @@
-# All probes use the target compiler/sysroot, including cross builds.
+# Shared feature probes use the target compiler/sysroot, including cross builds.
 if(WIN32)
     set(HAVE_WINDOWS_H 1)
     set(ETHR_WIN32_THREADS 1)

@@ -227,3 +227,29 @@ set(BEAM_COMPILER_INCLUDE_DIRECTORY "${_compiler_include}" PARENT_SCOPE)
 set(BEAM_COMPILER_SEED_ROOT "${BEAM_COMPILER_SEED_ROOT}" PARENT_SCOPE)
 set(BEAM_COMPILER_MODULES "${BEAM_COMPILER_MODULES}" PARENT_SCOPE)
 set(BEAM_COMPILER_BEAM_FILES "${BEAM_COMPILER_BEAM_FILES}" PARENT_SCOPE)
+
+foreach(_compiler IN ITEMS beam_seed_compiler beam_bootstrap)
+    if(TARGET ${_compiler})
+        continue()
+    endif()
+    add_executable(${_compiler}
+        "${CMAKE_SOURCE_DIR}/src/beam/compiler/beam_build_compiler.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/beam_compiler_host.c")
+    target_include_directories(${_compiler} PRIVATE "${_compiler_include}")
+    target_link_libraries(${_compiler} PRIVATE BEAM::Runtime)
+    if(MINGW)
+        target_link_options(${_compiler} PRIVATE -municode)
+    endif()
+    if(_compiler STREQUAL beam_seed_compiler)
+        set(_compiler_root "${BEAM_COMPILER_SEED_ROOT}")
+        add_dependencies(${_compiler} beam_compiler_seed)
+    else()
+        set(_compiler_root "${CMAKE_BINARY_DIR}")
+        add_dependencies(${_compiler} beam_compiler_tooling)
+    endif()
+    target_compile_definitions(${_compiler} PRIVATE
+        BEAM_COMPILER_COMMAND_FUNCTION="bootstrap" BEAM_BUILD_COMPILER_ROOT="${_compiler_root}")
+    set_target_properties(${_compiler} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        BUILD_RPATH "${BEAM_LOADER_ORIGIN}/../lib" BUILD_RPATH_USE_ORIGIN TRUE)
+endforeach()

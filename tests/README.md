@@ -99,8 +99,8 @@ Both Linux integration targets require the separate `beam-vm` report in
 [release qualification](../release/README.md#candidate-production-and-qualification).
 This selection does not execute the rest of the emulator corpus, the legacy
 benchmark specifications or the ordered `a_SUITE`/`z_SUITE` lifetime checks.
-Current execution results and remaining coverage are recorded in the
-[VM inventory](../../dev-documents/vm-test-inventory.md#emulator-corpus-relocation-and-common-test-integration).
+Each invocation records its own exact inputs and case outcomes. Retained suite
+source alone establishes no execution or compatibility result.
 
 ### Native thread-library cases
 
@@ -167,7 +167,7 @@ and affected cross-product validation at the integration gates described in
 Paths below are relative to this directory. A runner lives beside its client
 project and fixtures. All generated clients, installations and logs remain under
 `build/<preset>/tests/` at their established output locations. Each installed
-suite creates its own prefix; none reads the playground or a system Erlang.
+suite creates its own prefix using self-contained fixtures and no system Erlang.
 
 | CTest name | Sources and fixtures | Contract |
 |---|---|---|
@@ -203,18 +203,13 @@ The native entries cover `create_join_thread`, `equal_tids`, `mutex`,
 `test-support` entry also checks the native adapter's result protocol,
 diagnostic retention and timeout cleanup using synthetic helper processes.
 
-The retired `installed-runtime`, `installed-otp-compat`, OTP boot/native artifact
-and startup-observer entries are not runnable BEAM tests. Their functional owners
-are OTP's `otp-command-policy`, `otp-compatibility-transfer`, `otp-boot-observer`,
-`otp-host-preparation`, product probes and native acceptance. OTP fixtures retain
-fresh, relocated and isolated execution, thirteen additional preloads, sticky
-module/restart semantics, applications, native services and hostname lookup.
-See the [ownership record](../../dev-documents/otp-ownership-cutover.md) for the
-transfer and its validation limits. Duplicate bare-family variants are replaced
-by explicit composition and sequential VM coverage; family selection and old
-installation placement are not compatibility contracts.
+OTP owns command, application, startup-observer and host-preparation acceptance,
+including fresh/relocated/isolated execution, additional preloads, restart,
+native services and hostname lookup. See its [compatibility contract](../../erlang-otp/docs/compatibility.md)
+and [test preparation](../../erlang-otp/docs/test-preparation.md). Generic
+composition and sequential VM lifetimes remain covered here.
 
-## Ownership and evidence
+## Ownership and coverage
 
 Public SDK usability and integrity belong to `installed-sdk`; common CLI
 acquisition failures belong to `installed-interactive`. Input variations in the
@@ -228,7 +223,7 @@ Use clean build/install trees rather than testing upgrades from obsolete layouts
 `support/bytecode_input.h` owns test acquisition of explicitly selected base,
 boot and services inventories. Native
 fixtures receive its directory explicitly as `TEST_SUPPORT_DIR`; it is neither
-an SDK header nor a runtime asset. Playground examples remain self-contained.
+an SDK header nor a runtime asset.
 
 Public consumer projects use `find_package(BEAM CONFIG REQUIRED)`, installed
 headers and installed exports. They must remain evidence that an outside client
@@ -310,15 +305,14 @@ Existing acquired-runtime and application reports remain mandatory for releases.
 
 The mobile adapter reuses first-call, API validation and deployment fixtures,
 including file/network/zlib, repeated lifetimes, missing assets, bytecode identity
-and recovery in a copied deployment. See the
-[architecture evidence](../../dev-documents/workflow-cmake-architecture.md) for
-actual platform execution evidence. Never classify missing coverage as a pass.
+and recovery in a copied deployment. Execution reports distinguish the actual
+platform and exercised cases. Never classify missing coverage as a pass.
 The independent `ios-app/` fixture owns real signed Release app installation,
 main-thread responsiveness, idle callbacks, package static NIF/resources, explicit
 components, repeated VMs and foreground/background reconstruction. It prepares
 missing/corrupt bytecode variants before signing. The release adapter binds this
 evidence to acquired SDKs and requires physical-device execution without a
-debugger. Playground sources are excluded from this gate. Simulator runtime and
+debugger. The gate uses independent product-owned fixtures. Simulator runtime and
 device selection are explicit; deployment minimum and observed OS are separate.
 Disabled infrastructure produces an unexecuted report and blocks qualification.
 `ci/test_catalog.py` owns route selection, archive extraction, build-only consumer

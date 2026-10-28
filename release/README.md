@@ -5,15 +5,59 @@ provenance, qualification aggregation, publication, verification and recovery.
 Runner installation lives in [ci/](../ci/README.md), behavioral tests in
 [tests/](../tests/README.md), and image recipes in [containers/](../containers/README.md).
 
-The adopted [release strategy](../../dev-documents/distribution-release-strategy.md)
-and [upstream sync process](../../dev-documents/Upstream-Sync-Process.md) define
-ERTS-aligned generations. `BEAM_VERSION` contains the exact product identity,
-currently `17.0-r1-preview.1`: `<ERTS>-r<revision>[-preview.<number>]`.
-Revision/preview numbers are positive integers no greater than 9007199254740991.
-Numeric CMake discovery projects the first three ERTS components; exact SDK and
-native component checks retain the full identity and build ID. The modern root
-`OTP_VERSION` and `otp_versions.table` are removed. Generated OTP reporting remains
-explicit compatibility metadata pending a separate interface change.
+## Product versions and compatibility
+
+BEAM follows the upstream ERTS version of its integrated runtime baseline, with
+an Erlangsters distribution revision and optional preview designation.
+`BEAM_VERSION` owns the exact identity, currently `17.0-r1-preview.1`:
+`<ERTS>-r<revision>[-preview.<number>]`.
+
+- ERTS has at least two dot-separated nonnegative decimal components without
+  leading zeroes except `0`. Preserve upstream bases with more than three components.
+- Distribution revisions and preview numbers are decimal integers from 1 through
+  9007199254740991, without leading zeroes. Revisions begin at 1 for a new ERTS base.
+- Compare ERTS components numerically, then revision, then preview number. Stable
+  sorts after previews of the same base/revision; ordering establishes no source
+  ancestry or API/ABI guarantee.
+- Numeric CMake discovery projects the first three ERTS components, supplying zero
+  for an absent patch. Exact SDK/native checks retain the full identity and build ID.
+
+Adopt a new ERTS base only after integrating its upstream runtime baseline.
+Changed delivered source or payload on the same base advances the distribution
+revision, including compiler, library, API, CLI, component, package-tool or
+packaging changes. A selected upstream patch alone does not establish adoption
+of an entire later ERTS release. [Upstream synchronization](upstream-sync.md)
+owns source selection, processed-through provenance and branch propagation.
+
+The release record binds the identity to `erts_version`, `distribution_revision`,
+`channel` and `preview_number`; values must agree. Build IDs and artifact digests
+remain separate from human-facing product versions. Changed bytes receive a new
+immutable identity; previously published payloads never change. Source provenance
+is distinct from product numbering. Modern generated OTP reporting is explicit
+compatibility metadata, not another BEAM version or a permanent modern API.
+
+OTP owns its upstream application/runtime reporting and independent distribution
+revision. Its exact selected SDK version, build and flavor remain explicit, with
+provenance outside its faithful installation tree. A changed statically linked VM
+changes that delivered OTP product without forcing simultaneous publication of
+both products. Shared changes still require suitable OTP adaptation and acceptance.
+
+Public modern interfaces remain experimental. Exact SDK selection is not a stable
+ABI guarantee; consumers must rebuild/requalify against changed previews. Explicit
+stabilization must separately declare Erlang behavior, C source compatibility,
+C binary ABI and command guarantees, supported by retained consumer acceptance.
+Stable contracts persist through their maintained release line. Planned breaks
+belong at a declared generation transition after announced deprecation, migration
+instructions and an earlier published migration period. Narrow correctness/security
+exceptions require impact review and guidance. An independent API break needs
+explicit API/ABI versioning and acceptance; a distribution revision or invented
+ERTS version cannot communicate that contract by itself.
+
+File/network/zlib components retain matching-build linkage with `libbeam`.
+Private native descriptors do not establish provider ABI, independent binary
+interchangeability or hot reload. The bundled package tool has its own source
+identity/version but retains exact matching-build inventory and selected-payload
+qualification. Independent self-upgrade compatibility requires its own boundary.
 
 ## Source and support policy
 
@@ -35,8 +79,32 @@ URLs, SHA-256 digests, byte sizes and producer identities. Its pending entries a
 missing fixtures deliberately prevent qualification. Source pins cannot represent
 uncommitted adaptations. Reference OTP installations remain tied to upstream
 `550d7b7898706c7822362c42e7b93120c1d1f29a`; never fabricate provenance.
-CMake performs no downloads and no external Erlang fallback. Playground is never
-an input, published asset or qualification substitute.
+CMake performs no downloads and no external Erlang fallback. Qualification uses
+independent product-owned fixtures and explicit pinned inputs.
+
+## Maintenance and preview scope
+
+The first public binary milestone is a developer preview of the language, CLI,
+components and embedding SDK. OTP publication is scheduled independently; this
+never waives applicable OTP adaptation or mandatory acceptance for shared changes.
+Maintain the latest preview on a best-effort basis. No stable cadence, backport
+window, LTS duration or response-time promise is established. Declaring a supported
+line requires owners, scope and end conditions plus its own backport, bootstrap,
+installed-SDK and product qualification work. Do not create older generations
+retroactively merely because upstream maintains them.
+
+Select upstream release tags explicitly and qualify each supported product line.
+A fix affecting several generations needs deliberate adaptation on each line;
+combining all upstream maintenance branches is not synchronization. A branch name,
+retained archive or ERTS number never establishes source synchronization or support.
+
+Preview eligibility requires mandatory gates on both flavors, installed/relocated/
+isolated behavior, affected package workflows and applicable OTP checks on actual
+reacquired archive bytes. A preview label never turns a failing required gate into
+a pass. Preserve failures, named deferrals and untested coverage in their actual
+classifications; any eligibility conflict requires a specific maintainer decision
+under the OTP [compatibility contract](../../erlang-otp/docs/compatibility.md).
+Publish issue and confidential security-reporting routes before the first download.
 
 ## Candidate production and qualification
 
@@ -99,8 +167,8 @@ Release execution without an attached debugger. Missing devices or emulator
 infrastructure emit nonpassing evidence. Windows Android qualification remains
 deferred; existing producer routes are preserved. iOS has its own independent
 signed application and physical-device gates.
-Current measured coverage belongs to the development implementation records;
-cross-build and packaging success do not establish application execution.
+Reports identify the actual platform and exercised behavior; cross-build and
+packaging success do not establish application execution.
 
 The aggregate requires every mandatory target and bound report. Missing,
 modified, skipped mandatory or unexecuted evidence cannot promote. Existing wx
@@ -155,5 +223,5 @@ target SDK. It requires signed Release application execution, responsive UI,
 static package NIFs, explicit components, repeated VMs, background recovery,
 pre-signing missing/corrupt resources, and copied/isolated consumer inputs.
 Device compilation and simulator spawning cannot satisfy the physical-device
-report. Playground code is never an input. Missing device/signing access leaves
+report. Fixtures are product-owned and self-contained. Missing device/signing access leaves
 qualification nonpassing. Public promotion remains separately controlled.

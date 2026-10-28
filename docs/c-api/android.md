@@ -61,8 +61,14 @@ include("${PACKAGE_EXPORT}/BEAMPackageExport.cmake")
 add_library(application_jni SHARED owner.cpp)
 target_link_libraries(application_jni PRIVATE BEAMPackageInputs)
 beam_target_android_application(application_jni
-  COMPONENTS file network zlib INVENTORIES base services)
+  COMPONENTS file network zlib INVENTORIES base services
+  NATIVE_TARGETS ${BEAM_PACKAGE_NATIVE_TARGETS})
 ```
+
+`NATIVE_TARGETS` explicitly selects imported native libraries for Gradle's input
+staging. It also accepts native targets supplied without package exports. The
+adapter additionally retains targets from the existing
+`BEAM_PACKAGE_NATIVE_TARGETS` variable; duplicate selections are staged once.
 
 Static package NIFs link into the JNI library through generated registration
 references. Android shared NIFs explicitly link the selected runtime. The native

@@ -16,10 +16,10 @@ if(BEAM_PACKAGE_SOURCE_DIR)
 endif()
 set(_manual_output "${CMAKE_BINARY_DIR}/sdk-documentation")
 add_custom_command(OUTPUT "${_manual_output}/.stamp"
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/cmake/stage_documentation.py"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/stage-documentation.py"
         --source "${CMAKE_SOURCE_DIR}" --output "${_manual_output}" ${_package_manual_args}
     DEPENDS ${_manual_inputs} ${_example_inputs}
-        "${CMAKE_SOURCE_DIR}/cmake/stage_documentation.py"
+        "${CMAKE_SOURCE_DIR}/tools/stage-documentation.py"
     COMMENT "Staging installed SDK manuals and first-call example" VERBATIM)
 add_custom_target(beam_sdk_documentation ALL DEPENDS "${_manual_output}/.stamp")
 install(DIRECTORY "${_manual_output}/" DESTINATION share/doc/beam

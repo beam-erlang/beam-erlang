@@ -34,3 +34,5 @@ if(NOT _modules OR NOT _files OR NOT _manifest)
     message(FATAL_ERROR "Incomplete package-tool build inventory from BEAM_PACKAGE_SOURCE_DIR")
 endif()
 beam_package_install(beam_pkg_support "$<TARGET_FILE:beam_launch>" relative "beam${CMAKE_EXECUTABLE_SUFFIX}")
+
+add_dependencies(beam_run beam_pkg_support)

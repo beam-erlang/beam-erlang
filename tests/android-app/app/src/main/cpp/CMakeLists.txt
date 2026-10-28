@@ -27,7 +27,8 @@ set(_components)
 if(BEAM_FIXTURE_COMPONENTS)
     set(_components COMPONENTS ${BEAM_FIXTURE_COMPONENTS})
 endif()
-beam_target_android_application(beam_acceptance ${_components} INVENTORIES base services)
+beam_target_android_application(beam_acceptance ${_components} INVENTORIES base services
+    NATIVE_TARGETS ${BEAM_PACKAGE_NATIVE_TARGETS})
 
 foreach(_asset IN LISTS BEAM_PACKAGE_ASSETS)
     if(_asset MATCHES "/priv/payload.txt$")

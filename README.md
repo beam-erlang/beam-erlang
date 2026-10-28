@@ -11,11 +11,11 @@ native services and commands.
 
 ## Status
 
-The VM and distribution ownership migration is complete. The modern BEAM
-command, compiler, shell and SDK have installed acceptance on the
-Linux interpreter and JIT configurations. Full compatibility with the initial
-OTP 29.0 target remains incomplete. Public interfaces and package tooling are
-experimental.
+The modern BEAM command, compiler, shell and SDK have independently owned
+installed acceptance for the Linux interpreter and JIT configurations. The shared
+VM also supports the independent OTP product through the installed public SDK;
+full compatibility with its initial OTP 29.0 target remains incomplete. Public
+interfaces and package tooling are experimental.
 
 The adopted release model follows upstream ERTS versions with an Erlangsters
 distribution revision. Release branches follow the supported upstream
@@ -26,80 +26,16 @@ and readiness.
 
 The source baseline is recorded in [UPSTREAM_COMMIT](UPSTREAM_COMMIT).
 Start with the [user documentation](docs/README.md). See the
-[test guide](tests/README.md) for the current repository and acceptance coverage.
+[test guide](tests/README.md) for acceptance coverage, [architecture](docs/architecture.md)
+for implementation ownership and [build maintenance](cmake/README.md) for bootstrap
+and artifact refresh. [Upstream synchronization](release/upstream-sync.md) owns
+source propagation and provenance.
 
 ## Native Windows development
 
-Windows 11 AMD64 development uses Visual Studio 2022 MSVC, CMake, Ninja and Perl.
-Desktop SDK acceptance also requires pkg-config or pkgconf; MSVC uses native
-pkgconf with `--msvc-syntax`. Select its executable explicitly with
-`-DBEAM_TEST_PKG_CONFIG=/absolute/path/to/pkgconf` when needed.
-From an x64 Visual Studio developer environment:
-
-```powershell
-cmake --preset windows-amd64-msvc-emu
-cmake --build --preset windows-amd64-msvc-emu --parallel 8
-cmake --install build/windows-amd64-msvc-emu
-```
-
-Use `windows-amd64-msvc-jit` for a separate JIT installation. Both bundle the
-package application and install shared/static BEAM/Erlang SDKs. Add the selected
-installation's `bin` directory to `PATH` in ordinary PowerShell to use `beam`
-and `beam-pkg`. Native package builds also need the MSVC developer environment.
-See the [Windows development record](../dev-documents/windows-development-baseline.md)
-for the tested commands, dependencies and remaining coverage. This is a working
-development checkpoint; complete Windows compatibility and release qualification
-remain separate work.
-
-### Windows UCRT64 GCC
-
-Use the native MSYS2 UCRT64 tools from ordinary PowerShell. Select their paths
-explicitly, and keep the UCRT64 `bin` directory on the build-time `PATH` so GCC's
-own helper programs can find their DLLs. Do not select compilers from MSYS `/usr`.
-
-Some packaged GCC companion tools lack a UTF-8 process manifest and lose Unicode
-filenames. Prepare a separate copy once with the Windows SDK manifest tool:
-
-```powershell
-python tools/prepare-windows-ucrt64.py `
-  --source "$env:USERPROFILE/msys64/ucrt64" `
-  --destination $PreparedUcrt --manifest-tool $ManifestTool
-```
-
-`PreparedUcrt` is an absolute workspace dependency path ending in `ucrt64`;
-`ManifestTool` selects the installed Windows SDK's `x64/mt.exe`. The original
-installation is read-only. The script preserves existing manifest settings,
-checks that executable code is unchanged, and records hashes and package versions.
-Use `--verify-existing` to validate a prepared copy. This follows the
-[GCC Unicode-path workaround](https://gcc.gnu.org/pipermail/gcc-bugs/2023-February/813518.html)
-without changing package versions or the machine's locale.
-
-```powershell
-$Ucrt = $PreparedUcrt
-$env:PATH = "$Ucrt/bin;$env:PATH"
-$Preset = 'windows-amd64-ucrt64-emu' # or windows-amd64-ucrt64-jit
-& "$Ucrt/bin/cmake.exe" --preset $Preset `
-  "-DCMAKE_C_COMPILER=$Ucrt/bin/gcc.exe" `
-  "-DCMAKE_CXX_COMPILER=$Ucrt/bin/g++.exe" `
-  "-DCMAKE_RC_COMPILER=$Ucrt/bin/windres.exe" `
-  "-DCMAKE_MAKE_PROGRAM=$Ucrt/bin/ninja.exe" `
-  "-DCMAKE_OBJDUMP=$Ucrt/bin/objdump.exe" `
-  "-DCMAKE_AR=$Ucrt/bin/ar.exe" "-DCMAKE_RANLIB=$Ucrt/bin/ranlib.exe" `
-  "-DCMAKE_LINKER=$Ucrt/bin/ld.exe" "-DCMAKE_NM=$Ucrt/bin/nm.exe" `
-  "-DPython3_EXECUTABLE=$Python" "-DPERL_EXECUTABLE=$Perl" `
-  -DBEAM_BUNDLE_PACKAGE_TOOL=ON `
-  "-DBEAM_PACKAGE_SOURCE_DIR=$PackageSources"
-& "$Ucrt/bin/cmake.exe" --build "build/$Preset" --parallel 6
-& "$Ucrt/bin/cmake.exe" --install "build/$Preset"
-```
-
-`Python`, `Perl` and `PackageSources` select absolute paths to the retained native
-Python/Perl executables and the package repository.
-EMU and JIT install separately. GCC and MSVC SDKs and native extensions must use
-their matching compiler environment. The installation bundles its required native
-GCC runtime DLLs; using installed commands does not require MSYS2 on `PATH`.
-The [UCRT64 Windows checkpoint](../dev-documents/windows-ucrt64-development.md)
-records installed command/package/SDK acceptance, GUI results and known limits.
+Use the [Windows source-build guide](docs/getting-started/building.md#native-windows-development)
+for MSVC and UCRT64 GCC dependency selection, Unicode paths and separate EMU/JIT
+installations. Native SDKs/extensions require their matching compiler environment.
 
 ## Building
 

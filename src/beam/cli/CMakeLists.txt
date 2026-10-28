@@ -61,7 +61,6 @@ foreach(_value IN ITEMS MODULES BEAM_FILES FALLBACK_MODULES FALLBACK_BEAM_FILES)
     set(BEAM_CLI_${_value} "${BEAM_CLI_${_value}}" PARENT_SCOPE)
 endforeach()
 
-include("${CMAKE_SOURCE_DIR}/cmake/RuntimeCoreModules.cmake")
 set(_reserved "static const char *const beam_cli_core_modules[] = {\n")
 # Installed host modules are supplied from the actual acquired composition.
 foreach(_module IN LISTS BEAM_CORE_MODULES)

@@ -11,7 +11,7 @@ def sha(path):
 
 
 def source_identity(root):
-    paths = [root / 'CMakeLists.txt', root / 'BEAM_VERSION']
+    paths = [root / 'CMakeLists.txt', root / 'BEAM_VERSION', root / 'tools/stage-documentation.py']
     for folder in ('src', 'include', 'cmake'):
         paths.extend(p for p in (root / folder).rglob('*') if p.is_file()
                      and '__pycache__' not in p.parts and p.suffix != '.pyc')
