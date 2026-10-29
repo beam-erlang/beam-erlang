@@ -109,6 +109,7 @@ def main():
             work=Path(temporary);project=work/'copied fixture';inputs=work/'relocated inputs ü'
             if a.keep_work:evidence['retained_work']=str(work)
             shutil.copytree(source,project,ignore=shutil.ignore_patterns('build','.gradle','.cxx','__pycache__'))
+            shutil.copy2(source.parent/'support/native_counts.h',project/'app/src/main/cpp/native_counts.h')
             shutil.copytree(original,inputs,symlinks=True)
             spec=importlib.util.spec_from_file_location('android_delivery',inputs/'sdk/arm64-v8a/share/beam/tools/beam-android.py')
             delivery=importlib.util.module_from_spec(spec);spec.loader.exec_module(delivery)
@@ -212,7 +213,7 @@ def main():
                         evidence['executions'].append({**facts,'sdk_build_id':first['sdk_build_id'],'flavor':flavor,'status':'passed',
                             'configuration':'Release','debuggable':False,'debugger_attached':False,'signing_certificate_sha256':cert})
                 if destinations:item['execution']='passed'
-            for name in ('signed-release','responsiveness','native-components','static-shared-nifs','lifetimes','background-recovery','activity-recreation','process-death','java-gc-exceptions','resource-rejection','relocated-isolated-inputs','native-closure','split-install'):
+            for name in ('signed-release','responsiveness','native-librarys','static-shared-nifs','lifetimes','background-recovery','activity-recreation','process-death','java-gc-exceptions','resource-rejection','relocated-isolated-inputs','native-closure','split-install'):
                 evidence['tests']['android-app-'+name]='passed' if destinations else 'untested'
             evidence['status']='passed' if destinations else 'build-only'
     except BaseException as failure:

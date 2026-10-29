@@ -51,7 +51,7 @@
 -define(ERL_ONHEAP_BIN_LIMIT, 64).
 
 on_load() ->
-    on_load("beam_component").
+    on_load("prim_buffer").
 
 on_load(Path) when is_list(Path) ->
     case erlang:load_nif(Path, 0) of

@@ -190,8 +190,7 @@ bif erts_internal:is_system_process/1
 
 bif erts_internal:system_check/1
 bif erts_internal:host_request/1
-bif erts_internal:component_ready/1
-bif erts_internal:component_failed/2
+bif erts_internal:request_failure/2
 bif erts_internal:vm_context/0
 
 bif erts_internal:scheduler_wall_time/1
@@ -769,6 +768,7 @@ bif erts_internal:get_creation/0
 # New in 24
 #
 
+bif erts_internal:beamfile_gunzip/1
 bif erts_internal:prepare_loading/2
 bif erts_internal:beamfile_chunk/2
 bif erts_internal:beamfile_module_md5/1

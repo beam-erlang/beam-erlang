@@ -21,9 +21,8 @@
  * %CopyrightEnd%
  */
 
+#include "beam_library_platform.h"
 #include "erl_nif.h"
-#include "config.h"
-#include "sys.h"
 
 #ifdef VALGRIND
 #  include <valgrind/memcheck.h>
@@ -248,9 +247,9 @@ int beam_efile_close(efile_data_t *d, posix_errno_t *error) {
     efile_unix_t *u = (efile_unix_t*)d;
     int fd;
 
-    extern int erts_components_stopping(void);
-    ASSERT(enif_thread_type() == ERL_NIF_THR_DIRTY_IO_SCHEDULER || erts_components_stopping());
-    ASSERT(erts_atomic32_read_nob(&d->state) == EFILE_STATE_CLOSED);
+
+    ASSERT(enif_thread_type() == ERL_NIF_THR_DIRTY_IO_SCHEDULER || beam_native_stop_requested());
+    ASSERT(beam_atomic32_read_nob(&d->state) == EFILE_STATE_CLOSED);
     ASSERT(u->fd != -1);
 
     fd = u->fd;

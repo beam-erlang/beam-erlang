@@ -211,7 +211,7 @@ append_module(beam_return_module **modules, size_t *count, size_t *capacity,
     }
     (*modules)[*count].name = copied;
     (*modules)[*count].bytes = bytes;
-    (*modules)[*count].service = service;
+    (*modules)[*count].deferred = service;
     (*modules)[*count].origin = copied_origin;
     (*count)++;
     return BEAM_OK;
@@ -326,14 +326,17 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
     beam_return_options prepared = {0};
     beam_status status;
     size_t count = 0, capacity = 0, index;
-    beam_component_spec components[3] = {0};
-    char component_paths[3][PATH_MAX];
-    size_t component_count = 0;
-    const char *component_names[] = {"file", "network", "zlib"};
-    const unsigned component_services[] = {BEAM_SERVICE_FILE, BEAM_SERVICE_SOCKET, BEAM_SERVICE_ZLIB};
-    const beam_component_kind component_kinds[] = {
-        BEAM_COMPONENT_FILE, BEAM_COMPONENT_NETWORK, BEAM_COMPONENT_ZLIB
-    };
+    beam_library *libraries[3] = {0};
+    size_t library_count = 0;
+    const char *library_names[] = {"file", "network", "zlib"};
+    const unsigned library_facilities[] = {BEAM_CLI_FILE, BEAM_CLI_SOCKET, BEAM_CLI_ZLIB};
+    beam_startup_action startup[7] = {0};
+    size_t startup_count = 0;
+    unsigned char selection[256] = {131,108,0,0,0,1,108,0,0,0,0};
+    size_t selection_size = 11;
+    beam_nif_binding *bindings = NULL;
+    beam_native_owner *owners = NULL;
+    beam_native_image **images = NULL;
 
     if (error != NULL)
         *error = (beam_error){0};
@@ -356,7 +359,7 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
     if (snprintf(bindir, sizeof(bindir), "%s/libexec/beam", root) >= (int)sizeof(bindir))
         return failure(error, BEAM_INVALID_ARGUMENT, 0, "distribution path is too long");
 #ifndef _WIN32
-    if (options->services & BEAM_SERVICE_PROGRAM) {
+    if (options->services & BEAM_CLI_PROGRAM) {
         if (snprintf(path, sizeof(path), "%s/erl_child_setup", bindir) >= (int)sizeof(path))
             return failure(error, BEAM_INVALID_ARGUMENT, 0, "program helper path is too long");
         if (access(path, X_OK) != 0)
@@ -373,21 +376,38 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
         if (status != BEAM_OK) break;
     }
     if (status != BEAM_OK) goto done;
-    for (index = 0; index < sizeof(component_names) / sizeof(component_names[0]); ++index) {
-        if (component_services[index] && !(options->services & component_services[index]))
-            continue;
-        if (snprintf(component_paths[component_count], PATH_MAX,
-                     "%s/" BEAM_CLI_COMPONENT_DIRECTORY "/" BEAM_CLI_LIBRARY_PREFIX "beam-%s" BEAM_CLI_LIBRARY_SUFFIX, root,
-                     component_names[index]) >= PATH_MAX) {
-            status = failure(error, BEAM_INVALID_ARGUMENT, 0, "component path is too long");
-            goto done;
+    for (index = 0; index < 3; ++index) {
+        if (!(options->services & library_facilities[index])) continue;
+        if (snprintf(path, sizeof(path),
+                     "%s/" BEAM_CLI_COMPONENT_DIRECTORY "/" BEAM_CLI_LIBRARY_PREFIX "beam-%s" BEAM_CLI_LIBRARY_SUFFIX,
+                     root, library_names[index]) >= sizeof(path)) {
+            status = failure(error, BEAM_INVALID_ARGUMENT, 0, "library path is too long"); goto done;
         }
-        components[component_count] = (beam_component_spec){
-            .struct_size = sizeof(beam_component_spec),
-            .kind = component_kinds[index],
-            .path = component_paths[component_count]
-        };
-        ++component_count;
+        status = beam_library_open(path, &libraries[library_count], error);
+        if (status != BEAM_OK) goto done;
+        ++library_count;
+    }
+    /* Explicit command policy; neither acquisition nor a descriptor selects startup. */
+    const char *names[] = {"code","file","output","program","socket","zlib"};
+    const unsigned bits[] = {BEAM_CLI_CODE,BEAM_CLI_FILE,BEAM_CLI_OUTPUT,BEAM_CLI_PROGRAM,BEAM_CLI_SOCKET,BEAM_CLI_ZLIB};
+    const char *start_modules[] = {"beam_code","beam_file","beam_output",NULL,"beam_socket","zlib"};
+    for(size_t i=0;i<6;++i) if(options->services & bits[i]) {
+        selection[10]++;
+        size_t n=strlen(names[i]);selection[selection_size++]=119;selection[selection_size++]=n;
+        memcpy(selection+selection_size,names[i],n);selection_size+=n;
+        if(start_modules[i]) startup[startup_count++]=(beam_startup_action){start_modules[i],i==5?"on_load":"start",{0}};
+    }
+    selection[selection_size++]=106;selection[selection_size++]=106;
+    startup[startup_count++]=(beam_startup_action){"beam_boot","select",{selection,selection_size}};
+    if(options->nif_count>1024 || (options->nif_count&&!options->nifs)){status=BEAM_INVALID_ARGUMENT;goto done;}
+    bindings=calloc(options->nif_count?options->nif_count:1,sizeof(*bindings));
+    owners=calloc(options->nif_count?options->nif_count:1,sizeof(*owners));
+    images=calloc(options->nif_count?options->nif_count:1,sizeof(*images));
+    if(!bindings||!owners||!images){status=BEAM_OUT_OF_MEMORY;goto done;}
+    for(size_t i=0;i<options->nif_count;++i){
+        bindings[i].struct_size=sizeof(bindings[i]);owners[i].struct_size=sizeof(owners[i]);
+        status=beam_host_open_nif(options->nifs[i].path,options->nifs[i].module,&images[i],&bindings[i],&owners[i],error);
+        if(status!=BEAM_OK)goto done;
     }
     if (options->profile == BEAM_CLI_RUN || options->profile == BEAM_CLI_INTERACTIVE || options->profile == BEAM_CLI_APPLICATION) {
         const int interactive = options->profile == BEAM_CLI_INTERACTIVE;
@@ -397,7 +417,7 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
             goto done;
         /* Resolve retained helpers against selected component ownership before
          * preparation. Formatting alone must never activate networking. */
-        if (!(options->services & BEAM_SERVICE_SOCKET)) {
+        if (!(options->services & BEAM_CLI_SOCKET)) {
             status = append_cli_modules(&modules, &count, &capacity, root, "runtime/beam/cli",
                                         beam_cli_fallback_modules,
                                         BEAM_CLI_FALLBACK_MODULE_COUNT, error);
@@ -440,7 +460,7 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
             memcpy(copied, module->bytes.data, module->bytes.size);
         }
         status = append_module(&modules, &count, &capacity, module->name,
-                               (beam_bytes){copied, module->bytes.size}, module->service,
+                               (beam_bytes){copied, module->bytes.size}, module->deferred,
                                module->origin, error);
         if (status != BEAM_OK) {
             free(copied);
@@ -448,15 +468,25 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
         }
     }
     prepared.struct_size = sizeof(prepared);
-    prepared.services = options->services;
     prepared.entry_module = options->entry_module;
     prepared.entry_function = options->entry_function;
     prepared.arguments = options->arguments;
     prepared.module_count = count;
     prepared.modules = modules;
-    prepared.component_count = component_count;
-    prepared.components = components;
-    prepared.bindir = bindir;
+    beam_composition_options generic = {.struct_size=sizeof(generic),
+        .binding_count=options->nif_count,.bindings=bindings,
+        .native_owner_count=options->nif_count,.native_owners=owners};
+    char helper[PATH_MAX];
+    if(options->services & BEAM_CLI_PROGRAM){
+        generic.native_admission=BEAM_NATIVE_MANAGED_PORTS;
+#ifndef _WIN32
+        snprintf(helper,sizeof(helper),"%s/erl_child_setup",bindir);
+        generic.program_helper=helper;
+#endif
+    }
+    beam_host_options host = {.struct_size=sizeof(host),.composition=&generic,
+        .library_count=library_count,.libraries=libraries,.startup_count=startup_count,.startup=startup};
+    prepared.host=&host;
     prepared.output = options->output;
     prepared.output_context = options->output_context;
     prepared.code = options->code;
@@ -464,10 +494,11 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
     prepared.input = options->input;
     prepared.input_context = options->input_context;
     prepared.vm = options->vm;
-    prepared.nif_count = options->nif_count;
-    prepared.nifs = options->nifs;
     status = beam_return_prepare(&prepared, out, error);
 done:
+    for(size_t i=0;i<library_count;++i)beam_library_release(&libraries[i]);
+    if(images)for(size_t i=0;i<options->nif_count;++i)beam_native_image_release(&images[i]);
+    free(bindings);free(owners);free(images);
     free_return_modules(modules, count);
     return status;
 }

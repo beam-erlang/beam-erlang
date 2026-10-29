@@ -15,7 +15,7 @@ if(WIN32)
 else()
     set(_file_backend unix/unix_prim_file.c)
 endif()
-beam_add_component(beam_file_component NAME file KIND BEAM_COMPONENT_FILE
+beam_add_library(beam_file_component NAME file
     MODULES ${BEAM_FILE_COMPONENT_MODULES} BEAM_FILES ${BEAM_FILE_COMPONENT_BEAM_FILES}
     NIF_ENTRIES - beam_prim_buffer_nif_init beam_prim_file_nif_init
     NATIVE_SOURCES prim_buffer_nif.c prim_file_nif.c ${_file_backend}

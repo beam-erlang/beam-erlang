@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <beam/beam.h>
+#include <beam/host.h>
 #include <stdio.h>
 #include <stdlib.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "package native consumer: %d: %s (%s)\n", __LINE__, #x, error.message); return 1; } } while (0)
@@ -15,14 +16,18 @@ int main(int argc, char **argv)
     CHECK(bytes && fread(bytes, 1, (size_t)length, input) == (size_t)length);
     CHECK(!fclose(input));
     beam_module_spec module = {"pkg_acceptance", {bytes, (size_t)length}, argv[1]};
-    beam_nif_spec nif = {sizeof nif, "pkg_acceptance", argv[2]};
+    beam_nif_binding nif = {.struct_size=sizeof(nif)};
+    beam_native_owner owner = {.struct_size=sizeof(owner)};
+    beam_native_image *image=NULL;
+    CHECK(beam_host_open_nif(argv[2],"pkg_acceptance",&image,&nif,&owner,&error)==BEAM_OK);
     beam_composition_options composition_options = {.struct_size = sizeof composition_options,
-        .module_count = 1, .modules = &module, .nif_count = 1, .nifs = &nif};
+        .module_count = 1, .modules = &module, .binding_count = 1, .bindings = &nif, .native_owner_count=1, .native_owners=&owner};
     beam_composition *composition = NULL;
     beam_system *system = NULL;
     beam_vm *vm = NULL;
     beam_vm_options options;
     CHECK(beam_composition_prepare(&composition_options, &composition, &error) == BEAM_OK);
+    beam_native_image_release(&image);
     free(bytes);
     CHECK(beam_init(&system, &error) == BEAM_OK);
     beam_vm_options_init(&options);
@@ -30,7 +35,7 @@ int main(int argc, char **argv)
     CHECK(beam_vm_init(system, &options, &vm, &error) == BEAM_OK);
     beam_composition_release(&composition);
     CHECK(beam_vm_start(vm, &error) == BEAM_OK);
-    CHECK(beam_vm_activate(vm, &error) == BEAM_OK);
+    CHECK(beam_vm_bind_nif(vm, "pkg_acceptance", &error) == BEAM_OK);
     const unsigned char nil[] = {131, 106};
     beam_result result = {0};
     CHECK(beam_vm_call(vm, "pkg_acceptance", "value", (beam_bytes){nil, sizeof nil}, &result) == BEAM_OK);

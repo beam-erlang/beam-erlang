@@ -63,7 +63,7 @@ function(_beam_android_prefab component out)
         set(_artifact runtime)
     else()
         set(_module "beam-${component}")
-        set(_artifact "component.${component}")
+        set(_artifact "library.${component}.shared")
     endif()
     # Do not change AGP's CMAKE_FIND_ROOT_PATH: it owns the generated Prefab roots.
     find_package(${_package} REQUIRED CONFIG)

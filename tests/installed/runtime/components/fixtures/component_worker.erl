@@ -1,7 +1,7 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(component_worker).
 -export([start/3, arm/0, count/0, fail_file/0, fail_socket/0,
-         passive/0, on_load/0, activated/0, support_ready/0]).
+         compress/0, passive/0, on_load/0, activated/0, support_ready/0]).
 
 start(File, Network, Path) ->
     undefined = whereis(component_worker),
@@ -75,10 +75,9 @@ read_exact(Socket, Remaining, Deadline, Acc) ->
 
 
 passive() ->
-    false = erts_internal:component_ready(output),
-    false = erts_internal:component_ready(code),
-    undefined = whereis(beam_service_output),
-    undefined = whereis(beam_service_program),
+    false = is_pid(whereis(beam_output_server)),
+    false = persistent_term:get(beam_code_enabled, false),
+    undefined = whereis(beam_output_server),
     undefined = whereis(beam_file_owner),
     undefined = whereis(socket_registry),
     undefined = persistent_term:get(beam_boot_origins, undefined),
@@ -93,4 +92,12 @@ passive() ->
 
 on_load() -> persistent_term:put(activation_probe, true), ok.
 activated() -> true = persistent_term:get(activation_probe), 42.
-support_ready() -> true = erts_internal:component_ready(output), 42.
+support_ready() -> true = is_pid(whereis(beam_output_server)), 42.
+
+compress() ->
+    Bytes = <<"combined file, socket and compression lifetime">>,
+    Bytes = zlib:gunzip(zlib:gzip(Bytes)),
+    Stream = zlib:open(),
+    ok = zlib:deflateInit(Stream),
+    persistent_term:put(combined_stream, Stream),
+    42.

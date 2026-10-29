@@ -125,6 +125,7 @@ beam_output_status on_output(void *context, beam_bytes destination, beam_bytes b
         return BEAM_OUTPUT_UNKNOWN;
     memcpy(name, destination.data, destination.size);
     name[destination.size] = '\0';
+    if (!strcmp(name,"cleanup_test")) { beam_native_report_cleanup(91,"cleanup-fault"); return BEAM_OUTPUT_OK; }
     if (strcmp(name, "missing_destination") == 0)
         return BEAM_OUTPUT_UNKNOWN;
     if (strcmp(name, "standard_output") != 0 && strcmp(name, "standard_error") != 0)
@@ -167,7 +168,7 @@ beam_return_module module_from_file(const char *path, const char *name, int serv
     beam_return_module module = {0};
     module.name = name;
     module.bytes.data = read_file(path, &module.bytes.size);
-    module.service = service;
+    module.deferred = service;
     check(module.bytes.data != NULL, path);
     return module;
 }
@@ -256,7 +257,6 @@ void run_entry(const char *root, const char *function, beam_bytes arguments,
     snapshot_fds(descriptors, 1024, &descriptor_count);
     outcome->struct_size = sizeof(*outcome);
     options.struct_size = sizeof(options);
-    options.services = services;
     beam_vm_options parallel;
     unsigned char startup[] = {131,97,42};
     char identity[] = "copied-host";
@@ -293,21 +293,42 @@ void run_entry(const char *root, const char *function, beam_bytes arguments,
     options.output_context = output;
     options.code = on_code;
     options.code_context = output;
-    beam_component_spec components[5] = {{0}};
-    char paths[5][4096], bindir[4096];
-    const char *names[] = {"file", "network", "zlib"};
-    const beam_component_kind kinds[] = {BEAM_COMPONENT_FILE, BEAM_COMPONENT_NETWORK, BEAM_COMPONENT_ZLIB};
-    const unsigned bits[] = {BEAM_SERVICE_FILE, BEAM_SERVICE_SOCKET, BEAM_SERVICE_ZLIB};
-    for (size_t i = 0; i < 3; ++i) {
-        if (bits[i] && !(services & bits[i])) continue;
-        size_t n = options.component_count++;
-        check(snprintf(paths[n], sizeof paths[n], "%s/%s", root, beam_test_component(names[i])) < (int)sizeof paths[n], "component path");
-        components[n] = (beam_component_spec){sizeof(beam_component_spec), kinds[i], paths[n]};
+    beam_library *libraries[3]={0};size_t library_count=0;
+    beam_startup_action actions[7];size_t action_count=0;
+    char path[4096],helper[4096];
+    const char *library_names[]={"file","network","zlib"};
+    const unsigned library_bits[]={TEST_FILE,TEST_SOCKET,TEST_ZLIB};
+    for(size_t i=0;i<3;++i)if(services&library_bits[i]){
+        check(snprintf(path,sizeof(path),"%s/%s",root,beam_test_component(library_names[i]))<sizeof(path),"library path");
+        check(beam_library_open(path,&libraries[library_count++],&error)==BEAM_OK,error.message);
     }
-    options.components = components;
-    check(snprintf(bindir, sizeof bindir, "%s/libexec/beam", root) < (int)sizeof bindir, "helper path");
-    options.bindir = bindir;
+    const char *names[]={"code","file","output","program","socket","zlib"};
+    const unsigned bits[]={TEST_CODE,TEST_FILE,TEST_OUTPUT,TEST_PROGRAM,TEST_SOCKET,TEST_ZLIB};
+    const char *start_modules[]={"beam_code","beam_file","beam_output",NULL,"beam_socket","zlib"};
+    byte_buffer selection={0};size_t selected_count=0;
+    for(size_t i=0;i<6;++i)if(services&bits[i])++selected_count;
+    check(buffer_u8(&selection,131)&&buffer_u8(&selection,108)&&buffer_u32(&selection,1)&&
+        buffer_u8(&selection,108)&&buffer_u32(&selection,selected_count),"selection arguments");
+    for(size_t i=0;i<6;++i)if(services&bits[i]){
+        check(buffer_atom(&selection,names[i]),"selection atom");
+        if(start_modules[i])actions[action_count++]=(beam_startup_action){start_modules[i],i==5?"on_load":"start",{0}};
+    }
+    check(buffer_u8(&selection,106)&&buffer_u8(&selection,106),"selection tail");
+    actions[action_count++]=(beam_startup_action){"beam_boot","select",{selection.data,selection.size}};
+    beam_composition_options generic={.struct_size=sizeof(generic)};
+    if(services&TEST_PROGRAM){
+        generic.native_admission=BEAM_NATIVE_MANAGED_PORTS;
+#ifndef _WIN32
+        check(snprintf(helper,sizeof(helper),"%s/libexec/beam/erl_child_setup",root)<sizeof(helper),"helper path");
+        generic.program_helper=helper;
+#endif
+    }
+    beam_host_options plan={.struct_size=sizeof(plan),.composition=&generic,.library_count=library_count,
+        .libraries=libraries,.startup_count=action_count,.startup=actions};
+    options.host=&plan;
     status = beam_return_prepare(&options, &boot, &error);
+    for(size_t i=0;i<library_count;++i)beam_library_release(&libraries[i]);
+    free(selection.data);
     bytecode_input_release(&base);
     free(selected);
     if (status != BEAM_OK) {

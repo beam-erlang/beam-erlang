@@ -1490,9 +1490,8 @@ erts_bare_start(const beam_entry *entry)
             goto done;
         }
     }
-    /* Required native infrastructure starts while the VM still has no
-     * workers. The selected composition, not the root's framework, admits it. */
-    erts_sys_process_start();
+    /* Native infrastructure starts before workers. Process policy remains
+     * deferred until entry commit; setup can still fail and return to C. */
     erl_sys_late_init();
     erts_end_staging_code_ix();
     erts_commit_staging_code_ix();

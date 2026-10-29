@@ -128,13 +128,13 @@ def probe_origins(stdout, prefix, source):
     expected.update({p.stem: str(p) for ebin in (runner, common) for p in ebin.glob("*.beam")})
     ordinary = {
         "boot": {"beam_return_boot", "beam_boot"},
-        "services": {"beam_component_services", "beam_host", "beam_output", "beam_code"},
+        "services": {"beam_startup", "beam_host", "beam_output", "beam_code"},
     }
     for inventory, names in ordinary.items():
         expected.update({name: f"{prefix}/lib/beam/{inventory}/ebin/{name}.beam" for name in names})
     for unit, names in components.items():
-        expected.update({name: f"{artifact(prefix,'component.'+unit)}#{name}" for name in names})
-    expected.update(zlib=str(artifact(prefix,"component.zlib")) + "#zlib", run_probe=str(source))
+        expected.update({name: f"{artifact(prefix,"library." + unit + ".shared")}#{name}" for name in names})
+    expected.update(zlib=str(artifact(prefix,"library.zlib.shared")) + "#zlib", run_probe=str(source))
     actual = {}
     for line in stdout.splitlines()[:-1]:
         check(line.startswith("origin "), f"unexpected probe output: {line!r}")
@@ -311,8 +311,8 @@ def missing_assets(prefix, source, work, env):
     runner = prefix / "lib/beam/runtime/beam/run"
     common = prefix / "lib/beam/runtime/beam/cli"
     paths = [runner, common, prefix / "lib/beam/tools/compiler", prefix / "lib/beam/boot",
-             artifact(prefix,"component.file"), artifact(prefix,"component.network"),
-             artifact(prefix,"component.zlib")]
+             artifact(prefix,"library.file.shared"), artifact(prefix,"library.network.shared"),
+             artifact(prefix,"library.zlib.shared")]
     paths.extend(sorted((runner / "ebin").glob("*.beam")))
     paths.extend(sorted((common / "ebin").glob("*.beam")))
     # lists/maps are supplied by the network component in the full service recipe.

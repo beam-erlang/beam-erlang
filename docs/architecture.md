@@ -1,7 +1,7 @@
 # Runtime and distribution architecture
 
 BEAM/Erlang owns the shared VM, `libbeam`, the public embedding/native SDK,
-modern components, compiler, shell and commands. The independent Erlang/OTP
+modern libraries, compiler, shell and commands. The independent Erlang/OTP
 product owns its applications, startup, native services, drivers, helpers,
 commands, resources and assembly. It consumes an explicitly selected installed
 SDK through public headers, symbols and CMake targets, with `libbeam` as its
@@ -38,8 +38,9 @@ decision covering execution and active and quiescent cleanup.
 OTP supplies thirteen additional preloads through public composition, preserving
 its 22 preloaded/sticky modules and restart behavior. Its executable embeds
 those product-owned bytes and selects already-linked native implementations.
-Modern commands and components retain shared linkage. Extensions resolve against
-one host runtime; mixed linkage and second-runtime mappings are rejected.
+The modern CLI retains shared linkage. Libraries support shared VM/shared
+libraries, shared VM/static libraries and static VM/static libraries. Extensions
+resolve against one host runtime; second-runtime mappings are rejected.
 Preload classification, actual supplied origins and native permissions remain
 distinct. Loading support code grants no capabilities.
 
@@ -51,7 +52,7 @@ validation manifest. Source/build/SDK provenance stays outside that tree.
 Its [architecture](../../erlang-otp/docs/architecture.md) and
 [compatibility contract](../../erlang-otp/docs/compatibility.md) own its details.
 
-## Modern inventories and components
+## Modern inventories and libraries
 
 Ordinary inventories are acquired and verified by the host before their copied
 buffers enter composition. They are neither embedded VM modules nor implicit
@@ -61,24 +62,40 @@ startup services.
 | --- | --- | --- |
 | Base | `beam`, `beam_list`, `beam_map`, `beam_bytes`, `beam_text`, `beam_format`, `beam_time` | `lib/beam/library/{modules.txt,ebin/*.beam}` |
 | Boot | `beam_return_boot`, `beam_boot` | `lib/beam/boot/{modules.txt,ebin/*.beam}` |
-| Services | `beam_component_services`, `beam_host`, `beam_output`, `beam_code` | `lib/beam/services/{modules.txt,ebin/*.beam}` |
+| Services | `beam_startup`, `beam_host`, `beam_output`, `beam_code` | `lib/beam/services/{modules.txt,ebin/*.beam}` |
 | File | `beam_file`, `prim_buffer`, `prim_file` | `lib/libbeam-file.so` |
 | Network | `beam_socket`, `socket_registry`, `socket`, `maps`, `lists`, `prim_socket` | `lib/libbeam-network.so` |
 | Zlib | `zlib` | `lib/libbeam-zlib.so` |
 
-These library paths describe the Linux layout; consumers use exported targets
-and verified artifact inventories for platform-specific names. Each component
-owns its source/output lists and native target under `src/beam/`.
-The [component manuals](components/README.md) independently describe file,
-network and zlib APIs. Native descriptors are a private matching-build contract,
-not a third-party provider ABI or hot-reload interface.
+These paths describe shared Linux delivery; each native library also has an
+installed static archive and explicit shared/static CMake targets. Consumers use
+verified artifact inventories for platform names. Each library owns its source
+and native implementation under `src/beam/`, compiled against public native SDK
+headers and symbols. Library-owned portability code supplies platform support.
+The VM owns one private compression backend. Its namespaced public C interface
+is used by the ordinary zlib NIF bridge and by OTP's independently composed
+zlib NIF. The optional library contains no second codec. Core gzip module
+preparation uses a private trapping operation without acquiring the optional
+Erlang module.
 
-Returning preparation requires the base, boot and service-support inventories.
-Generic composition does not require base or boot; selected services or deferred
-activation require all four service-support modules. Supplying them alone
-activates nothing. File, network and zlib remain independent selections. The
-network component supplies numeric-address sockets, not legacy inet drivers or
-DNS. Omitted units contribute no modules, including facades.
+The [library manuals](components/README.md) independently describe file,
+network and zlib. Their [descriptor format](native-extensions/libraries.md) is
+experimental and tied to an exact SDK build. Descriptors carry ordinary modules,
+origins and typed resident registrations, without startup hooks, fixed kinds or
+dependency discovery. Native constructors retain trusted-code behavior.
+
+Generic composition requires no base, boot or startup inventory. Optional Host
+startup requires only the controller and code used by the requested actions.
+File startup loads file/buffer NIFs and passes the real janitor PID; socket startup
+passes its real registry/configuration; zlib loads without an owner sentinel.
+Library-owned monitors report actual owner failures through generic VM failure
+requests. The network library supplies numeric-address sockets, not legacy inet
+or DNS. Omitted libraries contribute no modules, including facades.
+
+Composition may also supply immutable supplemental embedded-dependency build
+facts. They extend third-party reporting without changing the VM-owned inventory,
+loading code or granting capabilities. Products own their declarations; the VM
+validates, copies and retains them across restart. Startup context stays opaque.
 
 The SDK verifier checks producer expectations, module names, sizes and hashes
 before composition copies bytes. Verification neither acquires code nor creates
@@ -86,34 +103,48 @@ a VM. Consumers verify canonical expectations instead of deriving replacement
 expectations from installed files. The VM never scans directories or reads a
 distribution catalog to resolve an undefined call.
 
-## Composition, activation and execution
+## Composition, binding and execution
 
-Preparation validates module/native selections, copies code and origins, and
-retains mappings. It starts no workers or Erlang code and activates no NIFs.
-Trusted native library constructors can execute during mapping. The VM loader
-performs executable-code validation. A VM retains its own composition reference;
-releasing the preparation does not invalidate live code or resources.
+Preparation validates generic module/native selections and copies bytes and
+origins. It retains opaque native owners before storing their pointers, without
+knowing whether an owner represents a library. Acquisition and native image
+inspection happen separately through public interfaces. A VM independently
+retains its preparation until resources, unload callbacks and native registries
+have been reclaimed.
 
-Admission, activation, owner monitoring, rollback and cleanup belong to the VM.
-Product hosts choose acquisition, boot and entry policy through public headers
-and symbols. Private VM dependencies require a reviewed public boundary or a
-product-owned implementation, never copied private headers or another runtime.
-Generic process-owned entry explicitly transfers process control; process-lifetime
-native permission requires that mode. The `erts_bare_mode` implementation flag
-tracks managed lifetime, not authorization to load native code or distribute nodes.
+Native execution safety, admission, binding and cleanup belong to the VM.
+Library acquisition, startup actions, readiness monitors and deferred-module
+rollback belong to the optional Host and library layers. Neither runtime image
+contains a library catalog or returning controller. Host code compiles against
+public SDK headers and symbols only. OTP uses generic VM interfaces without
+acquiring a dependency on Host.
 
-Linked-NIF selections bind a module, exact SDK build and resident initializer.
-Preparation copies and validates them; explicit activation invokes the selected
-initializer. They remain scoped to one VM lifetime. OTP built-in registration
-and `load_nif` timing remain separately owned. Current loading behavior is
-provisional; [native loading](native-extensions/loading.md) is its single home.
+Resident table access happens at VM initialization; Erlang `load_nif/2` later
+supplies actual load information. Explicit linked/external selections instead
+use one generic binding record, initialized by `beam_vm_bind_nif` after start.
+This route preserves deferred initialization and `undefined` load information.
+Success is idempotent; initialization failure stops the VM and retains the first
+terminal cause. Cleanup errors remain separate. See [native loading](native-extensions/loading.md).
 
 Modern returning boot executes the entry directly in the public call process.
+Its native orchestration is installed in the optional static `BEAM::Host`
+archive, outside both VM images. Hosts include `<beam/boot.h>` explicitly;
+the core umbrella exposes VM declarations only. The same optional archive
+provides [passive library acquisition](native-extensions/libraries.md), with
+generic native-owner records keeping mapped code resident through reclamation.
+Neither library acquisition nor descriptor inspection starts a VM or invokes
+native load callbacks.
 Entry return completes the boot even if children remain. A server entry must
 remain alive until its workload and acknowledged shutdown finish. An opaque
 terminal host reply records completion after the callback returns without VM
 reentry. The first outcome wins; cleanup diagnostics do not replace it. Copied
 outcomes contain no live VM resource handles.
+
+Process-owned hosts may start workers while keeping the initial root suspended,
+perform synchronous setup and explicit per-module native binding, then commit
+with `beam_vm_enter`. Before commit, stop and termination remain recoverable;
+ordinary process-lifetime native permissions and irreversible process policy
+remain deferred. The commit and terminal-failure arbitration are synchronized.
 
 Callbacks run serially on the owner thread without VM locks and cannot reenter
 the VM. Calls and process-owned entry pump them while waiting. The explicit

@@ -344,7 +344,7 @@ typedef enum {
 
 #if (defined(__WIN32__) || defined(_WIN32) || defined(_WIN32_))
 #  define ERL_NIF_API_FUNC_DECL(RET_TYPE, NAME, ARGS) RET_TYPE (*NAME) ARGS
-typedef struct {
+typedef struct beam_nif_callbacks {
 #  include "erl_nif_api_funcs.h"
    void* erts_alc_test;
    const void* erts_internal_test_ptr;

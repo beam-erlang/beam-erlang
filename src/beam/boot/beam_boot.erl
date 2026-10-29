@@ -1,6 +1,8 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(beam_boot).
--export([services/0, finish/1]).
+-export([select/1, services/0, finish/1]).
+
+select(Services) when is_list(Services) -> persistent_term:put(beam_boot_services, Services), ok.
 
 -spec services() -> {ok, [atom()]} | {error, #{kind := unavailable, service := boot}}.
 services() ->

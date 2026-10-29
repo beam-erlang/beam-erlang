@@ -25,9 +25,7 @@
  *
  */
 
-#ifdef HAVE_CONFIG_H
-#    include "config.h"
-#endif
+#include "beam_library_platform.h"
 
 #ifdef ESOCK_ENABLE
 
@@ -54,7 +52,6 @@
 #endif
 
 #include "socket_int.h"
-#include "sys.h"
 #include "socket_util.h"
 #include "socket_dbg.h"
 
@@ -1956,7 +1953,7 @@ BOOLEAN_T beam_esock_decode_in6_addr(ErlNifEnv*       env,
                 return FALSE;
             }
 
-            put_int16(v, sa.s6_addr + (n << 1));
+            beam_library_write_u16(v, sa.s6_addr + (n << 1));
         }
         *inAddrP = sa;
     }
@@ -1993,7 +1990,7 @@ void beam_esock_encode_in6_addr(ErlNifEnv*       env,
     
     /* The address */
     for (i = 0; i < atLen; i++) {
-        at[i] = MKI(env, get_int16(a + i*2));
+        at[i] = MKI(env, beam_library_read_u16(a + i*2));
     }
 
     *eAddr = MKTA(env, at, atLen);
@@ -3382,7 +3379,7 @@ void __noreturn beam_esock_abort(const char* expr,
     fflush(stderr);
     abort();
 #else
-    erts_exit(ERTS_DUMP_EXIT, "%s:%d:%s() Assertion failed: %s\n",
+    beam_native_fail(ERTS_DUMP_EXIT, "%s:%d:%s() Assertion failed: %s\n",
               file, line, func, expr);
 #endif
 }

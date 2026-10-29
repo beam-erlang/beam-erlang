@@ -112,10 +112,6 @@ int main(int argc, char **argv)
         CHECK(bytecode_input_read(&base, argv[1], INPUT_BASE, &error) == BEAM_OK);
         beam_composition_options prep = {.struct_size = sizeof prep,
             .modules = base.modules, .module_count = 7};
-        beam_component_spec retired = {sizeof retired, (beam_component_kind)5, "/retired-base.so"};
-        prep.components = &retired; prep.component_count = 1;
-        CHECK(beam_composition_prepare(&prep, &composition, &error) == BEAM_INVALID_ARGUMENT && !composition);
-        prep.components = NULL; prep.component_count = 0;
         beam_module_spec duplicate[8];
         memcpy(duplicate, base.modules, base.count * sizeof(*base.modules)); duplicate[7] = base.modules[0];
         prep.modules = duplicate; prep.module_count = 8;
@@ -150,7 +146,6 @@ int main(int argc, char **argv)
                 CHECK(beam_vm_get_module(vm, base_names[i], &info) == BEAM_OK && info.flags == BEAM_MODULE_CURRENT);
             CHECK(beam_vm_load(vm, (beam_bytes){base_contract, sizeof base_contract}) == BEAM_OK);
             CHECK(beam_vm_start(vm, &error) == BEAM_OK);
-            CHECK(beam_vm_activate(vm, &error) == BEAM_OK);
             CHECK(beam_vm_call(vm, "base_contract", "check", (beam_bytes){empty, sizeof empty}, &result) == BEAM_OK);
             CHECK(result.kind == BEAM_RETURN && result.value.size == sizeof ok && !memcmp(result.value.data, ok, sizeof ok));
             beam_result_release(&result);

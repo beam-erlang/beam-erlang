@@ -7,6 +7,7 @@ list(APPEND _component_identity_sources
     "${CMAKE_SOURCE_DIR}/CMakeLists.txt"
     "${CMAKE_SOURCE_DIR}/BEAM_VERSION"
     "${CMAKE_SOURCE_DIR}/tools/stage-documentation.py"
+    "${CMAKE_SOURCE_DIR}/tools/beam-library.py"
     ${BEAM_CORE_BEAM_FILES})
 list(REMOVE_DUPLICATES _component_identity_sources)
 list(SORT _component_identity_sources)

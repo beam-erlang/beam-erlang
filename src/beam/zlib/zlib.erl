@@ -174,8 +174,7 @@ Typical `Reason`s:
 
 -doc false.
 on_load() ->
-    #{native_directory := Directory} = erts_internal:boot_context(),
-    on_load(Directory ++ "/zlib").
+    on_load("zlib").
 
 on_load(Path) when is_list(Path) ->
     case erlang:load_nif(Path, 0) of

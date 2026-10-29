@@ -1,82 +1,60 @@
-# Native components
+# Native libraries
 
-BEAM/Erlang supplies three optional shared libraries that add Erlang modules and
-their native implementations to a VM. Each library has its own guide and module
-reference:
+BEAM/Erlang supplies three passive libraries containing Erlang modules and their
+native implementations. Each has shared and static delivery:
 
-| Library | Capability | Erlang interface |
+| Library | CMake targets | Erlang interface |
 | --- | --- | --- |
-| [libbeam-file.so](file/README.md) | Files and directories | `beam_file` |
-| [libbeam-network.so](network/README.md) | Numeric-address TCP sockets | `beam_socket` |
-| [libbeam-zlib.so](zlib/README.md) | In-memory compression and decompression | `zlib` |
+| [File](file/README.md) | `BEAM::File`, `BEAM::FileStatic` | `beam_file` |
+| [Network](network/README.md) | `BEAM::Network`, `BEAM::NetworkStatic` | `beam_socket` |
+| [Zlib](zlib/README.md) | `BEAM::Zlib`, `BEAM::ZlibStatic` | `zlib` |
 
-The three components can be selected independently. Their presence in an
-installation does not activate them. Selection applies to the VM, not to an
-individual Erlang process, and is not a per-process security sandbox.
+## Selection and startup
 
-## Selection and activation
+Include `<beam/library.h>` and link the optional `BEAM::Host` archive alongside
+one selected runtime. Open an exact shared path with `beam_library_open`, or
+include `<beam/libraries/file.h>` and pass `beam_file_library()` to
+`beam_library_from_static` for static file delivery. Network and zlib have the
+corresponding headers/accessors. Static library targets leave runtime linkage to
+the host. Modern shared libraries require a shared VM; static libraries work with
+either VM form. The modern CLI uses shared delivery.
 
-A C host links to `BEAM::Runtime` and supplies an exact component path in a
-`beam_component_spec`. These libraries must come from the same SDK build as the
-host runtime. Their descriptors are a private matching-build contract; they are
-not a public interface for implementing additional component kinds. Static
-runtime hosts cannot acquire these shared components.
-
-| Component kind | Corresponding service bit | Typical installed path |
-| --- | --- | --- |
-| `BEAM_COMPONENT_FILE` | `BEAM_SERVICE_FILE` | `<prefix>/lib/libbeam-file.so` |
-| `BEAM_COMPONENT_NETWORK` | `BEAM_SERVICE_SOCKET` | `<prefix>/lib/libbeam-network.so` |
-| `BEAM_COMPONENT_ZLIB` | `BEAM_SERVICE_ZLIB` | `<prefix>/lib/libbeam-zlib.so` |
+Libraries are experimental exact-SDK containers. They contain no startup actions
+or dependency resolver. Opening one creates no VM and calls no NIF initializer;
+platform constructors may run when trusted native code is mapped. The
+[documented format and authoring helper](../native-extensions/libraries.md) also
+support independently authored libraries.
 
 For a persistent host:
 
-1. Acquire and verify ordinary bytecode inputs. Include the complete four-module
-   services inventory from `lib/beam/services`; include the base library when
-   using its operations or the `beam_file` and `beam_socket` facades.
-2. Prepare a composition with `beam_composition_prepare`. A selected native
-   component implies its corresponding service bit. Requesting that service bit
-   without its component is invalid.
-3. Initialize the VM with that composition, load any deferred ordinary modules,
-   and start it.
-4. Call `beam_vm_activate` before calling application exports. Activation starts
-   the selected native facilities and required owners, and waits for readiness.
-5. Stop and terminate the VM to reclaim its resources before creating another.
+1. Acquire libraries and any ordinary bytecode needed by the application.
+2. Merge their module/native inputs and owners into generic composition, or use
+   `beam_host_prepare` to merge them with explicitly requested startup actions.
+3. Initialize and start the VM. Resident entry tables are validated at
+   initialization; their load callbacks have not yet run.
+4. Invoke `beam_file:start/0`, `beam_socket:start/0` or `zlib:on_load/0` as selected.
+   `beam_host_start` can perform these explicit actions and complete any explicit
+   NIF bindings before application entry. It requires supplied `beam_startup`
+   bytecode for its startup controller.
+5. Stop and terminate to reclaim the VM before creating another.
 
-Returning hosts use `beam_return_prepare` and `beam_return_run`. They supply the
-complete base, boot and services inventories, and their native component list
-must exactly match the requested native service bits. The returning helper
-performs activation before entry and teardown before returning its copied
-outcome. See the [C API guide](../c-api/guide.md) and
-[deployment guide](../c-api/deployment.md) for host and bundle construction.
+Returning hosts put the same plan in `beam_return_options.host`; the optional
+helper performs startup before entry and teardown before returning a copied
+outcome. There are no service masks, fixed library kinds or aggregate VM
+activation operation. Output and code acquisition are separate host policies;
+program execution selects managed-port admission and a helper independently.
 
 ## Code and resource lifetime
 
-Preparation checks component identity, conflicts and module containers, copies
-the inputs, and retains library mappings. It neither starts a VM nor activates
-NIFs. Native library constructors can run during mapping, so components are
-trusted native code. Full executable-code validation belongs to VM
-initialization/loading.
+Composition copies module bytes and retains native owners. The initialized VM
+retains its preparation, so callers can release their library and preparation
+references early. Native code remains resident until native resources, unload
+callbacks and registries have been reclaimed. Static executable storage supplies
+a borrowed lifetime. Shared-image provenance comes from native admission;
+module origins are diagnostic labels, not acquisition instructions.
 
-Initialization retains its own reference to a successful preparation. Releasing
-the host's preparation does not release code still needed by that VM. Module
-origins identify the canonical component library path followed by `#<module>`.
-An origin is provenance, not an instruction to acquire more code.
-
-Omitting a component omits its whole module inventory. Calling an absent module
-raises `undef`; the VM does not search an installed directory to rescue the
-call. Loading an Erlang wrapper by itself does not grant a native capability.
-There is no component hot replacement or rebinding during a VM lifetime.
-
-`beam_vm_get_component` observes a selected component's state;
-`beam_vm_get_activation` observes aggregate activation. Failed activation stops
-the VM and retains diagnostics. Terminate that VM before retrying with a fresh
-one. Required service-owner failure likewise closes availability and stops the
-VM. Termination retains the mappings until native resources and code have been
-reclaimed. Exact state and reporting contracts are in the
-[C API reference](../c-api/reference.md).
-
-Output and code acquisition are host-backed facilities documented with the
-[standard-library service interfaces](../stdlib/services.md). They do not require
-additional `libbeam-<name>.so` files. External program execution is another
-explicit service with its own helper selection; it is not provided by the file
-or network component.
+Selecting one library does not acquire another. Undefined calls remain undefined.
+Library startup creates real file/socket owners, whose loss closes availability
+and reports a generic terminal failure. Zlib needs no sentinel owner process.
+There is no hot native replacement. Failed startup stops the VM; inspect copied
+VM diagnostics and terminate before retrying with a fresh VM.

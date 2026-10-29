@@ -2886,15 +2886,12 @@ void erts_bare_destroy_code(void)
     for (i = 0; i < count; ++i) {
         struct erl_module_instance *instance = &instances[i];
         const BeamCodeHeader *header = instance->code_hdr;
-        /* Returning services close their libraries after resource destructors
-         * have run. Bare composition still rejects native library loading. */
+        /* Native callbacks remain resident until their resources have been
+         * reclaimed, independently of how code was supplied to this VM. */
         if (instance->nif) {
-            extern int erts_components_active(void);
             extern void erts_bare_close_loaded_nif(struct erl_module_nif *lib);
-            if (erts_components_active()) {
-                erts_bare_close_loaded_nif(instance->nif);
-                instance->nif = NULL;
-            }
+            erts_bare_close_loaded_nif(instance->nif);
+            instance->nif = NULL;
         }
         if (instance->nif)
             ERTS_INTERNAL_ERROR("bare VM contains a loaded NIF library");

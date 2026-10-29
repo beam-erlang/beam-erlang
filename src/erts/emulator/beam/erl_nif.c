@@ -47,7 +47,6 @@
 
 #include "sys.h"
 #include "global.h"
-#include "beam_component_internal.h"
 #include "erl_binary.h"
 #include "bif.h"
 #include "error.h"
@@ -104,8 +103,7 @@ struct erl_module_nif {
     ErtsCodeBarrier barrier;
 
     void* priv_data;
-    void* handle;             /* "dlopen", NULL for static or component code */
-    beam_component* component; /* Retained through the native-code lifetime. */
+    void* handle;             /* "dlopen", NULL for resident code */
     struct enif_entry_t entry;
     erts_refc_t dynlib_refc;  /* References to loaded native code
                                  +1 erl_module_instance
@@ -2530,7 +2528,6 @@ static void deref_nifmod(struct erl_module_nif* lib)
 {
     if (erts_refc_dectest(&lib->refc, 0) == 0) {
         ASSERT(lib->handle == NULL);
-        ASSERT(lib->component == NULL);
         ASSERT(lib->mod == NULL);
         erts_mtx_destroy(&lib->load_mtx);
         erts_free(ERTS_ALC_T_NIF, lib);
@@ -2619,8 +2616,6 @@ void erts_bare_close_loaded_nif(struct erl_module_nif* lib)
         erts_sys_ddll_close(lib->handle);
         lib->handle = NULL;
     }
-    beam_component_release(lib->component);
-    lib->component = NULL;
     lib->mod = NULL;
     deref_nifmod(lib);
 }
@@ -2638,8 +2633,6 @@ static void really_close_dynlib(struct erl_module_nif* lib)
       lib->handle = NULL;
     }
 
-    beam_component_release(lib->component);
-    lib->component = NULL;
 
     erts_release_code_mod_permission();
 
@@ -4743,14 +4736,13 @@ static int check_is_nifable(const BeamCodeHeader* mod_code,
 static void patch_call_nif_early(ErlNifEntry*, struct erl_module_instance*);
 
 static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
-                               Eterm args, Eterm selected_module, void *selected_init)
+                               Eterm args, Eterm selected_module, void *selected_init, int resident_init)
 {
     static const char bad_lib[] = "bad_lib";
     static const char upgrade[] = "upgrade";
     char* lib_name = NULL;
     void* handle = NULL;
     void* init_func = NULL;
-    beam_component* component = NULL;
     ErlNifEntry* entry = NULL;
     ErlNifEnv env;
     int i, err, encoding;
@@ -4801,24 +4793,13 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
 
     if (erts_bare_mode && !selected_init && !is_static_nif_module(mod_atom) &&
         !erts_vm_native_admitted(BEAM_NATIVE_NIFS)) {
-        if (!sys_strcmp(lib_name, BEAM_COMPONENT_NIF_MARKER)) {
-            Atom *atom = atom_tab(atom_val(mod_atom));
-            char name[64];
-            if (atom->len < sizeof(name)) {
-                sys_memcpy(name, erts_atom_get_name(atom), atom->len);
-                name[atom->len] = '\0';
-                component = beam_component_bind_nif(name, &init_func);
-            }
-        }
-        if (!component) {
-            erts_free(ERTS_ALC_T_TMP, lib_name);
-            return load_nif_error(c_p, "not_supported",
-                                  "native implementation is not selected for this module");
-        }
+        erts_free(ERTS_ALC_T_TMP, lib_name);
+        return load_nif_error(c_p, "not_supported",
+                              "native implementation is not registered for this module");
     }
 
     {
-        ErtsStaticNif* sne = (component || selected_init) ? NULL : is_static_nif_module(mod_atom);
+        ErtsStaticNif* sne = selected_init ? NULL : is_static_nif_module(mod_atom);
         if (sne != NULL) {
             entry = sne->entry;
             is_static = 1;
@@ -4844,7 +4825,7 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
         ret = load_nif_error(c_p,"reload","NIF library already loaded"
                              " (reload disallowed since OTP 20).");
     }
-    else if (!is_static && !component && !selected_init &&
+    else if (!is_static && !selected_init &&
              (err=erts_sys_ddll_open(lib_name, &handle, &errdesc)) != ERL_DE_NO_ERROR) {
 	const char slogan[] = "Failed to load NIF library";
 	if (strstr(errdesc.str, lib_name) != NULL) {
@@ -4854,7 +4835,7 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
 	    ret = load_nif_error(c_p, "load_failed", "%s %s: '%s'", slogan, lib_name, errdesc.str);
 	}
     }
-    else if (!is_static && !component && !selected_init &&
+    else if (!is_static && !selected_init &&
 	     erts_sys_ddll_load_nif_init(handle, &init_func, &errdesc) != ERL_DE_NO_ERROR) {
 	ret  = load_nif_error(c_p, bad_lib, "Failed to find library init"
 			      " function: '%s'", errdesc.str);
@@ -4862,7 +4843,8 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
     }
     else if (!is_static &&
              (erts_add_taint(mod_atom),
-              (entry = erts_sys_ddll_call_nif_init(init_func)) == NULL)) {
+              (entry = resident_init ? ((ErlNifEntry *(*)(void))init_func)() :
+                       erts_sys_ddll_call_nif_init(init_func)) == NULL)) {
 	ret = load_nif_error(c_p, bad_lib, "Library init-call unsuccessful");
     }
     else if (entry->major > ERL_NIF_MAJOR_VERSION
@@ -4895,7 +4877,6 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
         entry = &lib->entry; /* Use a guaranteed modern lib entry from now on */
 
         lib->handle = handle;
-        lib->component = component;
         erts_refc_init(&lib->refc, 2);  /* Erlang code + NIF code */
         erts_refc_init(&lib->dynlib_refc, 1);
         lib->flags = 0;
@@ -5107,7 +5088,6 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
 	if (handle != NULL) {
 	    erts_sys_ddll_close(handle);
 	}
-        beam_component_release(component);
 	erts_sys_ddll_free_error(&errdesc);
     }
 
@@ -5119,14 +5099,14 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
 
 Eterm erts_load_nif(Process *c_p, ErtsCodePtr I, Eterm filename, Eterm args)
 {
-    return load_nif_selected(c_p, I, filename, args, THE_NON_VALUE, NULL);
+    return load_nif_selected(c_p, I, filename, args, THE_NON_VALUE, NULL, 0);
 }
 
 /* Called only by the VM activation request while holding code modification
  * permission. The composition retains the mapping through VM reclamation. */
-Eterm erts_load_selected_nif(Process *process, Eterm module, void *initializer)
+Eterm erts_load_selected_nif(Process *process, Eterm module, void *initializer, int resident_initializer)
 {
-    return load_nif_selected(process, NULL, am_undefined, am_undefined, module, initializer);
+    return load_nif_selected(process, NULL, am_undefined, am_undefined, module, initializer, resident_initializer);
 }
 
 

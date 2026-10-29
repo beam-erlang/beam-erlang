@@ -1,6 +1,6 @@
 # libbeam-file.so
 
-The file component adds local file and directory operations through
+The file library adds local file and directory operations through
 `beam_file`. It contains the complete module inventory `beam_file`,
 `prim_buffer` and `prim_file`, together with their native implementations.
 `prim_buffer` and `prim_file` are implementation support; use `beam_file` for the
@@ -8,21 +8,16 @@ modern interface documented here.
 
 ## Select the capability
 
-Select `BEAM_COMPONENT_FILE` with the exact path to
-`<prefix>/lib/libbeam-file.so`. Its service bit is `BEAM_SERVICE_FILE`. Supply the
-ordinary services inventory and the base library, which includes `beam_time`.
-The [component lifecycle](../README.md#selection-and-activation) describes
-preparation, startup and activation. File selection does not select networking
-or compression.
+Acquire `libbeam-file.so` or link `BEAM::FileStatic`, then supply its inputs to
+composition. After VM start, explicitly call `beam_file:start/0`; it loads buffer
+and file NIFs, creates the real janitor and passes its PID as load information.
+The facade uses the ordinary base library, including `beam_time`. See the
+[library lifecycle](../README.md#selection-and-startup).
 
-Activation establishes the native file/buffer support and file janitor before
-application calls are admitted. Handles belong to their opening Erlang process.
-Owner death and VM termination retain responsibility for closing live files.
-Sending a handle to another process does not transfer ownership; the recipient
-receives `not_owner` on use. Treat handles as opaque, even though their current
-representation is a map. Editing its descriptive owner field grants no access
-to a native file. Cleanup remains the owner's/VM's responsibility even if other
-processes retain references to the handle.
+Handles belong to their opening Erlang process. Owner death and VM termination
+retain responsibility for closing files. Passing a handle does not transfer
+ownership; another process receives `not_owner`. Handle fields are descriptive
+and cannot grant access to the underlying resource.
 
 ## First read
 
@@ -133,4 +128,4 @@ their capabilities remain separately selected.
 
 The current implementation is defined by
 [beam_file.erl](../../../src/beam/file/beam_file.erl) and the
-[file component recipe](../../../src/beam/file/CMakeLists.txt).
+[file library recipe](../../../src/beam/file/CMakeLists.txt).

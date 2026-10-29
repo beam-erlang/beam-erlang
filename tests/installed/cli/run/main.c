@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define _GNU_SOURCE
 #include "beam_cli_recipe.h"
+#include "native_counts.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fenv.h>
@@ -255,7 +256,7 @@ static beam_outcome run(beam_system *system, const char *root, const char *sourc
         check(snprintf(rejected_path,sizeof rejected_path,"%.*s/run_prestart_rejected.beam",(int)(slash-source),source)<(int)sizeof rejected_path,"activation fixture path");
         rejected=read_file(rejected_path);
         activation.name="run_prestart_rejected"; activation.origin=rejected_path;
-        activation.bytes=(beam_bytes){rejected.data,rejected.size}; activation.service=1;
+        activation.bytes=(beam_bytes){rejected.data,rejected.size}; activation.deferred=1;
         options.modules=&activation; options.module_count=1;
     }
     status=beam_cli_recipe_return_prepare(&options,&boot,&error);
@@ -321,7 +322,7 @@ int main(int argc,char **argv)
 {
     host_state host={0}; resources steady={0}; beam_system *system=NULL; beam_error error={0};
     beam_outcome saved={0},result={0}; buffer program; output o={0};
-    unsigned all=BEAM_SERVICE_OUTPUT|BEAM_SERVICE_CODE|BEAM_SERVICE_FILE|BEAM_SERVICE_SOCKET|BEAM_SERVICE_ZLIB|BEAM_SERVICE_PROGRAM;
+    unsigned all=BEAM_CLI_OUTPUT|BEAM_CLI_CODE|BEAM_CLI_FILE|BEAM_CLI_SOCKET|BEAM_CLI_ZLIB|BEAM_CLI_PROGRAM;
     const char *minimal[]={"output_only"}, *clean[]={"clean"};
     const char *endings[]={"return","halt","finish","exception"};
     check(argc==5,"usage: host PREFIX PROGRAM_BEAM SOURCE_ORIGIN WORK_FILE");
@@ -333,7 +334,7 @@ int main(int argc,char **argv)
     }
     program=read_file(argv[2]); snapshot(&host);
     check(beam_init(&system,&error)==BEAM_OK,error.message);
-    saved=run(system,argv[1],argv[3],&program,BEAM_SERVICE_OUTPUT,1,minimal,&o,0);
+    saved=run(system,argv[1],argv[3],&program,BEAM_CLI_OUTPUT,1,minimal,&o,0);
     check(equals(&o.out,"output only\n") && !o.err.size,"output-only runner I/O");
     copied_result(&saved); quiescent(&host,NULL,0); observe(&steady);
     /* A minimal deployment intentionally has no optional components. */
@@ -342,10 +343,10 @@ int main(int argc,char **argv)
         quiescent(&host,&steady,0); copied_result(&saved);
         o.out.size=o.err.size=0;
         result=run(system,argv[1],argv[3],&program,all,1,clean,&o,1);
-        check(result.kind==BEAM_OUTCOME_SERVICE_FAILURE && !strcmp(result.service,"run_prestart_rejected"),"runner deferred activation failure");
+        check(result.kind==BEAM_OUTCOME_FAILURE && !strcmp(result.origin,"run_prestart_rejected"),"runner deferred activation failure");
         check(!o.out.size && !o.err.size,"activation failure ran source entry");
         beam_outcome_release(&result); quiescent(&host,&steady,0); copied_result(&saved);
-        result=run(system,argv[1],argv[3],&program,BEAM_SERVICE_OUTPUT,1,clean,&o,0);
+        result=run(system,argv[1],argv[3],&program,BEAM_CLI_OUTPUT,1,clean,&o,0);
         copied_result(&result); beam_outcome_release(&result); quiescent(&host,&steady,0);
         for (unsigned repeat=0;repeat<3;++repeat) for (unsigned i=0;i<4;++i) {
             const char *mode=repeat==0 ? "retain_unused_program" : repeat==1 ? "retain" : "retain_sleep";
@@ -358,7 +359,7 @@ int main(int argc,char **argv)
             else check(result.kind==BEAM_OUTCOME_FINISH && result.halt_status==1 && o.err.size,"exception diagnostic outcome");
             beam_outcome_release(&result); quiescent(&host,&steady,0); copied_result(&saved);
             o.out.size=o.err.size=0;
-            result=run(system,argv[1],argv[3],&program,BEAM_SERVICE_OUTPUT,1,clean,&o,0);
+            result=run(system,argv[1],argv[3],&program,BEAM_CLI_OUTPUT,1,clean,&o,0);
             copied_result(&result); check(!o.out.size && !o.err.size,"fresh VM not empty");
             beam_outcome_release(&result); quiescent(&host,&steady,0);
         }
@@ -366,8 +367,8 @@ int main(int argc,char **argv)
           const char *failures[]={"kill_output","kill_io_leader","kill_io_reader"};
           for (unsigned i=0;i<3;++i) {
             const char *args[]={failures[i]}; o.out.size=o.err.size=0;
-            result=run(system,argv[1],argv[3],&program,BEAM_SERVICE_OUTPUT,1,args,&o,0);
-            check(result.kind==BEAM_OUTCOME_SERVICE_FAILURE && !strcmp(result.service,"output"),"runner service owner death");
+            result=run(system,argv[1],argv[3],&program,BEAM_CLI_OUTPUT,1,args,&o,0);
+            check(result.kind==BEAM_OUTCOME_FAILURE && !strcmp(result.origin,"output"),"runner service owner death");
             beam_outcome_release(&result); quiescent(&host,&steady,0);
           }
         }

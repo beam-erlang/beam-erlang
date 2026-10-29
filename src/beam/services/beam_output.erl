@@ -1,6 +1,6 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(beam_output).
--export([write/3]).
+-export([start/0, write/3]).
 
 -spec write(atom() | binary(), binary(), integer() | infinity) ->
           ok | {error, #{kind := atom()}}.
@@ -24,7 +24,7 @@ write_checked(Destination, Bytes, Deadline) ->
     end.
 
 deliver(Destination, Bytes) ->
-    Server = whereis(beam_service_output),
+    Server = whereis(beam_output_server),
     case is_pid(Server) of
         false -> failure(unavailable, false);
         true ->
@@ -42,7 +42,7 @@ deliver(Destination, Bytes) ->
             end
     end.
 
-selected(_Name) -> erts_internal:component_ready(output).
+selected(_Name) -> is_pid(whereis(beam_output_server)).
 
 valid_destination(Name) when is_atom(Name), Name =/= '' -> true;
 valid_destination(Name) when is_binary(Name), byte_size(Name) > 0 -> true;
@@ -62,3 +62,36 @@ failure(Reason, Unknown) ->
     end,
     {error, #{kind => Kind, service => output, bytes_written => 0,
               progress_unknown => Unknown, native => #{domain => host, code => Reason}}}.
+
+start() ->
+    Parent = self(),
+    {Pid, Ref} = spawn_monitor(fun() ->
+        register(beam_output_server, self()),
+        Parent ! {self(), ready},
+        output_loop()
+    end),
+    receive
+        {Pid, ready} ->
+            demonitor(Ref, [flush]),
+            Watcher = spawn(fun() ->
+                Monitor = monitor(process, Pid),
+                Parent ! {self(), watching},
+                receive {'DOWN', Monitor, process, Pid, Reason} ->
+                    erts_internal:request_failure(output, Reason)
+                end
+            end),
+            receive {Watcher, watching} -> ok end;
+        {'DOWN', Ref, process, Pid, Reason} -> exit(Reason)
+    end.
+
+output_loop() ->
+    receive
+        {write, From, Ref, Destination, Bytes} ->
+            Reply = case beam_host:request({output, Destination, Bytes}) of
+                        {ok, ok} -> ok;
+                        {ok, {error, Kind}} -> {error, Kind};
+                        {error, _} -> {error, io}
+                    end,
+            From ! {Ref, Reply},
+            output_loop()
+    end.

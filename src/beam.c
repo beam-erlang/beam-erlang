@@ -168,10 +168,7 @@ struct beam_vm {
     unsigned host_reply_aux;
     beam_composition *composition;
     beam_error initialization_error;
-    atomic_int components_active;
-    atomic_int activating;
-    unsigned failed_component;
-    beam_error component_failure;
+    unsigned char *bound_nifs;
     beam_vm_report report;
     beam_execution_mode execution;
     beam_entry root;
@@ -290,7 +287,8 @@ static beam_status validate_options(const beam_vm_options *options,
                  (options->process_policy & BEAM_PROCESS_STDIO), break_policy,
                  "terminal input policy requires standard-stream ownership");
     CHECK_OPTION(options->execution == BEAM_PROCESS_OWNED ||
-                 (!options->process_policy && (!options->composition || !options->composition->native_admission)),
+                 (!options->process_policy && (!options->composition ||
+                  !(options->composition->native_admission & ~BEAM_NATIVE_MANAGED_PORTS))),
                  execution, "process-wide native admission and policy require process ownership");
     CHECK_OPTION(options->port_limit <= INT_MAX,
                  port_limit, "is outside native port bounds");
@@ -828,10 +826,8 @@ void erts_bare_process_deleted(Process *p)
     }
 }
 
-void erts_bare_halt(int status)
+static void request_halt_locked(beam_vm *vm, int status)
 {
-    beam_vm *vm = bare_vm;
-    beam_mutex_lock(&vm->mutex);
     if (!vm->halted) {
         vm->halted = 1;
         vm->halt_status = status;
@@ -858,8 +854,32 @@ void erts_bare_halt(int status)
         }
         request->done = 1;
     }
-    erts_bare_request_stop();
+    if (vm->started) erts_bare_request_stop();
     beam_cond_signal(&vm->condition);
+}
+
+void erts_bare_halt(int status)
+{
+    beam_vm *vm = bare_vm;
+    beam_mutex_lock(&vm->mutex);
+    request_halt_locked(vm, status);
+    beam_mutex_unlock(&vm->mutex);
+}
+
+void beam_native_request_failure(const char *origin, const char *reason)
+{
+    beam_vm *vm = bare_vm;
+    if (!vm || !origin || !*origin || !reason || !*reason) return;
+    beam_mutex_lock(&vm->mutex);
+    if (!vm->stopped && !vm->halted) {
+        if (vm->report.cause == BEAM_TERMINAL_NONE) {
+            vm->report.cause = BEAM_TERMINAL_FAILURE;
+            vm->report.halt_status = 1;
+            snprintf(vm->report.origin, sizeof(vm->report.origin), "%s", origin);
+            diagnostic(&vm->report.failure, BEAM_SYSTEM_ERROR, 0, reason);
+        }
+        request_halt_locked(vm, 1);
+    }
     beam_mutex_unlock(&vm->mutex);
 }
 
@@ -956,8 +976,8 @@ static void module_command(void *argument)
     complete(request, status);
 }
 
-/* Native activation uses an explicit target, never an invented Erlang caller. */
-extern Eterm erts_load_selected_nif(Process *, Eterm, void *);
+/* Native binding uses an explicit target, never an invented Erlang caller. */
+extern Eterm erts_load_selected_nif(Process *, Eterm, void *, int);
 static void nif_command(void *argument)
 {
     beam_request *request = argument;
@@ -968,10 +988,11 @@ static void nif_command(void *argument)
     erts_init_empty_process(&process);
     erts_proc_lock(&process, ERTS_PROC_LOCK_MAIN);
     module = erts_atom_put((byte *)request->nif->module, strlen(request->nif->module), ERTS_ATOM_ENC_UTF8, 0);
-    result = erts_load_selected_nif(&process, module, request->nif->initializer);
+    result = erts_load_selected_nif(&process, module, request->nif->initializer,
+                                    request->nif->resident_initializer);
     if (result != am_ok)
         erts_snprintf(request->error.message, sizeof(request->error.message),
-                      "NIF %s activation failed: %T", request->nif->module, result);
+                      "NIF %s binding failed: %T", request->nif->module, result);
     erts_release_code_mod_permission();
     erts_proc_unlock(&process, ERTS_PROC_LOCK_MAIN);
     erts_cleanup_empty_process(&process);
@@ -1064,7 +1085,6 @@ done:
         complete(request, status);
 }
 
-extern void erts_components_request_stop(void);
 
 static beam_status dispatch(beam_vm *vm, beam_request *request,
                             void (*command)(void *))
@@ -1076,7 +1096,6 @@ static beam_status dispatch(beam_vm *vm, beam_request *request,
     if (vm->halted || vm->stopped) {
         beam_mutex_unlock(&vm->mutex);
         if (!vm->stopped) {
-            erts_components_request_stop();
             erts_bare_stop_runtime();
             vm->stopped = 1;
         }
@@ -1102,7 +1121,6 @@ static beam_status dispatch(beam_vm *vm, beam_request *request,
     vm->active = NULL;
     beam_mutex_unlock(&vm->mutex);
     if (halted) {
-        erts_components_request_stop();
         erts_bare_stop_runtime();
         vm->stopped = 1;
     }
@@ -1120,7 +1138,6 @@ static beam_status check_running(beam_vm *vm)
     beam_mutex_unlock(&vm->mutex);
     if (stopped) {
         if (!vm->stopped) {
-            erts_components_request_stop();
             erts_bare_stop_runtime();
             vm->stopped = 1;
         }
@@ -1187,6 +1204,13 @@ size_t erts_vm_builtin_nifs(const beam_builtin_nif **entries)
     return composition ? composition->builtin_nif_count : 0;
 }
 
+size_t erts_vm_embedded_dependencies(const beam_embedded_dependency **entries)
+{
+    const beam_composition *composition = bare_vm ? bare_vm->composition : NULL;
+    *entries = composition ? composition->embedded_dependencies : NULL;
+    return composition ? composition->embedded_dependency_count : 0;
+}
+
 size_t erts_vm_builtin_drivers(const beam_builtin_driver **entries)
 {
     const beam_composition *composition = bare_vm ? bare_vm->composition : NULL;
@@ -1212,12 +1236,13 @@ beam_status beam_core_modules(const char *const **names, size_t *count)
 int erts_vm_native_admitted(unsigned permission)
 {
     return bare_vm && bare_vm->composition &&
+        (!(permission & ~BEAM_NATIVE_MANAGED_PORTS) || bare_vm->entered) &&
         (bare_vm->composition->native_admission & permission) == permission;
 }
 
 int erts_vm_process_policy(unsigned policy)
 {
-    return bare_vm && (bare_vm->process_policy & policy) == policy;
+    return bare_vm && bare_vm->entered && (bare_vm->process_policy & policy) == policy;
 }
 
 beam_break_policy erts_vm_break_policy(void)
@@ -1289,15 +1314,24 @@ beam_status beam_vm_init(beam_system *system, const beam_vm_options *options,
     vm = calloc(1, sizeof(*vm));
     if (!vm)
         return diagnostic(error, BEAM_OUT_OF_MEMORY, ENOMEM, "could not allocate VM handle");
+    vm->bound_nifs = calloc(options->composition && options->composition->nif_count ?
+                           options->composition->nif_count : 1, 1);
+    if (!vm->bound_nifs) {
+        free(vm->bound_nifs);
+        free(vm);
+        return diagnostic(error, BEAM_OUT_OF_MEMORY, ENOMEM, "could not allocate native binding state");
+    }
     vm->system = system;
     vm->owner = beam_thread_self();
     vm->host_admission = 1;
     if ((err = beam_mutex_init(&vm->mutex, NULL)) != 0) {
+        free(vm->bound_nifs);
         free(vm);
         return diagnostic(error, BEAM_SYSTEM_ERROR, err, "could not initialize VM mutex");
     }
     if ((err = init_wait_condition(&vm->condition)) != 0) {
         beam_mutex_destroy(&vm->mutex);
+        free(vm->bound_nifs);
         free(vm);
         return diagnostic(error, BEAM_SYSTEM_ERROR, err, "could not initialize VM condition");
     }
@@ -1313,7 +1347,8 @@ beam_status beam_vm_init(beam_system *system, const beam_vm_options *options,
             free((void *)vm->root.arguments.data);
             beam_cond_destroy(&vm->condition);
             beam_mutex_destroy(&vm->mutex);
-            free(vm);
+            free(vm->bound_nifs);
+        free(vm);
             return diagnostic(error, BEAM_OUT_OF_MEMORY, ENOMEM, "could not copy initial root");
         }
         memcpy((void *)vm->root.arguments.data, root->arguments.data, root->arguments.size);
@@ -1338,17 +1373,15 @@ beam_status beam_vm_init(beam_system *system, const beam_vm_options *options,
         free((void *)vm->root.arguments.data);
         beam_cond_destroy(&vm->condition);
         beam_mutex_destroy(&vm->mutex);
+        free(vm->bound_nifs);
         free(vm);
         return diagnostic(error, BEAM_OUT_OF_MEMORY, ENOMEM, "could not copy VM startup context");
     }
     vm->composition = (beam_composition *)options->composition;
     beam_composition_retain(vm->composition);
     vm->report.struct_size = sizeof(vm->report);
-    vm->components_active = !beam_composition_needs_activation(vm->composition);
-    if (vm->composition) {
-        erts_components_begin(vm->composition->services, vm->composition->program_helper);
-        beam_components_activate(vm->composition->components, vm->composition->count);
-    }
+    erts_vm_native_begin(vm->composition ? vm->composition->program_helper : NULL);
+
     bare_vm = vm;
     erts_bare_mode = 1;
     beam_runtime_memory_begin();
@@ -1388,7 +1421,7 @@ static beam_status start_vm(beam_vm *vm, int process_owned, beam_error *error)
         return diagnostic(error, BEAM_UNSUPPORTED, 0,
                           "host fault handlers require alternate signal stack support");
 #ifndef _WIN32
-    if (erts_components_program_path()) {
+    if (erts_vm_program_path()) {
         if (sigaction(SIGPIPE, NULL, &vm->saved_pipe) != 0)
             return diagnostic(error, BEAM_SYSTEM_ERROR, errno, "could not save host SIGPIPE disposition");
         vm->restore_pipe = 1;
@@ -1403,7 +1436,7 @@ static beam_status start_vm(beam_vm *vm, int process_owned, beam_error *error)
 
 beam_status beam_vm_start(beam_vm *vm, beam_error *error)
 {
-    return start_vm(vm, 0, error);
+    return start_vm(vm, vm && vm->execution == BEAM_PROCESS_OWNED, error);
 }
 
 int erts_vm_process_owned(void)
@@ -1414,23 +1447,48 @@ int erts_vm_process_owned(void)
 static void resume_root(void *argument)
 {
     beam_request *request = argument;
+    beam_vm *vm = request->vm;
+    beam_mutex_lock(&vm->mutex);
+    if (vm->halted || vm->stopped) {
+        beam_mutex_unlock(&vm->mutex);
+        complete(request, BEAM_STOPPED);
+        return;
+    }
     Process *root = erts_pid2proc(NULL, 0, erts_init_process_id, ERTS_PROC_LOCK_MAIN);
     ASSERT(root);
     erts_resume(root, ERTS_PROC_LOCK_MAIN);
     erts_proc_unlock(root, ERTS_PROC_LOCK_MAIN);
+    beam_mutex_unlock(&vm->mutex);
     complete(request, BEAM_OK);
 }
 
 beam_status beam_vm_enter(beam_vm *vm, beam_error *error)
 {
     beam_request request = {0};
-    beam_status status = start_vm(vm, 1, error);
+    beam_status status = check_owner(vm);
+    clear_error(error);
     if (status != BEAM_OK) return status;
-    status = beam_vm_activate(vm, error);
+    if (vm->execution != BEAM_PROCESS_OWNED || vm->entered)
+        return diagnostic(error, BEAM_INVALID_STATE, 0, "entry requires a process-owned VM before entry commit");
+    if (vm->pending_call || vm->active) return BEAM_BUSY;
+    int convenience = !vm->started;
+    status = convenience ? start_vm(vm, 1, error) : check_running(vm);
     if (status != BEAM_OK) return status;
-    /* Ownership transfers before the initial root can execute. Both the
-     * root's fatal system-process semantics and process-owned halt now apply. */
+    if (vm->composition)
+        for (size_t i = 0; i < vm->composition->nif_count; ++i)
+            if (!vm->bound_nifs[i])
+                return diagnostic(error, BEAM_INVALID_STATE, 0, "entry requires completed explicit native bindings");
+    /* Failure arbitration and entry commit use the same lock. Process policy
+     * runs on the owner thread after irrevocable commit, before root admission.
+     * A later failure stops the committed process instead of returning to C. */
+    beam_mutex_lock(&vm->mutex);
+    if (vm->halted || vm->stopped) {
+        beam_mutex_unlock(&vm->mutex);
+        return diagnostic(error, BEAM_STOPPED, 0, "VM stopped before entry commit");
+    }
     vm->entered = 1;
+    beam_mutex_unlock(&vm->mutex);
+    erts_sys_process_start();
     erts_sys_process_ready();
     vm->calls_started = 1;
     status = dispatch(vm, &request, resume_root);
@@ -1442,7 +1500,7 @@ beam_status beam_vm_enter(beam_vm *vm, beam_error *error)
         }
         beam_mutex_unlock(&vm->mutex);
     }
-    /* Component failure can request coordinated stop instead of native halt.
+    /* Native failure can request coordinated stop instead of native halt.
      * Process ownership is irrevocable even on this failure path. */
     int halt_status = 1;
     (void)beam_vm_stop(vm, &halt_status);
@@ -1741,7 +1799,6 @@ static beam_status call_begin(beam_vm *vm, const char *module,
     beam_status status = check_running(vm);
     if (status != BEAM_OK) return status;
     if (vm->pending_call) return BEAM_BUSY;
-    if (!vm->components_active && !vm->activating) return BEAM_INVALID_STATE;
     if (!module || !*module || !function || !*function || !arguments.data ||
         !arguments.size || arguments.size > (Uint)-1) return BEAM_INVALID_ARGUMENT;
     beam_request *request = calloc(1, sizeof(*request));
@@ -1919,7 +1976,6 @@ beam_status beam_vm_stop(beam_vm *vm, int *halt_status)
             vm->pending_call->recorded = 1;
             vm->pending_call->status = BEAM_STOPPED;
         }
-        erts_components_request_stop();
         if (vm->started)
             erts_bare_request_stop();
         beam_mutex_unlock(&vm->mutex);
@@ -1940,24 +1996,10 @@ beam_status beam_vm_stop(beam_vm *vm, int *halt_status)
     return BEAM_OK;
 }
 
-void erts_components_set_cleanup(const char *bytes, size_t size)
+void beam_native_report_cleanup(int native_code, const char *message)
 {
     beam_vm *vm = bare_vm;
-    if (!vm || !vm->composition || !bytes) return;
-    beam_mutex_lock(&vm->mutex);
-    if (!vm->report.has_cleanup_error) {
-        if (size >= sizeof(vm->report.cleanup.message)) size = sizeof(vm->report.cleanup.message) - 1;
-        memcpy(vm->report.cleanup.message, bytes, size);
-        vm->report.cleanup.message[size] = 0;
-        vm->report.has_cleanup_error = 1;
-    }
-    beam_mutex_unlock(&vm->mutex);
-}
-
-void erts_components_set_native_cleanup(int native_code, const char *message)
-{
-    beam_vm *vm = bare_vm;
-    if (!vm || !vm->composition) return;
+    if (!vm || !message) return;
     beam_mutex_lock(&vm->mutex);
     if (!vm->report.has_cleanup_error) {
         vm->report.has_cleanup_error = 1;
@@ -2002,12 +2044,9 @@ beam_status beam_vm_terminate_report(beam_vm **vm, int *halt_status, beam_vm_rep
         return status;
     }
     erts_bare_destroy_runtime((*vm)->started);
+    erts_vm_native_end();
+    beam_composition_release(&(*vm)->composition);
     if (out) (void)beam_vm_get_report(*vm, out);
-    if ((*vm)->composition) {
-        beam_components_deactivate();
-        erts_components_end();
-        beam_composition_release(&(*vm)->composition);
-    }
     release_call((*vm)->pending_call);
     (*vm)->active = (*vm)->pending_call = NULL;
     beam_cond_destroy(&(*vm)->condition);
@@ -2017,167 +2056,62 @@ beam_status beam_vm_terminate_report(beam_vm **vm, int *halt_status, beam_vm_rep
     free((void *)(*vm)->root.module);
     free((void *)(*vm)->root.function);
     free((void *)(*vm)->root.arguments.data);
+    free((*vm)->bound_nifs);
     free(*vm);
     bare_vm = *vm = NULL;
     return BEAM_OK;
 }
 
-beam_status beam_vm_activate(beam_vm *vm, beam_error *error)
+beam_status beam_vm_bind_nif(beam_vm *vm, const char *module, beam_error *error)
 {
-    beam_result result = {0};
-    beam_status status = check_running(vm);
-    beam_buffer arguments = {0};
-    const char *failed_support = NULL;
     clear_error(error);
+    beam_status status = check_running(vm);
     if (status != BEAM_OK) return diagnostic(error, status, 0, beam_status_message(status));
+    if (!module || !*module) return BEAM_INVALID_ARGUMENT;
     if (vm->pending_call) return BEAM_BUSY;
-    if (vm->components_active) return BEAM_OK;
-    if (!vm->composition) return BEAM_OK;
-    int support = beam_composition_needs_support(vm->composition);
-    if (support) {
-        for (size_t i = 0; i < sizeof(beam_activation_support_modules) / sizeof(beam_activation_support_modules[0]); ++i) {
-            beam_module_info info = {.struct_size = sizeof(info)};
-            status = beam_vm_get_module(vm, beam_activation_support_modules[i], &info);
-            if (status != BEAM_OK || !(info.flags & BEAM_MODULE_CURRENT)) {
-                failed_support = beam_activation_support_modules[i];
-                status = diagnostic(error, BEAM_SYSTEM_ERROR, 0, "required ordinary activation support is not loaded");
-                break;
-            }
-        }
-    }
-    if (support && status == BEAM_OK) status = beam_composition_activation_arguments(vm->composition, &arguments);
-    vm->activating = 1;
-    if (support && status == BEAM_OK) status = beam_vm_call(vm, "beam_component_services", "activate",
-                          (beam_bytes){arguments.data, arguments.size}, &result);
-    vm->activating = 0;
-    free(arguments.data);
-    if (status == BEAM_OK && support && (result.kind != BEAM_RETURN || result.value.size != 3 ||
-        memcmp(result.value.data, "\203\141\000", 3))) status = BEAM_SYSTEM_ERROR;
-    beam_result_release(&result);
-    for (size_t i = 0; status == BEAM_OK && i < vm->composition->nif_count; ++i) {
-        beam_request request = {0};
-        request.nif = &vm->composition->nifs[i];
-        status = dispatch(vm, &request, nif_command);
-        if (status != BEAM_OK) {
-            beam_mutex_lock(&vm->mutex);
-            vm->component_failure = request.error;
-            vm->failed_component = 0; /* Failure is not necessarily a native component. */
-            if (vm->report.cause == BEAM_TERMINAL_NONE) {
-                vm->report.cause = BEAM_TERMINAL_COMPONENT_FAILURE;
-                vm->report.halt_status = 1;
-                snprintf(vm->report.component, sizeof(vm->report.component), "%s", request.nif->module);
-                vm->report.failure = request.error;
-            }
-            beam_mutex_unlock(&vm->mutex);
-        }
-    }
-    beam_mutex_lock(&vm->mutex);
-    if (status == BEAM_OK && !vm->halted && !vm->component_failure.message[0]) {
-        vm->components_active = 1;
-        beam_mutex_unlock(&vm->mutex);
+    if (!vm->composition) return BEAM_NOT_FOUND;
+    size_t index;
+    for (index = 0; index < vm->composition->nif_count; ++index)
+        if (!strcmp(module, vm->composition->nifs[index].module)) break;
+    if (index == vm->composition->nif_count) return BEAM_NOT_FOUND;
+    if (vm->bound_nifs[index]) return BEAM_OK;
+    beam_module_info info = {.struct_size = sizeof(info)};
+    status = beam_vm_get_module(vm, module, &info);
+    if (status != BEAM_OK) return status;
+    if (!(info.flags & BEAM_MODULE_CURRENT)) return BEAM_NOT_FOUND;
+    if (info.flags & (BEAM_MODULE_ON_LOAD | BEAM_MODULE_PROTECTED)) return BEAM_INVALID_STATE;
+    beam_request request = {0};
+    request.nif = &vm->composition->nifs[index];
+    status = dispatch(vm, &request, nif_command);
+    if (status == BEAM_OK) {
+        vm->bound_nifs[index] = 1;
         return BEAM_OK;
     }
-    if (status == BEAM_OK) status = BEAM_SYSTEM_ERROR;
-    if (!vm->component_failure.message[0]) {
-        vm->failed_component = 0; /* Failure is not necessarily a native component. */
-        if (error && error->message[0]) vm->component_failure = *error;
-        else diagnostic(&vm->component_failure, status, 0, "component activation failed");
-        if (vm->report.cause == BEAM_TERMINAL_NONE) {
-            vm->report.cause = BEAM_TERMINAL_COMPONENT_FAILURE;
-            vm->report.halt_status = 1;
-            snprintf(vm->report.component, sizeof(vm->report.component), "%s",
-                     failed_support ? failed_support : "services");
-            vm->report.failure = vm->component_failure;
-        }
+    beam_mutex_lock(&vm->mutex);
+    if (vm->report.cause == BEAM_TERMINAL_NONE) {
+        vm->report.cause = BEAM_TERMINAL_FAILURE;
+        vm->report.halt_status = 1;
+        snprintf(vm->report.origin, sizeof(vm->report.origin), "%s", module);
+        vm->report.failure = request.error;
     }
-    if (error) *error = vm->component_failure;
     beam_mutex_unlock(&vm->mutex);
+    if (error) *error = request.error;
     beam_vm_stop(vm, NULL);
     return status;
 }
 
-beam_status beam_vm_get_activation(beam_vm *vm, beam_activation_info *out)
+/* Generic failure request: product monitors own identities and policy. */
+BIF_RETTYPE erts_internal_request_failure_2(BIF_ALIST_2)
 {
-    beam_status status = check_owner(vm);
-    beam_activation_info info = {.struct_size = sizeof(info)};
-    if (status != BEAM_OK) return status;
-    if (!out || out->struct_size != sizeof(*out)) return BEAM_INVALID_ARGUMENT;
-    beam_mutex_lock(&vm->mutex);
-    if (!beam_composition_needs_activation(vm->composition)) info.state = BEAM_ACTIVATION_ABSENT;
-    else if (vm->component_failure.message[0]) {
-        info.state = BEAM_ACTIVATION_FAILED;
-        info.failure = vm->component_failure;
-    } else if (vm->stopped || vm->halted) info.state = BEAM_ACTIVATION_STOPPED;
-    else info.state = vm->components_active ? BEAM_ACTIVATION_ACTIVE : BEAM_ACTIVATION_PREPARED;
-    beam_mutex_unlock(&vm->mutex);
-    *out = info;
-    return BEAM_OK;
-}
-
-beam_status beam_vm_get_component(beam_vm *vm, beam_component_kind kind,
-                                  beam_component_info *out)
-{
-    beam_status status = check_owner(vm);
-    beam_component_info info = {0};
-    if (status != BEAM_OK) return status;
-    if (!out || out->struct_size != sizeof(*out) || !beam_component_kind_valid(kind))
-        return BEAM_INVALID_ARGUMENT;
-    info.struct_size = sizeof(info);
-    beam_mutex_lock(&vm->mutex);
-    if (!vm->composition || !(vm->composition->selected & (1u << kind)))
-        info.state = BEAM_COMPONENT_ABSENT;
-    else if (vm->component_failure.message[0] && (unsigned)kind == vm->failed_component) {
-        info.state = BEAM_COMPONENT_FAILED;
-        info.failure = vm->component_failure;
-    } else if (vm->stopped || vm->halted) info.state = BEAM_COMPONENT_STOPPED;
-    else info.state = vm->components_active ? BEAM_COMPONENT_ACTIVE : BEAM_COMPONENT_PREPARED;
-    beam_mutex_unlock(&vm->mutex);
-    *out = info;
-    return BEAM_OK;
-}
-
-BIF_RETTYPE erts_internal_component_ready_1(BIF_ALIST_1)
-{
-    unsigned service = 0;
-    if (BIF_ARG_1 == host_atom("file")) service = BEAM_SERVICE_FILE;
-    else if (BIF_ARG_1 == host_atom("socket")) service = BEAM_SERVICE_SOCKET;
-    else if (BIF_ARG_1 == host_atom("zlib")) service = BEAM_SERVICE_ZLIB;
-    else if (BIF_ARG_1 == host_atom("program")) service = BEAM_SERVICE_PROGRAM;
-    else if (BIF_ARG_1 == host_atom("output")) service = BEAM_SERVICE_OUTPUT;
-    else if (BIF_ARG_1 == host_atom("code")) service = BEAM_SERVICE_CODE;
-    else BIF_ERROR(BIF_P, BADARG);
-    if (!erts_bare_mode || !erts_components_has_service(service)) BIF_RET(am_false);
-    if (bare_vm->composition && !bare_vm->components_active) BIF_RET(am_false);
-    BIF_RET(am_true);
-}
-
-BIF_RETTYPE erts_internal_component_failed_2(BIF_ALIST_2)
-{
-    beam_vm *vm = bare_vm;
-    char service[1024];
-    if (!erts_bare_mode || !vm || !vm->composition) BIF_ERROR(BIF_P, EXC_NOTSUP);
+    char origin[1024], reason[256];
+    if (!erts_bare_mode || !bare_vm) BIF_ERROR(BIF_P, EXC_NOTSUP);
     if (!is_atom(BIF_ARG_1)) BIF_ERROR(BIF_P, BADARG);
     Atom *name = atom_tab(atom_val(BIF_ARG_1));
-    if ((size_t)name->len >= sizeof(service)) BIF_ERROR(BIF_P, BADARG);
-    memcpy(service, erts_atom_get_name(name), name->len);
-    service[name->len] = 0;
-    beam_mutex_lock(&vm->mutex);
-    if (!erts_bare_stop_requested() && !vm->component_failure.message[0]) {
-        vm->components_active = 0;
-        vm->failed_component = BIF_ARG_1 == host_atom("file") ? BEAM_COMPONENT_FILE :
-            BIF_ARG_1 == host_atom("socket") ? BEAM_COMPONENT_NETWORK :
-            BIF_ARG_1 == host_atom("zlib") ? BEAM_COMPONENT_ZLIB : 0;
-        erts_snprintf(vm->component_failure.message, sizeof(vm->component_failure.message),
-                      "%s component failed: %T", service, BIF_ARG_2);
-        if (!vm->halted) {
-            vm->report.cause = BEAM_TERMINAL_COMPONENT_FAILURE;
-            vm->report.halt_status = 1;
-            snprintf(vm->report.component, sizeof(vm->report.component), "%s", service);
-            vm->report.failure = vm->component_failure;
-        }
-    }
-    beam_mutex_unlock(&vm->mutex);
-    if (!erts_bare_stop_requested()) erts_bare_halt(1);
+    if ((size_t)name->len >= sizeof(origin)) BIF_ERROR(BIF_P, BADARG);
+    memcpy(origin, erts_atom_get_name(name), name->len);
+    origin[name->len] = 0;
+    erts_snprintf(reason, sizeof(reason), "%T", BIF_ARG_2);
+    beam_native_request_failure(origin, reason);
     BIF_RET(am_ok);
 }
 

@@ -1,6 +1,8 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(beam_code).
--export([fetch/3, load/3]).
+-export([start/0, fetch/3, load/3]).
+
+start() -> persistent_term:put(beam_code_enabled, true), ok.
 
 -spec fetch(atom() | binary(), atom(), integer() | infinity) ->
           {ok, binary()} | {error, #{kind := atom()}}.
@@ -84,7 +86,7 @@ without_origin(_Module, []) -> [];
 without_origin(Module, [{Module, _} | Rest]) -> without_origin(Module, Rest);
 without_origin(Module, [Entry | Rest]) -> [Entry | without_origin(Module, Rest)].
 
-selected(_Name) -> erts_internal:component_ready(code).
+selected(_Name) -> persistent_term:get(beam_code_enabled, false).
 
 valid_source(Name) when is_atom(Name), Name =/= '' -> true;
 valid_source(Name) when is_binary(Name), byte_size(Name) > 0 -> true;

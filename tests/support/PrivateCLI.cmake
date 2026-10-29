@@ -8,7 +8,7 @@ target_include_directories(private_cli_recipe PUBLIC "${BEAM_PROJECT_SOURCE_DIR}
 target_include_directories(private_cli_recipe PRIVATE
     "${PRIVATE_HOST_BUILD}/run/include" "${PRIVATE_HOST_BUILD}/cli/include"
     "${PRIVATE_HOST_BUILD}/interactive/include")
-target_link_libraries(private_cli_recipe PUBLIC BEAM::Runtime)
+target_link_libraries(private_cli_recipe PUBLIC BEAM::Host BEAM::Runtime)
 set(_component_directory lib)
 if(WIN32)
     set(_component_directory bin)

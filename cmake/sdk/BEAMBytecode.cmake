@@ -3,7 +3,7 @@
 include_guard(GLOBAL)
 
 function(beam_check_bytecode_inventory inventory)
-    if(NOT inventory MATCHES "^(base|boot|services)$")
+    if(NOT inventory MATCHES "^(base|boot|services|startup|host|output|code)$")
         message(FATAL_ERROR "Unknown ordinary bytecode inventory: ${inventory}")
     endif()
     get_filename_component(_prefix "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../../.." ABSOLUTE)

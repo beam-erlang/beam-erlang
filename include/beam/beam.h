@@ -2,9 +2,8 @@
 #ifndef BEAM_H
 #define BEAM_H
 
-/* Complete embedding interface. SDK preparation and native extension authoring
- * are optional interfaces with their own headers. */
+/* VM embedding interface. Returning hosts, passive libraries and native
+ * extension authoring are optional interfaces with their own headers. */
 #include "runtime.h"
-#include "boot.h"
 
 #endif

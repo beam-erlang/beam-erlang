@@ -34,6 +34,10 @@
 
 #include "sys.h"
 #include "erl_alloc.h"
+#include "global.h"
+#include "bif.h"
+#include "erl_binary.h"
+#include "erl_bits.h"
 
 voidpf erl_zlib_zalloc_callback (voidpf opaque, unsigned items, unsigned size)
 {
@@ -196,3 +200,116 @@ int ZEXPORT erl_zlib_uncompress (Bytef* dest, uLongf* destLen,
     return err;
 }
 
+
+/* Gzip preparation is a VM operation: it must not acquire optional modules.
+ * The continuation owns codec/input storage; output terms remain GC roots in
+ * its tuple argument. Every inflate step has bounded input and output. */
+typedef struct {
+    z_stream stream;
+    Binary *input;
+    Uint offset;
+    Uint total;
+    int initialized;
+} BeamfileGunzip;
+
+static int beamfile_gunzip_destroy(Binary *magic)
+{
+    BeamfileGunzip *ctx = ERTS_MAGIC_BIN_DATA(magic);
+    if (ctx->initialized) {
+        inflateEnd(&ctx->stream);
+        ctx->initialized = 0;
+    }
+    if (ctx->input) {
+        erts_bin_release(ctx->input);
+        ctx->input = NULL;
+    }
+    return 1;
+}
+
+BIF_RETTYPE erts_internal_beamfile_gunzip_1(BIF_ALIST_1)
+{
+    Binary *magic;
+    BeamfileGunzip *ctx;
+    Eterm ref, accumulated, chunk;
+    Eterm *hp;
+    byte output[16384];
+    Uint fed, consumed, produced;
+    int result;
+
+    if (is_tuple_arity(BIF_ARG_1, 2) &&
+        is_internal_magic_ref(tuple_val(BIF_ARG_1)[1])) {
+        Eterm *tuple = tuple_val(BIF_ARG_1);
+        ref = tuple[1];
+        accumulated = tuple[2];
+        magic = erts_magic_ref2bin(ref);
+        if (ERTS_MAGIC_BIN_DESTRUCTOR(magic) != beamfile_gunzip_destroy)
+            BIF_ERROR(BIF_P, BADARG);
+        ctx = ERTS_MAGIC_BIN_DATA(magic);
+        if (!ctx->initialized || !ctx->input)
+            BIF_ERROR(BIF_P, BADARG);
+    } else {
+        const byte *temporary = NULL, *bytes;
+        Uint size;
+        bytes = erts_get_aligned_binary_bytes(BIF_ARG_1, &size, &temporary);
+        if (!bytes)
+            BIF_ERROR(BIF_P, BADARG);
+        magic = erts_create_magic_binary(sizeof(*ctx), beamfile_gunzip_destroy);
+        ctx = ERTS_MAGIC_BIN_DATA(magic);
+        sys_memset(ctx, 0, sizeof(*ctx));
+        hp = HAlloc(BIF_P, ERTS_MAGIC_REF_THING_SIZE);
+        ref = erts_mk_magic_ref(&hp, &MSO(BIF_P), magic);
+        accumulated = NIL;
+        ctx->input = erts_bin_nrml_alloc_fnf(size);
+        if (!ctx->input) {
+            erts_free_aligned_binary_bytes(temporary);
+            BIF_ERROR(BIF_P, SYSTEM_LIMIT);
+        }
+        sys_memcpy(ctx->input->orig_bytes, bytes, size);
+        erts_free_aligned_binary_bytes(temporary);
+        erl_zlib_alloc_init(&ctx->stream);
+        result = inflateInit2(&ctx->stream, 16 + MAX_WBITS);
+        if (result != Z_OK) {
+            beamfile_gunzip_destroy(magic);
+            BIF_ERROR(BIF_P, SYSTEM_LIMIT);
+        }
+        ctx->initialized = 1;
+    }
+
+    fed = MIN((Uint)8192, ctx->input->orig_size - ctx->offset);
+    ctx->stream.next_in = (Bytef *)ctx->input->orig_bytes + ctx->offset;
+    ctx->stream.avail_in = (uInt)fed;
+    ctx->stream.next_out = output;
+    ctx->stream.avail_out = sizeof(output);
+    result = inflate(&ctx->stream, Z_NO_FLUSH);
+    consumed = fed - ctx->stream.avail_in;
+    produced = sizeof(output) - ctx->stream.avail_out;
+    ctx->offset += consumed;
+    BUMP_REDS(BIF_P, MAX((Uint)1, (consumed + produced) / 128));
+    if (produced > ERTS_UWORD_MAX / CHAR_BIT - ctx->total) {
+        beamfile_gunzip_destroy(magic);
+        BIF_ERROR(BIF_P, SYSTEM_LIMIT);
+    }
+    ctx->total += produced;
+    if (produced) {
+        chunk = erts_new_binary_from_data(BIF_P, produced, output);
+        hp = HAlloc(BIF_P, 4);
+        /* Nested iodata preserves order without a library list reversal. */
+        accumulated = CONS(hp, accumulated, CONS(hp + 2, chunk, NIL));
+    }
+    if (result == Z_STREAM_END) {
+        if (ctx->offset == ctx->input->orig_size) {
+            beamfile_gunzip_destroy(magic);
+            BIF_TRAP1(BIF_TRAP_EXPORT(BIF_iolist_to_binary_1), BIF_P, accumulated);
+        }
+        result = inflateReset(&ctx->stream);
+    } else if (result == Z_OK && !consumed && !produced) {
+        result = Z_DATA_ERROR;
+    }
+    if (result != Z_OK) {
+        beamfile_gunzip_destroy(magic);
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    hp = HAlloc(BIF_P, 3);
+    chunk = TUPLE2(hp, ref, accumulated);
+    BIF_TRAP1(BIF_TRAP_EXPORT(BIF_erts_internal_beamfile_gunzip_1), BIF_P, chunk);
+}

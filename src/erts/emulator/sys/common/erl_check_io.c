@@ -1985,8 +1985,6 @@ erts_bare_check_io_destroy(void)
         /* Returning external programs may have polled descriptors. Drop them
          * with the VM; the next initialization allocates a fresh table. */
         if (state->type != ERTS_EV_TYPE_NONE) {
-            extern int erts_components_active(void);
-            ERTS_ASSERT(erts_components_active());
             state->type = ERTS_EV_TYPE_NONE;
             state->driver.select = NULL;
             state->driver.nif = NULL;

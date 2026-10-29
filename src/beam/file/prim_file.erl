@@ -116,7 +116,7 @@ helper_loop() ->
     helper_loop().
 
 on_load() ->
-    on_load("beam_component").
+    on_load("prim_file").
 
 on_load(Path) when is_list(Path) ->
     Parent = self(),

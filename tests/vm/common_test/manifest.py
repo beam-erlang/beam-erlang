@@ -17,7 +17,7 @@ INPUTS = {suite: ["emulator/" + suite + ".erl", "support/ts_install_cth.erl",
 CORE_MODULES = {"erlang", "erts_internal", "erts_code_purger", "erts_literal_area_collector",
                 "erts_dirty_process_signal_handler", "erts_trace_cleaner", "atomics",
                 "counters", "persistent_term"}
-SDK_ROOTS = ({"runtime.static", "helper.child_setup", "link.static", "link.static.configuration",
+SDK_ROOTS = ({"api.zlib", "runtime.static", "helper.child_setup", "link.static", "link.static.configuration",
               "link.static.exports", "header.beam_native", "header.erl_nif", "header.erl_driver",
               "header.erl_drv_nif", "header.erl_nif_api_funcs", "header.erl_int_sizes_config"}
              | {prefix + module for prefix in ("core.", "core-source.") for module in CORE_MODULES})

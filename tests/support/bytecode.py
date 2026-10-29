@@ -10,7 +10,7 @@ BASE_ASSETS = ("lib/beam/library/modules.txt",) + tuple(
 
 
 BOOT_MODULES = ("beam_return_boot", "beam_boot")
-SERVICES_MODULES = ("beam_component_services", "beam_host", "beam_output", "beam_code")
+SERVICES_MODULES = ("beam_startup", "beam_host", "beam_output", "beam_code")
 BOOT_ASSETS = ("lib/beam/boot/modules.txt",) + tuple(f"lib/beam/boot/ebin/{name}.beam" for name in BOOT_MODULES)
 SERVICES_ASSETS = ("lib/beam/services/modules.txt",) + tuple(f"lib/beam/services/ebin/{name}.beam" for name in SERVICES_MODULES)
 RETURNING_ASSETS = BASE_ASSETS + BOOT_ASSETS + SERVICES_ASSETS

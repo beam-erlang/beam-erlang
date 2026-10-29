@@ -5,7 +5,7 @@ foreach(_required IN ITEMS NAME BUILD_ID MODULES INPUT_DIR OUTPUT_DIR RELATIVE_R
         message(FATAL_ERROR "${_required} is required")
     endif()
 endforeach()
-if(NOT NAME MATCHES "^(base|boot|services)$")
+if(NOT NAME MATCHES "^(base|boot|services|startup|host|output|code)$")
     message(FATAL_ERROR "Unknown ordinary bytecode inventory: ${NAME}")
 endif()
 string(TOUPPER "${NAME}" _upper)

@@ -27,6 +27,11 @@ def check_runtime_only(execute, cmake, source, prefix, root, phase):
     runtime = root / f'{phase}-runtime-sdk'
     for directory in ('include', 'lib/cmake/BEAM'):
         shutil.copytree(prefix / directory, runtime / directory)
+    for relative in ('include/beam/boot.h', 'include/beam/host.h', 'include/beam/library.h',
+                     'lib/cmake/BEAM/support/BEAMLibrary.cmake'):
+        (runtime / relative).unlink()
+    for export in (runtime / 'lib/cmake/BEAM').glob('BEAMHostTargets*.cmake'):
+        export.unlink()
     for filename in (artifact_relative(prefix,'runtime'), 'lib/beam/sdk.toml', 'lib/beam/runtime-artifacts.json',
                      'lib/beam/target.toml', 'lib/beam/compiler-generation.json'):
         destination = runtime / filename
@@ -104,7 +109,8 @@ def main():
             execute([args.cmake, '-S', source / 'native_coexistence', '-B', coexistence,
                      f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}'])
             execute([args.cmake, '--build', coexistence])
-            exact(execute([coexistence / 'native_coexistence']), 'Native coexistence OK\n')
+            for name in ('native_coexistence', 'native_coexistence_static'):
+                exact(execute([coexistence / name]), 'Native coexistence OK\n')
             check(not (prefix / 'bin/beam_bootstrap').exists(), 'private compiler host installed')
             check(not (prefix / 'bin/beam_seed_compiler').exists(), 'private seed compiler installed')
             exact(execute([prefix / 'bin/beam', 'eval',

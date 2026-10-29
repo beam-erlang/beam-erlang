@@ -1,5 +1,5 @@
 -module(probe).
--export([hold/0, fatal/1, main/1, retain/0, implicit/1, foreign_runtime/1, packet/6, packet_invalid/0, packets/0]).
+-export([embedded_dependencies/1, hold/0, fatal/1, main/1, retain/0, implicit/1, foreign_runtime/1, packet/6, packet_invalid/0, packets/0]).
 -nifs([hold/0, fatal/1, packet/6, packet_invalid/0]).
 hold() -> erlang:nif_error(unloaded).
 fatal(_) -> erlang:nif_error(unloaded).
@@ -81,5 +81,21 @@ packet_compare(Format,Type,Bytes,Maximum,Truncate,Delimiter) ->
     case packet(Format,Bytes,Maximum,Truncate,Delimiter,0) of
         {Expected,_} -> ok;
         Actual -> erlang:error({packet_mismatch,Type,Bytes,Selected,Expected,Actual})
+    end,
+    ok.
+
+embedded_dependencies(Mode) ->
+    #{included := Included, excluded := Excluded} = erlang:system_info(embedded_3pps),
+    [pcre2] = [N || N <- Included, N =:= pcre2],
+    [] = [N || N <- Excluded, N =:= pcre2],
+    case Mode of
+        present ->
+            [fixture_included] = [N || N <- Included, N =:= fixture_included],
+            [fixture_excluded] = [N || N <- Excluded, N =:= fixture_excluded],
+            [] = [N || N <- Included, N =:= fixture_excluded],
+            [] = [N || N <- Excluded, N =:= fixture_included];
+        absent ->
+            [] = [N || N <- Included ++ Excluded,
+                       N =:= fixture_included orelse N =:= fixture_excluded]
     end,
     ok.

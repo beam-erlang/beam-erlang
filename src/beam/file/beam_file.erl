@@ -1,5 +1,6 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(beam_file).
+-export([start/0]).
 -export([info/2, list_directory/2, make_directory/2, remove_file/2, remove_directory/2, rename/3]).
 -export([open/3, read/3, write/3, close/2, read_file/2, write_file/3]).
 
@@ -129,7 +130,7 @@ path_ready(Path, Deadline) ->
     end.
 ready(Deadline, IgnoreExpiry) ->
     validate_deadline(Deadline),
-    case erts_internal:component_ready(file) of
+    case is_pid(whereis(beam_file_owner)) of
         false -> {error, #{kind => unavailable, service => file}};
         true -> expiry(Deadline, IgnoreExpiry)
     end.
@@ -144,7 +145,7 @@ owned(#{module := beam_file, owner := Owner, fd := Fd}, Deadline, IgnoreExpiry) 
     %% ownership/state before the deadline. No caller-supplied owner grants access.
     validate_deadline(Deadline),
     State = prim_file:beam_handle_state(Fd),
-    case erts_internal:component_ready(file) of
+    case is_pid(whereis(beam_file_owner)) of
         false -> {error, #{kind => unavailable, service => file}};
         true ->
             case State of
@@ -210,3 +211,22 @@ file_error(Reason) ->
     end,
     #{kind => Kind, service => file, reason => Reason,
       native => #{domain => posix, code => Reason}}.
+
+%% The actual native owner is monitored by its library, independently of entry.
+start() ->
+    ok = prim_buffer:on_load(),
+    ok = prim_file:on_load(),
+    Parent = self(),
+    {Watcher, Ref} = spawn_monitor(fun() ->
+        Owner = whereis(beam_file_owner),
+        Monitor = monitor(process, Owner),
+        Parent ! {self(), ready},
+        receive
+            {'DOWN', Monitor, process, Owner, Reason} ->
+                erts_internal:request_failure(file, Reason)
+        end
+    end),
+    receive
+        {Watcher, ready} -> demonitor(Ref, [flush]), ok;
+        {'DOWN', Ref, process, Watcher, Reason} -> exit(Reason)
+    end.

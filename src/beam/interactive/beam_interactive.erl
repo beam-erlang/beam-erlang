@@ -39,7 +39,7 @@ watch(Pid) ->
                       {'DOWN', Ref, process, Pid, Reason} ->
                           case persistent_term:get(beam_interactive_transport) of
                               host -> finish(1);
-                              boot -> erts_internal:component_failed(output, Reason)
+                              boot -> erts_internal:request_failure(output, Reason)
                           end
                   end
           end).

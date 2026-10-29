@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Returning boot layered on explicit ordinary code and selected native units. */
 #include <beam/beam.h>
+#include <beam/boot.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,22 +20,13 @@
 #define ETF_ATOM_UTF8 118
 #define ETF_SMALL_ATOM_UTF8 119
 
-static const char *const service_atoms[] = {
-    "code", "file", "output", "program", "socket", "zlib"
-};
-static const unsigned service_bits[] = {
-    BEAM_SERVICE_CODE, BEAM_SERVICE_FILE, BEAM_SERVICE_OUTPUT,
-    BEAM_SERVICE_PROGRAM, BEAM_SERVICE_SOCKET, BEAM_SERVICE_ZLIB
-};
-
 struct beam_return_boot {
-    unsigned services;
-    int seed_origins;
     char *entry_module;
     char *entry_function;
     unsigned char *arguments;
     size_t argument_size;
-    beam_composition *composition;
+    beam_host *host;
+    const beam_composition *composition;
     const beam_module_spec **initial_modules;
     size_t initial_count;
     beam_vm *pending_vm;
@@ -414,15 +406,8 @@ static void free_boot(struct beam_return_boot *boot)
     free(boot->initial_modules);
     free((void *)boot->vm.startup_context.data);
     free((void *)boot->vm.program_name);
-    beam_composition_release(&boot->composition);
+    beam_host_release(&boot->host);
     free(boot);
-}
-
-static int known_services(unsigned services)
-{
-    unsigned known = BEAM_SERVICE_OUTPUT | BEAM_SERVICE_CODE | BEAM_SERVICE_ZLIB |
-                     BEAM_SERVICE_FILE | BEAM_SERVICE_SOCKET | BEAM_SERVICE_PROGRAM;
-    return (services & ~known) == 0;
 }
 
 beam_status beam_return_prepare(const beam_return_options *options,
@@ -433,7 +418,7 @@ beam_status beam_return_prepare(const beam_return_options *options,
     clear_error(error);
     if (!out || *out)
         return fail(error, BEAM_INVALID_ARGUMENT, "return boot output is invalid");
-    if (!options || options->struct_size != sizeof(*options) || !known_services(options->services))
+    if (!options || options->struct_size != sizeof(*options))
         return fail(error, BEAM_INVALID_ARGUMENT, "invalid returning boot options");
     if (!options->entry_module || !*options->entry_module ||
         !options->entry_function || !*options->entry_function)
@@ -451,7 +436,6 @@ beam_status beam_return_prepare(const beam_return_options *options,
     boot = calloc(1, sizeof(*boot));
     if (!boot)
         return fail(error, BEAM_OUT_OF_MEMORY, "could not allocate returning boot");
-    boot->services = options->services;
     boot->output = options->output;
     boot->output_context = options->output_context;
     boot->code = options->code;
@@ -495,107 +479,57 @@ beam_status beam_return_prepare(const beam_return_options *options,
         boot->argument_size = options->arguments.size;
     }
     {
-        unsigned selected = 0;
-        unsigned required =
-            ((options->services & BEAM_SERVICE_FILE) ? 1u << BEAM_COMPONENT_FILE : 0) |
-            ((options->services & BEAM_SERVICE_SOCKET) ? 1u << BEAM_COMPONENT_NETWORK : 0) |
-            ((options->services & BEAM_SERVICE_ZLIB) ? 1u << BEAM_COMPONENT_ZLIB : 0);
-        beam_composition_options composition = {.struct_size = sizeof(composition)};
-        beam_module_spec *ordinary = NULL, *activation = NULL;
-        char *program_helper = NULL;
-        beam_status status;
-        if ((options->component_count && !options->components) || options->component_count > 3 ||
-            options->module_count > 4096) {
-            free_boot(boot);
-            return fail(error, BEAM_INVALID_ARGUMENT, "returning component selection is missing");
-        }
-        for (index = 0; index < options->component_count; ++index) {
-            const beam_component_spec *spec = &options->components[index];
-            int valid_kind = spec->kind == BEAM_COMPONENT_FILE ||
-                spec->kind == BEAM_COMPONENT_NETWORK ||
-                spec->kind == BEAM_COMPONENT_ZLIB;
-            if (spec->struct_size != sizeof(*spec) || !valid_kind || (selected & (1u << spec->kind))) {
-                free_boot(boot);
-                return fail(error, BEAM_INVALID_ARGUMENT, "invalid or duplicate returning component");
+        beam_host_options host = {.struct_size=sizeof(host)};
+        beam_composition_options composition = {.struct_size=sizeof(composition)};
+        if (options->host) {
+            if (options->host->struct_size != sizeof(host)) {
+                free_boot(boot); return fail(error, BEAM_INVALID_ARGUMENT, "invalid host options");
             }
-            selected |= 1u << spec->kind;
-        }
-        if (selected != required) {
-            free_boot(boot);
-            return fail(error, BEAM_INVALID_ARGUMENT, "runtime components do not match selected services");
-        }
-        ordinary = calloc(options->module_count ? options->module_count : 1, sizeof(*ordinary));
-        activation = calloc(options->module_count ? options->module_count : 1, sizeof(*activation));
-        if (!ordinary || !activation) { status = BEAM_OUT_OF_MEMORY; goto prepared; }
-        for (index = 0; index < options->module_count; ++index) {
-            const beam_return_module *module = &options->modules[index];
-            beam_module_spec spec = {module->name, module->bytes, module->origin};
-            if (module->service) activation[composition.activation_count++] = spec;
-            else ordinary[composition.module_count++] = spec;
-        }
-        static const char *const required_modules[] = {
-            "beam", "beam_list", "beam_map", "beam_bytes", "beam_text", "beam_format", "beam_time",
-            "beam_return_boot", "beam_boot",
-            "beam_component_services", "beam_host", "beam_output", "beam_code"
-        };
-        for (size_t i = 0; i < sizeof(required_modules) / sizeof(required_modules[0]); ++i) {
-            int found = 0;
-            for (size_t j = 0; j < composition.module_count; ++j)
-                if (ordinary[j].name && !strcmp(ordinary[j].name, required_modules[i])) found = 1;
-            if (!found) {
-                char message[256];
-                snprintf(message, sizeof(message), "required ordinary module is missing: %s", required_modules[i]);
-                status = fail(error, BEAM_INVALID_ARGUMENT, message);
-                goto prepared;
-            }
-        }
-#ifndef _WIN32
-        if (options->services & BEAM_SERVICE_PROGRAM) {
-            if (!options->bindir || options->bindir[0] != '/' || strlen(options->bindir) > 4096) {
-                status = fail(error, BEAM_INVALID_ARGUMENT, "program service requires an explicit helper directory");
-                goto prepared;
-            }
-            size_t size = strlen(options->bindir) + sizeof("/erl_child_setup");
-            program_helper = malloc(size);
-            if (!program_helper) { status = BEAM_OUT_OF_MEMORY; goto prepared; }
-            snprintf(program_helper, size, "%s/erl_child_setup", options->bindir);
-        }
-#endif
-        composition.component_count = options->component_count;
-        composition.components = options->components;
-        composition.nif_count = options->nif_count;
-        composition.nifs = options->nifs;
-        composition.modules = ordinary;
-        composition.defer_modules = 1;
-        composition.activation_modules = activation;
-        composition.services = options->services;
-        composition.program_helper = program_helper;
-        boot->seed_origins = !composition.services && !composition.activation_count;
-        status = beam_composition_prepare(&composition, &boot->composition, error);
-        if (status == BEAM_OK && composition.module_count) {
-            const beam_module_spec *inventory;
-            size_t count;
-            status = beam_composition_get_modules(boot->composition, &inventory, &count);
-            boot->initial_modules = calloc(composition.module_count, sizeof(*boot->initial_modules));
-            if (!boot->initial_modules) status = BEAM_OUT_OF_MEMORY;
-            for (size_t i = 0; status == BEAM_OK && i < composition.module_count; ++i) {
-                for (size_t j = 0; j < count; ++j) {
-                    if (!strcmp(ordinary[i].name, inventory[j].name)) {
-                        boot->initial_modules[boot->initial_count++] = &inventory[j];
-                        break;
-                    }
+            host = *options->host;
+            if (host.composition) {
+                if (host.composition->struct_size != sizeof(composition)) {
+                    free_boot(boot); return BEAM_INVALID_ARGUMENT;
                 }
+                composition = *host.composition;
             }
         }
-prepared:
-        free(ordinary);
-        free(activation);
-        free(program_helper);
-        if (status != BEAM_OK) {
-            free_boot(boot);
-            if (error && !error->message[0]) fail(error, status, beam_status_message(status));
-            return status;
+        if (options->module_count>4096 || composition.module_count>4096 || host.deferred_count>4096 ||
+            (composition.module_count&&!composition.modules) || (host.deferred_count&&!host.deferred)) {
+            free_boot(boot); return BEAM_INVALID_ARGUMENT;
         }
+        beam_module_spec *ordinary=calloc(composition.module_count+options->module_count+1,sizeof(*ordinary));
+        beam_module_spec *deferred=calloc(host.deferred_count+options->module_count+1,sizeof(*deferred));
+        if(!ordinary||!deferred){free(ordinary);free(deferred);free_boot(boot);return BEAM_OUT_OF_MEMORY;}
+        if(composition.module_count)memcpy(ordinary,composition.modules,composition.module_count*sizeof(*ordinary));
+        if(host.deferred_count)memcpy(deferred,host.deferred,host.deferred_count*sizeof(*deferred));
+        for(index=0;index<options->module_count;++index){
+            const beam_return_module *m=&options->modules[index];
+            beam_module_spec spec={m->name,m->bytes,m->origin};
+            if(m->deferred)deferred[host.deferred_count++]=spec;
+            else ordinary[composition.module_count++]=spec;
+        }
+        composition.modules=ordinary;
+        /* The returning host loads all copied initial modules before start. */
+        composition.defer_modules=1;
+        host.composition=&composition;host.deferred=deferred;
+        beam_status status=beam_host_prepare(&host,&boot->host,error);
+        free(ordinary);free(deferred);
+        if(status==BEAM_OK){
+            boot->composition=beam_host_composition(boot->host);
+            const beam_module_spec *inventory;size_t count;
+            status=beam_composition_get_modules(boot->composition,&inventory,&count);
+            boot->initial_modules=calloc(count?count:1,sizeof(*boot->initial_modules));
+            if(!boot->initial_modules)status=BEAM_OUT_OF_MEMORY;
+            for(size_t i=0;status==BEAM_OK&&i<count;++i) {
+                int preloaded=0;
+                for(size_t j=0;j<composition.preload_count;++j)
+                    if(!strcmp(inventory[i].name,composition.preloads[j].name))preloaded=1;
+                /* Preloads are loaded by VM initialization even when ordinary
+                 * modules are deferred to this host. */
+                if(!preloaded)boot->initial_modules[boot->initial_count++]=&inventory[i];
+            }
+        }
+        if(status!=BEAM_OK){free_boot(boot);return status;}
     }
     *out = boot;
     return BEAM_OK;
@@ -622,32 +556,16 @@ void beam_outcome_release(beam_outcome *outcome)
     memset(outcome, 0, sizeof(*outcome));
 }
 
-static int encode_services(byte_buffer *buffer, unsigned services)
-{
-    unsigned count = 0, index;
-    for (index = 0; index < sizeof(service_bits) / sizeof(service_bits[0]); ++index)
-        if (services & service_bits[index])
-            count++;
-    if (!count)
-        return buffer_u8(buffer, ETF_NIL);
-    if (!buffer_u8(buffer, ETF_LIST) || !buffer_u32(buffer, count))
-        return 0;
-    for (index = 0; index < sizeof(service_bits) / sizeof(service_bits[0]); ++index)
-        if ((services & service_bits[index]) && !buffer_atom(buffer, service_atoms[index]))
-            return 0;
-    return buffer_u8(buffer, ETF_NIL);
-}
-
 static int encode_call(struct beam_return_boot *boot, byte_buffer *buffer)
 {
     if (!buffer_u8(buffer, ETF_VERSION) || !buffer_u8(buffer, ETF_LIST) ||
-        !buffer_u32(buffer, 4) || !encode_services(buffer, boot->services) ||
+        !buffer_u32(buffer, 3) ||
         !buffer_u8(buffer, ETF_SMALL_TUPLE) || !buffer_u8(buffer, 2) ||
         !buffer_atom(buffer, boot->entry_module) || !buffer_atom(buffer, boot->entry_function)) return 0;
     if (boot->argument_size) {
         if (!buffer_bytes(buffer, boot->arguments + 1, boot->argument_size - 1)) return 0;
     } else if (!buffer_u8(buffer, ETF_NIL)) return 0;
-    if (boot->seed_origins) {
+    {
         const beam_module_spec *modules;
         size_t count;
         if (beam_composition_get_modules(boot->composition, &modules, &count) != BEAM_OK ||
@@ -657,7 +575,7 @@ static int encode_call(struct beam_return_boot *boot, byte_buffer *buffer)
                 !buffer_atom(buffer, modules[i].name) ||
                 !buffer_binary(buffer, (const unsigned char *)modules[i].origin, strlen(modules[i].origin))) return 0;
         if (!buffer_u8(buffer, ETF_NIL)) return 0;
-    } else if (!buffer_atom(buffer, "undefined")) return 0;
+    }
     return buffer_u8(buffer, ETF_NIL);
 }
 
@@ -711,7 +629,7 @@ beam_status beam_return_run(beam_system *system, beam_return_boot **boot_out,
     for (size_t i = 0; status == BEAM_OK && i < boot->initial_count; ++i)
         status = beam_vm_load(vm, boot->initial_modules[i]->bytes);
     if (status == BEAM_OK) status = beam_vm_start(vm, error);
-    if (status == BEAM_OK) status = beam_vm_activate(vm, error);
+    if (status == BEAM_OK) status = beam_host_start(boot->host, vm, error);
     if (status == BEAM_OK && !encode_call(boot, &call)) status = BEAM_OUT_OF_MEMORY;
     if (status == BEAM_OK) status = beam_vm_call(vm, "beam_return_boot", "start",
                                                (beam_bytes){call.data, call.size}, &result);
@@ -722,10 +640,10 @@ beam_status beam_return_run(beam_system *system, beam_return_boot **boot_out,
     (void)beam_vm_get_report(vm, &report);
     if (((!have_outcome && (status == BEAM_SYSTEM_ERROR || status == BEAM_STOPPED)) ||
          (have_outcome && outcome.kind == BEAM_OUTCOME_HALT)) &&
-        report.cause == BEAM_TERMINAL_COMPONENT_FAILURE) {
-        outcome.kind = BEAM_OUTCOME_SERVICE_FAILURE;
+        report.cause == BEAM_TERMINAL_FAILURE) {
+        outcome.kind = BEAM_OUTCOME_FAILURE;
         outcome.halt_status = report.halt_status;
-        snprintf(outcome.service, sizeof(outcome.service), "%s", report.component);
+        snprintf(outcome.origin, sizeof(outcome.origin), "%s", report.origin);
         have_outcome = 1;
         status = BEAM_OK;
         clear_error(error);

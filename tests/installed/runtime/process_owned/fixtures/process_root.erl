@@ -1,6 +1,12 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(process_root).
--export([start/2]).
+-export([start/2, setup/0]).
+
+setup() ->
+    notsup = failure(fun() -> erlang:open_port(invalid, []) end),
+    notsup = failure(fun() -> erlang:setnode(invalid, 0) end),
+    {error, {not_supported, _}} = erlang:load_nif("absent", 0),
+    ok.
 
 start(<<"copied root ", 16#3bb/utf8>>, Status) ->
     [42] = erts_internal:vm_context(),

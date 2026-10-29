@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <beam/sdk/inventories.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,12 +22,17 @@ int main(void)
 {
     beam_error error={0};
     CHECK(beam_sdk_inventory_get((beam_sdk_inventory_kind)-1) == NULL);
-    CHECK(beam_sdk_inventory_get((beam_sdk_inventory_kind)3) == NULL);
-    const size_t expected_counts[] = {7, 2, 4};
-    for (int i = 0; i < 3; ++i) {
-        const beam_sdk_inventory *selected = beam_sdk_inventory_get((beam_sdk_inventory_kind)i);
-        CHECK(selected && selected == beam_sdk_inventory_get((beam_sdk_inventory_kind)i));
-        CHECK(selected->bytecode->count == expected_counts[i]);
+    CHECK(beam_sdk_inventory_get((beam_sdk_inventory_kind)INT_MAX) == NULL);
+    const struct { beam_sdk_inventory_kind kind; size_t count; } selections[] = {
+        {BEAM_SDK_INVENTORY_BASE, 7}, {BEAM_SDK_INVENTORY_BOOT, 2},
+        {BEAM_SDK_INVENTORY_SERVICES, 4}, {BEAM_SDK_INVENTORY_STARTUP, 1},
+        {BEAM_SDK_INVENTORY_HOST, 1}, {BEAM_SDK_INVENTORY_OUTPUT, 1},
+        {BEAM_SDK_INVENTORY_CODE, 1}
+    };
+    for (size_t i = 0; i < sizeof(selections)/sizeof(selections[0]); ++i) {
+        const beam_sdk_inventory *selected = beam_sdk_inventory_get(selections[i].kind);
+        CHECK(selected && selected == beam_sdk_inventory_get(selections[i].kind));
+        CHECK(selected->bytecode->count == selections[i].count);
         CHECK(!strcmp(selected->bytecode->build_id, beam_build_id()));
         CHECK(selected->manifest_path && selected->manifest.size);
         CHECK(selected->manifest.data[selected->manifest.size - 1] == '\n');

@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 #include <beam/beam.h>
+#include "native_counts.h"
+#include <beam/boot.h>
 #ifdef DEPLOY_RETURNING
 #include "bytecode_input.h"
 #include "host_observe.h"
@@ -57,7 +59,10 @@ int main(int argc, char **argv)
     CHECK(beam_init(&system, &error) == BEAM_OK);
 #ifdef DEPLOY_RETURNING
     beam_return_options options = {0};
-    beam_component_spec components[4] = {{0}};
+    beam_library *library=NULL;
+    beam_startup_action startup[2]={{"beam_output","start",{0}}};
+    beam_composition_options generic={.struct_size=sizeof(generic)};
+    beam_host_options plan={.struct_size=sizeof(plan),.composition=&generic,.startup_count=1,.startup=startup};
     beam_return_module modules[14] = {{0}};
     options.struct_size = sizeof options;
     options.entry_module = "entry"; options.entry_function = argv[1];
@@ -68,25 +73,25 @@ int main(int argc, char **argv)
     }
     options.modules = modules; options.module_count = 14;
     modules[0].name = "entry"; modules[0].bytes = (beam_bytes){entry_bytes, sizeof entry_bytes};
-    options.components = components;
+    options.host=&plan;
     if (!strcmp(argv[1], "file") || !strcmp(argv[1], "network") || !strcmp(argv[1], "zlib")) {
         int file = !strcmp(argv[1], "file"), zlib = !strcmp(argv[1], "zlib");
-        options.services = file ? BEAM_SERVICE_FILE : zlib ? BEAM_SERVICE_ZLIB : BEAM_SERVICE_SOCKET;
 #ifdef BEAM_TARGET_ACCEPTANCE
         CHECK(snprintf(paths[3], sizeof paths[3], "%s/%s", root,
               file ? TARGET_FILE : zlib ? TARGET_ZLIB : TARGET_NETWORK) < (int)sizeof paths[3]);
 #else
         CHECK(snprintf(paths[3], sizeof paths[3], "%s/%s", root, beam_test_component(argv[1])) < (int)sizeof paths[3]);
 #endif
-        components[0] = (beam_component_spec){sizeof components[0], file ? BEAM_COMPONENT_FILE : zlib ? BEAM_COMPONENT_ZLIB : BEAM_COMPONENT_NETWORK, paths[3]};
-        options.component_count = 1;
+        CHECK(beam_library_open(paths[3],&library,&error)==BEAM_OK);
+        plan.library_count=1;plan.libraries=&library;
+        startup[plan.startup_count++]=(beam_startup_action){file?"beam_file":zlib?"zlib":"beam_socket",zlib?"on_load":"start",{0}};
     }
     if (!strcmp(argv[1], "program")) {
-        options.services = BEAM_SERVICE_PROGRAM;
-        CHECK(snprintf(helper, sizeof helper, "%s/libexec/beam", root) < (int)sizeof helper);
-        options.bindir = helper;
+        generic.native_admission=BEAM_NATIVE_MANAGED_PORTS;
+        CHECK(snprintf(helper, sizeof helper, "%s/libexec/beam/erl_child_setup", root) < (int)sizeof helper);
+        generic.program_helper=helper;
     }
-    options.services |= BEAM_SERVICE_OUTPUT; options.output = output;
+    options.output = output;
     for (int pass = 0; pass < 2; ++pass) {
         CHECK(beam_return_prepare(&options, &returning, &error) == BEAM_OK);
         outcome.struct_size = sizeof outcome;
@@ -98,6 +103,7 @@ int main(int argc, char **argv)
         beam_outcome_release(&outcome);
         CHECK(!beam_file_descriptor_count() && !beam_socket_count() && !beam_zlib_stream_count());
     }
+    beam_library_release(&library);
 #else
     beam_vm_options_init(&vm_options);
     CHECK(beam_vm_init(system, &vm_options, &vm, &error) == BEAM_OK);

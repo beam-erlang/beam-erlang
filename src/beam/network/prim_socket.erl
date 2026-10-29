@@ -135,7 +135,7 @@ on_load() ->
     on_load(?ESOCK_ON_LOAD_EXTRA_DEFAULTS).
 
 on_load(Extra) when is_map(Extra) ->
-    on_load("beam_component", Extra).
+    on_load("prim_socket", Extra).
 
 on_load(Path, Extra) when is_list(Path), is_map(Extra) ->
     Parent = self(),

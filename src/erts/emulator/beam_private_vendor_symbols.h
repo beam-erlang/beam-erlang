@@ -2,6 +2,8 @@
 /* Private vendor names must not bind a static host's system-library calls. */
 #ifndef BEAM_PRIVATE_VENDOR_SYMBOLS_H
 #define BEAM_PRIVATE_VENDOR_SYMBOLS_H
+#define BEAM_ZLIB_TYPES 1
+#define internal_state beam_zlib_internal_state
 #define _dist_code beam_private_zlib__dist_code
 #define _length_code beam_private_zlib__length_code
 #define _tr_align beam_private_zlib__tr_align

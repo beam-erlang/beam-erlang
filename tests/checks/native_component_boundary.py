@@ -15,39 +15,10 @@ from support.process import check, isolated_environment, run
 CORE_MODULES = {"erlang", "erts_internal", "erts_code_purger",
                 "erts_dirty_process_signal_handler", "erts_literal_area_collector",
                 "erts_trace_cleaner", "atomics", "counters", "persistent_term"}
-COMPONENTS = {
-    "prim_buffer_nif": ("files", ["prim_buffer_nif.c"]),
-    "prim_file_nif": ("files", ["prim_file_nif.c", "unix/unix_prim_file.c"]),
-    "erl_tracer_nif": ("tracing", ["erl_tracer_nif.c"]),
-    "dyntrace_nif": ("tracing", ["dyntrace.c"]),
-    "trace_ip_driver": ("tracing", ["trace_ip_drv.c"]),
-    "zlib_nif": ("zlib", ["zlib_nif.c"]),
-    "prim_socket_nif": ("networking", ["prim_socket_entry.c"]),
-    "prim_net_nif": ("networking", ["prim_net_entry.c"]),
-    "socket_backend": ("networking", ["prim_socket_nif.c", "prim_net_nif.c",
-                                      "socket_dbg.c", "socket_tarray.c", "socket_util.c",
-                                      "unix/unix_socket_syncio.c"]),
-    "tcp_inet_driver": ("networking", ["inet_drv.c"]),
-    "udp_inet_driver": ("networking", ["inet_drv.c"]),
-    "sctp_inet_driver": ("networking", ["inet_drv.c"]),
-}
-# Keep exceptional imports explicit: these extensions ship with matching libbeam.
-PRIVATE_IMPORTS = {
-    "prim_file_nif": {"erts_exit", "erts_components_has_service", "erts_components_file_adjust", "erts_components_stopping", "erts_components_set_native_cleanup"},
-    "socket_backend": {"erts_exit", "erts_components_has_service", "erts_components_socket_adjust"},
-    "tcp_inet_driver": {"erts_exit", "erts_printf", "packet_get_length",
-                        "packet_parse_http", "packet_parse_ssl"},
-    "udp_inet_driver": {"erts_exit", "erts_printf", "packet_get_length",
-                        "packet_parse_http", "packet_parse_ssl"},
-    "sctp_inet_driver": {"erts_exit", "erts_printf", "packet_get_length",
-                         "packet_parse_http", "packet_parse_ssl", "erts_sys_ddll_open_noext",
-                         "erts_sys_ddll_sym", "erts_sys_ddll_vsym", "erts_sys_ddll_close"},
-    "zlib_nif": {"erts_components_has_service", "erts_components_zlib_adjust",
-                 "adler32", "crc32", "deflate", "deflateEnd", "deflateInit2_",
-                 "deflateParams", "deflateReset", "deflateSetDictionary", "inflate",
-                 "inflateEnd", "inflateInit2_", "inflateReset", "inflateSetDictionary"},
-}
+COMPONENTS = {"erl_tracer_nif": ("tracing", ["erl_tracer_nif.c"])}
+PRIVATE_IMPORTS = {}
 DRIVER_API = {"erl_errno_id", "set_busy_port", "set_port_control_flags"}
+NATIVE_API = {"beam_native_fail", "beam_native_stop_requested", "beam_native_report_cleanup", "beam_native_request_failure"}
 
 
 def symbols(args, path, *options):
@@ -72,7 +43,7 @@ def command_paths(command):
 
 
 def public_api(name):
-    return name.startswith(("enif_", "driver_", "erl_drv_")) or name in DRIVER_API
+    return name.startswith(("enif_", "driver_", "erl_drv_")) or name in DRIVER_API | NATIVE_API
 
 
 def dynamic_links(args, library):
@@ -149,7 +120,8 @@ def check_unit_sources(args, commands, target, directory, sources, owned_sources
     check(directory == f"beam/{'library' if name == 'base' else name}", f"wrong unit ownership: {directory}")
     expected_sources = {(args.source_dir / "src" / directory / filename).resolve()
                         for filename in sources[name]}
-    expected_sources.add((args.compile_commands.parent / "components" / name / "descriptor.c").resolve())
+    expected_sources.update((args.compile_commands.parent / "libraries" / name / item).resolve()
+                            for item in ("shared.c", "resident.c"))
     compiled = [(source, obj) for source, obj in commands if f"{target}.dir" in obj.parts]
     check({source for source, _ in compiled} == expected_sources and len(compiled) == len(expected_sources),
           f"wrong {name} unit sources: {compiled}")
@@ -171,9 +143,8 @@ def check_unit_linkage(args, target, library, links, runtime_exports, expected_e
     check(exports == expected_exports, f"{name} unit exposes unexpected symbols: {exports}")
     imports = set(symbols(args, library, "-D", "-u"))
     private = {symbol for symbol in imports & runtime_exports if not public_api(symbol)}
-    allowed = PRIVATE_IMPORTS.get({"file": "prim_file_nif", "network": "socket_backend", "zlib": "zlib_nif"}.get(name), set())
-    check(private <= allowed, f"{name} unit imports unreviewed private runtime symbols: {private - allowed}")
-    check(not any(symbol.startswith(("beam_", "otp_")) for symbol in imports & runtime_exports),
+    check(not private, f"{name} library imports private runtime symbols: {private}")
+    check(not any(symbol.startswith(("beam_", "otp_")) and symbol not in NATIVE_API for symbol in imports & runtime_exports),
           f"{name} unit imports family implementation from libbeam")
 
 
@@ -205,6 +176,8 @@ def main():
     links = Path(link_record).read_text().splitlines()
     runtime = collections.Counter(symbols(args, runtime_path, "-g", "--defined-only"))
     runtime_exports = set(symbols(args, runtime_path, "-D", "-g", "--defined-only"))
+    codec_header = (args.source_dir / "include/beam/zlib.h").read_text()
+    NATIVE_API.update(re.findall(r"\b(beam_zlib_\w+)\s*\([^;]*?\);", codec_header))
     check(not any(name.startswith(("pcre2_", "_pcre2_")) for name in runtime_exports),
           "libbeam exposes its ABI-incompatible private PCRE to host libraries")
     compression_header = (args.source_dir / "src/erts/emulator/zlib/zlib.h").read_text()
@@ -216,9 +189,14 @@ def main():
     targets = [component[0] for component in args.component]
     check(targets == ["beam_erl_tracer_nif"],
           f"unexpected dynamic targets: {targets}")
+    # Registry/loader dispatch functions are VM mechanisms, not NIF implementations.
+    nif_dispatch = {"erl_nif_init", "erts_sys_ddll_load_nif_init", "erts_sys_ddll_call_nif_init"}
+    product_nifs = {name for name in runtime if
+                    (name == "nif_init" or name.endswith("_nif_init")) and name not in nif_dispatch}
+    check(not product_nifs, f"VM retains product NIF entries: {product_nifs}")
     retired = {"beam_boot_prepare", "beam_boot_start", "beam_boot_destroy",
                "beam_runtime_lookup", "beam_runtime_bind", "beam_runtime_current",
-               "beam_runtime_unbind", "prim_tty_nif_init", "zstd_nif_init",
+               "beam_runtime_unbind", "prim_tty_nif_init",
                "ram_file_driver_entry", "prim_file_internal_name2native_1",
                "prim_file_internal_native2name_1", "prim_file_internal_normalize_utf8_1",
                "prim_file_is_translatable_1", "erts_internal_boot_context_0"}
@@ -237,6 +215,7 @@ def main():
     imports = set(symbols(args, obj, "-u"))
     definitions = set(symbols(args, obj, "-g", "--defined-only"))
     helper_api = {"beam_return_prepare", "beam_return_discard", "beam_return_run", "beam_outcome_release"}
+    check(not helper_api & set(runtime), "runtime image contains optional returning-host policy")
     check(definitions == helper_api, f"returning helper defines private hooks: {definitions - helper_api}")
     check(imports & runtime_exports <= public_runtime,
           f"returning helper imports private runtime symbols: {(imports & runtime_exports) - public_runtime}")
@@ -259,6 +238,35 @@ def main():
         check(not any(path != source and any(path.is_relative_to(root) for root in private_roots)
                       for path in dependency_paths),
               f"returning helper uses private project headers: {dependencies}")
+    # Both Host acquisition sources and the delivered libraries use public VM
+    # interfaces. Library-owned portability is allowed;
+    # emulator headers and hand-declared private imports are not.
+    public_headers = (args.source_dir / "include/beam").glob("*.h")
+    public_symbols = set()
+    for header in public_headers:
+        public_symbols.update(re.findall(r"\b(beam_[A-Za-z0-9_]+)\s*\(", header.read_text()))
+    public_symbols.update(name for name in runtime_exports if public_api(name))
+    isolated_targets = {"beam_host_support.dir", "beam_file_component.dir",
+                        "beam_network_component.dir", "beam_zlib_component.dir"}
+    for command in json.loads(args.compile_commands.read_text()):
+        source, obj = command_paths(command)
+        if not isolated_targets.intersection(obj.parts):
+            continue
+        imports = set(symbols(args, obj, "-u"))
+        check(not (imports & runtime_exports) - public_symbols,
+              f"optional layer imports private VM symbols: {obj}: {(imports & runtime_exports) - public_symbols}")
+        arguments = command.get("arguments") or shlex.split(command["command"])
+        output_index = arguments.index("-o")
+        del arguments[output_index:output_index + 2]
+        arguments.remove("-c")
+        dependencies = run([*arguments, "-M"], cwd=command["directory"],
+                           env=args.environment, timeout=10, text=True).stdout
+        paths = [(Path(command["directory"]) / name).resolve()
+                 for name in shlex.split(dependencies.replace("\\\n", " "))[1:]]
+        private_roots = [args.source_dir / "src/erts", args.compile_commands.parent / "erts"]
+        private = [path for path in paths if path != source and
+                   any(path.is_relative_to(root) for root in private_roots)]
+        check(not private, f"optional layer uses private VM headers: {source}: {private}")
     for _, kernel in commands:
         if "beam_emulator.dir" in kernel.parts:
             check(not set(symbols(args, kernel, "-u")) & helper_api,
@@ -276,9 +284,9 @@ def main():
                     "socket_util.c", "unix/unix_socket_syncio.c"],
     }
     unit_exports = {
-        "zlib": {"beam_component_descriptor_v1", "beam_zlib_nif_init"},
-        "file": {"beam_component_descriptor_v1", "beam_prim_buffer_nif_init", "beam_prim_file_nif_init"},
-        "network": {"beam_component_descriptor_v1", "beam_prim_socket_nif_init"},
+        "zlib": {"beam_library_descriptor_v1", "beam_zlib_stream_count"},
+        "file": {"beam_library_descriptor_v1", "beam_file_descriptor_count"},
+        "network": {"beam_library_descriptor_v1", "beam_socket_count"},
     }
     check({target for target, _, _ in args.unit} ==
           {f"beam_{name}_component" for name in unit_sources} and len(args.unit) == len(unit_sources),
@@ -287,8 +295,26 @@ def main():
         check_unit_sources(args, commands, target, directory, unit_sources, owned_sources, owned_objects)
         name = target.removeprefix("beam_").removesuffix("_component")
         check_unit_linkage(args, target, library, links, runtime_exports, unit_exports[name])
-    # The sole permitted duplicate is a matching-build fault fixture, never an
-    # installed runtime target. Check its exact sources, flags, imports and ABI.
+    codec_sources = {(args.source_dir / "src/erts/emulator/zlib" / (name + ".c")).resolve()
+                     for name in ("adler32", "compress", "crc32", "uncompr", "deflate",
+                                  "trees", "zutil", "inflate", "inftrees", "inffast")}
+    codec_objects = [(source, obj) for source, obj in commands if source in codec_sources]
+    check(len(codec_objects) == len(codec_sources) and
+          {source for source, _ in codec_objects} == codec_sources and
+          all("zlib.dir" in obj.parts for _, obj in codec_objects),
+          "vendored codec must compile once, in its runtime-owned target")
+    # Static delivery compiles the same native inputs and resident wrappers.
+    # Its descriptor has a unique accessor and no runtime-linkage selection.
+    for name in unit_sources:
+        target = f"beam_{name}_component_static"
+        compiled = [(source, obj) for source, obj in commands if f"{target}.dir" in obj.parts]
+        expected = {(args.source_dir / "src/beam" / name / item).resolve() for item in unit_sources[name]}
+        expected.update((args.compile_commands.parent / "libraries" / name / item).resolve()
+                        for item in ("static.c", "resident.c"))
+        check({source for source, _ in compiled} == expected, f"wrong static {name} sources")
+        check(all(obj.is_file() for _, obj in compiled), f"missing static {name} objects")
+        owned_objects.update(obj for _, obj in compiled)
+    # Fault injection is confined to an uninstalled test library.
     fixture = [(source, obj) for source, obj in commands
                if "beam_file_fault_component.dir" in obj.parts]
     expected_fixture = {(args.source_dir / "src/beam/file" / name).resolve()
@@ -346,7 +372,7 @@ def main():
     inventories = {
         "library": ["beam", "beam_list", "beam_map", "beam_bytes", "beam_text", "beam_format", "beam_time"],
         "boot": ["beam_return_boot", "beam_boot"],
-        "services": ["beam_component_services", "beam_host", "beam_output", "beam_code"],
+        "services": ["beam_startup", "beam_host", "beam_output", "beam_code"],
     }
     for name, modules in inventories.items():
         root = args.base_inventory.parent / name

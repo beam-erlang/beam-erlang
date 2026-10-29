@@ -171,26 +171,26 @@ suite creates its own prefix using self-contained fixtures and no system Erlang.
 
 | CTest name | Sources and fixtures | Contract |
 |---|---|---|
-| `api-validation` | `checks/api_validation.c` | Public argument/state validation, initialization, composition and generic lifecycle. |
+| `api-validation` | `checks/api_validation.c` | Public argument/state validation, initialization, composition, embedded-dependency declarations and generic lifecycle. |
 | `bytecode-verifier` | `checks/bytecode_verifier.c` | SHA-256 known answers, build identity, selected-module validation and altered-byte rejection without a VM lifecycle. |
 | `cli-smoke` | `checks/cli_smoke.cmake` | Modern command dispatch, obsolete-selector rejection, diagnostics and literal program arguments. |
-| `installed-sdk` | `installed/sdk/consumer/`, `installed/sdk/layout.py` | Required public assets and selected inventories; fresh/relocated C/C++ consumers through CMake and pkg-config; installed manuals and copied first-call example; runtime-only SDK; native PCRE coexistence; bytecode integrity before consumer configuration and after compilation. |
+| `installed-sdk` | `installed/sdk/consumer/`, `installed/sdk/layout.py` | Required public assets and selected inventories; fresh/relocated C/C++ consumers through CMake and pkg-config; installed manuals and copied first-call example; runtime-only SDK; public codec C/C++ operations and shared/static system-zlib/PCRE coexistence; bytecode integrity before consumer configuration and after compilation. |
 | `installed-runtime-artifacts` | `installed/sdk/runtime_artifacts/` | Generic runtime, child-helper, public-header and core-inspection artifact selection, deployment, integrity and relocation. |
 | `installed-compile` | `installed/cli/compile/` | Modern compiler diagnostics, transforms, dependencies, Make/Ninja builds, literal paths, missing tooling and repeated compiler VM cleanup. |
 | `installed-run` | `installed/cli/run/`, `fixtures/hello_world.erl` | Fresh/relocated/minimal source execution; ordinary I/O, Unicode arguments, explicit services, missing assets and compiler/execution isolation. |
 | `installed-interactive` | `installed/cli/interactive/`, `installed/cli/scenarios/` | OTP-free shell/eval and minimal deployment; terminal editing/history/functions, term I/O, recovery/status, common CLI missing/malformed-asset rejection and repeated lifetimes. |
 | `native-artifacts-beam` | `checks/native_artifacts.cmake` | Modern native-wrapper source/artifact agreement through the owned bootstrap. |
 | `compiler-artifacts` | `checks/compiler_artifacts.py` | Owned compiler source/seed attestation, exact reproduction and rejection of invalid inputs. |
-| `native-component-boundary` | `checks/native_component_boundary.py` | Source/object ownership, public returning-helper boundary, native imports/ELF dependencies and exactly nine VM payloads; ordinary base, boot and services payloads stay outside `libbeam`. |
+| `native-library-boundary` | `checks/native_component_boundary.py` | Public SDK header/import boundaries for Host and native libraries, shared/static object ownership, ELF dependencies and exactly nine VM payloads; optional library and controller inventories stay outside both runtime images; one runtime-owned codec and public-only NIF imports. |
 | `installed-runtime-beam` | `installed/cli/baseline/`, `installed/cli/scenarios/` | Fresh/relocated modern shell/eval, module/native provenance and direct program execution. |
 | `installed-bare-beam` | `installed/runtime/bare/`, local `fixtures/` | Generic public SDK lifetimes, dedicated-thread ownership, asynchronous calls/pump/wake/stop, explicit base composition, copied results, module controls, callbacks, process/terminal state and real resource cleanup without runtime assets. |
-| `installed-returning` | `installed/boot/returning/`, local `fixtures/` | Full/minimal relocated component profiles; preparation and retained mappings, copied outcomes, code/output/services and repeated cleanup. |
+| `installed-returning` | `installed/boot/returning/`, local `fixtures/` | Installed Host archive with full/minimal relocated library selections; passive preparation, retained mappings, explicit startup, copied outcomes, code/output and repeated cleanup. |
 | `installed-deployment` | `installed/sdk/deployment/` | Generic bare and modern returning bundles; exact inventories, missing assets, Unicode relocation and execution with the SDK hidden. |
-| `installed-components` | `installed/runtime/components/` | Relocated bootless file, network and combined compositions; passive support, activation dependencies/state, fault paths and actual service/resource observations. |
-| `installed-process-owned` | `installed/runtime/process_owned/` | Generic process-owned roots, context, admission and status behavior through the public SDK, independent of product boot policy. |
+| `installed-components` | `installed/runtime/components/` | Independent/combined file, network and zlib libraries in all three supported linkage combinations; passive preparation, explicit startup, deferred rollback, real owner failure, persistent resources and OS cleanup. |
+| `installed-process-owned` | `installed/runtime/process_owned/` | Suspended roots, synchronous setup with permissions denied, entry commit, recoverable cancellation, context and process policy through the public SDK. |
 | `test-support` | `support/`, `installed/boot/returning/etf{,_test}.c` | Process-group cleanup, environment/output isolation, asset restoration and bounded ETF decoding; no runtime substitute. |
 | `installed-pkg` | `installed/cli/pkg/` | Alias/command policy, literal arguments, builds, installed projects and project shell in fresh and relocated prefixes. |
-| `installed-nifs` | `installed/runtime/nifs/` | Explicit public NIF composition, linked activation and conflicts, preparation/activation timing, shared/static hosts, fresh-VM isolation, resources and deployment through installed SDK consumers. |
+| `installed-nifs`, `installed-static-nifs` | `installed/runtime/nifs/` | Resident and explicit binding timing, conflicts, retained owners, resources and second-runtime rejection; independent fourth-library authoring with bytecode-only/mixed payloads using installed SDK inputs and shared/static hosts. |
 
 Core and base deterministic reproduction is mandatory in the build through
 `beam_verify_core_artifacts` and `beam_verify_base_artifacts`. CTest does not
@@ -321,3 +321,8 @@ boundary tests; `release/test_release.py` owns release evidence and publication
 refusal/retry behavior. Neither suite claims target execution.
 
 Android application acceptance owns signed APK/AAB installation, lifecycle and native closure checks in [android-app](android-app/README.md). The installed-input rejection check, `target/android_delivery.py`, verifies ABI/API/NDK/STL mismatches, page alignment, writable executable segments, dependency closure and reserved system-library names without executing target binaries.
+
+Supplemental embedded-dependency reporting is covered by API validation and the
+existing installed native composition fixture with shared/static VMs. Synthetic
+included/excluded facts exercise copied inputs, retained preparation and isolation
+between fresh VM lifetimes; product-specific declarations remain product-owned.

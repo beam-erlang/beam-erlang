@@ -15,18 +15,21 @@ and the adopted stabilization policy.
 | Document | Start here when you want to… |
 | --- | --- |
 | [Embedding guide](guide.md) | Build a first C host, understand ownership and choose a lifecycle. |
+| [In-memory zlib](zlib.md) | Compress native byte buffers using the codec embedded in the runtime. |
 | [C API reference](reference.md) | Look up options, statuses, lifecycle rules, composition and callbacks. |
+| [Host interface migration](host-migration.md) | Update optional Host linkage, native ownership, staged entry and reports. |
 | [iOS deployment](ios.md) | Build with an explicit target SDK and assemble a signed Apple application. |
 | [SDK and deployment guide](deployment.md) | Select installed CMake targets, verify inputs and package a native application. |
 
-The [public header](../../include/beam/beam.h) supplies complete declarations. The
+The [public header](../../include/beam/beam.h) supplies VM declarations. The
 [first-call project](../../tests/installed/sdk/consumer/first-call/) is the
 runnable tutorial source and remains part of installed-SDK acceptance. The
 documentation does not maintain a second copy of that project.
 
-Include `<beam/beam.h>` for the complete embedding interface. Its self-contained
-`<beam/runtime.h>` and `<beam/boot.h>` headers cover generic VM operation and the
-modern returning application lifecycle. Optional SDK preparation uses
+Include `<beam/beam.h>` or `<beam/runtime.h>` for VM operation. Include
+`<beam/boot.h>` and link `BEAM::Host` for returning applications. Passive
+[libraries](../native-extensions/libraries.md) use `<beam/library.h>` and that
+same optional Host target. Optional SDK preparation uses
 `<beam/sdk/bytecode.h>` and `<beam/sdk/inventories.h>`; native execution support
 uses `<beam/native.h>`. None is included by the embedding umbrella. Native
 extension authors keep `<erl_nif.h>` or `<erl_driver.h>` through their own targets.

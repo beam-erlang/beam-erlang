@@ -16,3 +16,11 @@ beam_native_trace_backend beam_native_trace_backend_get(void)
     return BEAM_NATIVE_TRACE_NONE;
 #endif
 }
+
+/* The stop bit stays set while quiescent NIF destructors execute. */
+int beam_native_stop_requested(void)
+{
+    extern int erts_bare_stop_requested(void);
+    extern int erts_bare_destroying;
+    return erts_bare_stop_requested() || erts_bare_destroying;
+}

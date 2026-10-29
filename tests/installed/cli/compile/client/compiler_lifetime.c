@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define _POSIX_C_SOURCE 200809L
 #include "beam_compiler_host.h"
+#include "native_counts.h"
+#include <beam/boot.h>
 
 #include <dirent.h>
 #include <stdio.h>

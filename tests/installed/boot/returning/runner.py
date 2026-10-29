@@ -48,12 +48,9 @@ def main():
             source = args.source_dir / "fixtures" / f"{name}.erl"
             execute([str(prefix / "bin/beam"), "compile",
                  "-o", str(fixtures), "--", str(source)])
-        helper = args.test_dir / "beam_return.c"
-        shutil.copyfile(args.project_source_dir / "src/beam/boot/beam_return.c", helper)
         client = args.test_dir / "client"
         execute([args.cmake, "-S", str(args.source_dir), "-B", str(client),
-             f"-DCMAKE_PREFIX_PATH={prefix}", f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", f"-DRETURN_HELPER_SOURCE={helper}",
-             f"-DCOMPONENT_PRIVATE_INCLUDE={args.project_source_dir / 'src'}"])
+             f"-DCMAKE_PREFIX_PATH={prefix}", f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}"])
         execute([args.cmake, "--build", str(client)])
         executable = client / "returning_acceptance"
         shutil.copyfile(client / "mismatched-component.so", fixtures / "mismatched-component.so")
@@ -85,10 +82,10 @@ def main():
             if units:
                 directory = deployment / "lib"
                 for unit in units:
-                    name = artifact(prefix,"component."+unit).name
+                    name = artifact(prefix,"library." + unit + ".shared").name
                     shutil.copyfile(prefix / "lib" / name, directory / name)
             expected = {"bin/returning_acceptance", artifact_relative(prefix,"runtime")} | set(assets) | {
-                artifact_relative(prefix,"component."+unit) for unit in units}
+                artifact_relative(prefix,"library." + unit + ".shared") for unit in units}
             actual = {path.relative_to(deployment).as_posix()
                       for path in deployment.rglob("*") if path.is_file()}
             if actual != expected:

@@ -64,7 +64,7 @@ class ReleaseTests(unittest.TestCase):
             release.stage_runtime_notices(notices)
             for relative in ['asmjit/LICENSE.md', 'ryu/LICENSE-Apache2',
                              'ryu/LICENSE-Boost', 'ryu/xcharconv_ryu.h.sha.license',
-                             'pcre/LICENCE', 'zstd/LICENSE', 'zstd/COPYING']:
+                             'pcre/LICENCE']:
                 self.assertEqual((notices / 'emulator' / relative).read_bytes(),
                                  (release.ROOT / 'src/erts/emulator' / relative).read_bytes())
             self.assertEqual((notices / 'LICENSE.txt').read_bytes(),

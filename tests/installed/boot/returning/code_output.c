@@ -18,10 +18,10 @@ void greeting_mode(const char *root, const char *fixture)
     const char expected[] = "Hello, κόσμε!\n";
     add_program(modules, &count, fixture);
     start_system();
-    run_entry(root, "greeting", arguments, BEAM_SERVICE_OUTPUT, modules, count, &first, &outcome);
+    run_entry(root, "greeting", arguments, TEST_OUTPUT, modules, count, &first, &outcome);
     expect_return_text(&outcome, "κόσμε");
     check(first.size == strlen(expected) && memcmp(first.data, expected, first.size) == 0, "greeting bytes");
-    run_entry(root, "greeting", other_arguments, BEAM_SERVICE_OUTPUT, modules, count, &second, &again);
+    run_entry(root, "greeting", other_arguments, TEST_OUTPUT, modules, count, &second, &again);
     check(second.size == strlen("Hello, ada!\n") && memcmp(second.data, "Hello, ada!\n", second.size) == 0,
           "second greeting");
     check(second.size < strlen(expected) || memcmp(second.data, expected, strlen(expected)) != 0,
@@ -121,7 +121,7 @@ void code_mode(const char *root, const char *fixture)
     output.bad = (const unsigned char *)"not-beam";
     output.bad_size = 8;
     start_system();
-    run_entry(root, "code_client", arguments, BEAM_SERVICE_CODE, modules, count, &output, &outcome);
+    run_entry(root, "code_client", arguments, TEST_CODE, modules, count, &output, &outcome);
     {
         const unsigned char *text = NULL;
         size_t text_size = 0;
@@ -133,10 +133,10 @@ void code_mode(const char *root, const char *fixture)
         printf("code %.*s\n", (int)text_size, text);
     }
     beam_outcome_release(&outcome);
-    run_entry(root, "code_missing", arguments, BEAM_SERVICE_CODE, modules, count, &output, &outcome);
+    run_entry(root, "code_missing", arguments, TEST_CODE, modules, count, &output, &outcome);
     expect_return_text(&outcome, "still");
     beam_outcome_release(&outcome);
-    run_entry(root, "code_bad", arguments, BEAM_SERVICE_CODE, modules, count, &output, &outcome);
+    run_entry(root, "code_bad", arguments, TEST_CODE, modules, count, &output, &outcome);
     expect_return_text(&outcome, "still");
     beam_outcome_release(&outcome);
     stop_system();
@@ -159,14 +159,14 @@ void output_mode(const char *root, const char *fixture)
     beam_bytes arguments = list_of_binaries(dummy_items, dummy_sizes, 1);
     add_program(modules, &count, fixture);
     start_system();
-    run_entry(root, "output_cases", arguments, BEAM_SERVICE_OUTPUT, modules, count, &output, &outcome);
+    run_entry(root, "output_cases", arguments, TEST_OUTPUT, modules, count, &output, &outcome);
     check(outcome.kind == BEAM_OUTCOME_RETURN, "rejected write is not service failure");
     check(output.size == 5 && memcmp(output.data, "ready", 5) == 0, "acknowledged bytes");
     beam_outcome_release(&outcome);
     output.size = 0;
     run_entry(root, "omitted", arguments, 0, modules, count, &output, &outcome);
     check(outcome.kind == BEAM_OUTCOME_RETURN || outcome.kind == BEAM_OUTCOME_EXCEPTION, "omitted returned");
-    check(outcome.kind != BEAM_OUTCOME_SERVICE_FAILURE, "omitted is not service failure");
+    check(outcome.kind != BEAM_OUTCOME_FAILURE, "omitted is not service failure");
     beam_outcome_release(&outcome);
     stop_system();
     free(output.data);

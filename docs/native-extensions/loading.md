@@ -2,74 +2,59 @@
 
 The native loading design is provisional and under review. This page describes
 the current implementation so consumers can use the selected SDK. It does not
-freeze explicit activation as the final design or decide how `on_load` should
+freeze the experimental interfaces or decide how `on_load` should
 work in future releases. The [NIF](nif.md) and [driver](drivers.md) references
 describe native operations and callbacks; this page owns their current loading
 and lifetime policy.
 
 ## Choose the host route
 
-| Route | Current use |
+| Route | Initializer and load timing |
 | --- | --- |
-| Explicit external NIF binding | A host supplies wrapper bytecode and an absolute library path in composition, then activates the binding. |
-| Already-linked NIF or driver | A product supplies matching-build descriptors and resident initializer functions through composition. |
-| Ordinary native admission | A process-owned product enables selected NIF, driver, port or distribution mechanisms and supplies its own loading services. |
+| Resident registrations | Preparation copies descriptors; VM initialization obtains/validates entry tables; the owning Erlang module later invokes `erlang:load_nif/2` with actual load information. |
+| Explicit native bindings | Host acquisition produces a `beam_nif_binding` and owner. `beam_vm_bind_nif` invokes the initializer after start, using `undefined` load information. |
+| Ordinary native admission | A process-owned product supplies its own loading code and explicitly authorizes ordinary NIF, driver, port or distribution operations at entry. |
 
-These are host choices. The modern shell does not acquire OTP's code server,
-`erl_ddll` or application services to satisfy a native loading request. The
-separate OTP product owns its loading services and startup policy.
+The modern shell does not acquire OTP startup or loading services implicitly.
+The separate OTP product owns its loading policy. Passive [libraries](libraries.md)
+are optional containers above the VM and normally supply resident registrations.
 
-## Explicit external NIF bindings
+## Explicit native bindings
 
-`beam_nif_spec` supplies the module name and an absolute UTF-8 path to the
-library. The wrapper module must be among the ordinary modules supplied to
-composition. Preparation copies the inputs, rejects duplicates and conflicts,
-and checks the exported SDK build descriptor and initializer. Descriptor
-validation is separate from package provenance. Build the library with the
-installed `beam_target_nif` helper.
+Use `beam_host_open_nif` from the optional Host target to acquire an external NIF,
+or supply a linked initializer directly. Both produce generic `beam_nif_binding`
+records for composition. The wrapper must be a supplied ordinary module; identities
+and native registrations must not conflict. Acquisition checks the image and its
+SDK stamp without invoking its NIF initializer. Mapping trusted code can run
+platform constructors.
 
-Preparation can map trusted shared libraries, whose platform constructors may
-run. It neither starts a VM nor invokes the NIF load callback. The host assigns
-the prepared composition to its VM, starts it and uses `beam_vm_activate` to
-activate selected native bindings. NIF-only activation requires no modern
-service-support modules. Compositions selecting modern services or deferred
-activation modules have the support requirements listed in the
-[composition reference](../c-api/reference.md#composition).
+After starting the VM, call `beam_vm_bind_nif` for each declared binding. Successful
+repeated binding is idempotent. Invalid arguments and missing module code leave
+state unchanged. Once native initialization begins, a failure stops the VM and
+preserves its diagnostics. Terminate that VM before retrying. No product support
+inventory is required for explicit binding.
 
-The installed [external-NIF host](../../tests/installed/runtime/nifs/main.c)
-and [CMake recipe](../../tests/installed/runtime/nifs/CMakeLists.txt) are the
-runnable sources for this route. Their failure cases also show rejected build
-identities, malformed native entries and cleanup after partial activation.
+`beam_target_nif(target MODULE module)` generates static registration and explicit
+binding accessors. Referencing the accessor retains its native implementation
+through static linking. Shared and static runtime hosts support resident code;
+a static VM rejects a modern shared library that depends on a runtime DSO.
+Ordinary OTP dynamic NIFs remain supported under ordinary admission.
+
+The [external-NIF fixture](../../tests/installed/runtime/nifs/main.c) and
+[built-in fixture](../../tests/installed/runtime/nifs/builtins.c) exercise these
+routes, including conflicts, delayed initialization and failed binding cleanup.
 
 ## Load information and module callbacks
 
-For an explicit external binding, activation currently passes `undefined` as
-`load_info` and does not execute the wrapper's `on_load` function. Ordinary and
-preload initialization currently reject modules carrying `on_load` without
-executing that callback. A separate reviewed activation inventory can supply
-deferred modules, including `on_load` modules, for execution after native
-facilities become ready.
+Explicit binding passes `undefined` as `load_info` and does not execute a wrapper
+`on_load`. Resident registrations preserve ordinary `erlang:load_nif/2` semantics:
+file startup passes the real janitor PID, socket startup passes registry/configuration
+information, and zlib loads directly without an artificial owner process.
 
-These distinctions describe the current routes; they are not a decision to
-permanently reject `on_load`-based loading. In a product using the ordinary
-`erlang:load_nif/2` path, the second argument supplies `load_info`. That product
-owns the wrapper loading and callback policy.
-
-## Explicitly activated linked NIFs
-
-Use `beam_linked_nif_spec` for a package NIF linked into the application. Supply
-its ordinary wrapper module, exact SDK build identity and resident initializer
-through `linked_nifs`/`linked_nif_count` in composition. Preparation copies and
-validates selections without invoking initializers. Explicit VM activation loads
-the NIF through the same selected-binding machinery as an external library.
-Conflicts, activation failures and VM cleanup have the same ownership rules.
-
-For a static CMake NIF target, `beam_target_nif(target MODULE module)` generates
-both the existing built-in registration accessor and a separate linked-binding
-accessor (`BEAM_NIF_BINDING`). Generated application registration code references
-the accessor, retaining its initializer and native implementation through linking.
-Both shared and static runtime hosts support this route. It does not require
-statically linking modern components.
+Ordinary and preload initialization reject modules carrying `on_load` without
+executing that callback. The optional Host layer accepts an explicit deferred
+inventory and preserves reviewed initialization/rollback after requested startup.
+This migration does not broaden ordinary module-loading or `on_load` behavior.
 
 ## Already-linked native code
 
@@ -97,9 +82,10 @@ requires driver admission.
 `native_admission` independently enables `BEAM_NATIVE_NIFS`,
 `BEAM_NATIVE_DRIVERS`, `BEAM_NATIVE_PORTS` and `BEAM_NATIVE_DISTRIBUTION`.
 The current implementation restricts these permissions to process-owned VMs.
-They select no modern base code, components or loading services by themselves.
-An ordinary native port composition can provide a program helper without
-selecting modern services; external-program execution still needs that helper.
+These permissions take effect at entry commit and select no library or startup code.
+`BEAM_NATIVE_MANAGED_PORTS` separately permits returning-mode ports/programs,
+with direct-child termination and reaping. It grants no dynamic NIF, driver or
+distribution permission. Program execution requires an explicitly selected helper.
 
 The VM rejects an ordinary native mapping before its initializer runs if its
 dependency closure resolves `beam_build_id` to another runtime image, including
@@ -132,7 +118,7 @@ loader directly as a command are unsupported inspection contexts.
 An explicit external NIF binding currently lasts until VM termination.
 Unloading, rebinding and native hot replacement are unsupported for this route.
 Resource destruction and successful unload callbacks precede release of the
-native mapping. A failed activation stops the partially activated VM; terminate
+native mapping. A failed binding stops the VM; terminate
 it before retrying with a fresh VM.
 
 musl retains successfully loaded libraries until process exit: releasing a

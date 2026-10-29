@@ -8,7 +8,7 @@ int beam_efile_contract_open(beam_file_operation *op, const efile_path_t *path,
     int error = beam_efile_open(path, modes, type, out);
     if (!error && beam_file_operation_cancelled(op)) {
         posix_errno_t ignored;
-        erts_atomic32_set_relb(&(*out)->state, EFILE_STATE_CLOSED);
+        beam_atomic32_set_relb(&(*out)->state, EFILE_STATE_CLOSED);
         beam_efile_close(*out, &ignored);
         *out = NULL;
         return ETIMEDOUT;

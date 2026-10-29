@@ -35,7 +35,9 @@ foreach(_case IN ITEMS create_join_thread equal_tids mutex try_lock_mutex cond_w
 endforeach()
 
 if(NOT WIN32)
-add_executable(beam_image_location_tests checks/image_location.c "${PROJECT_SOURCE_DIR}/src/beam_runtime_image.c")
+add_executable(beam_image_location_tests checks/image_location.c
+    "${PROJECT_SOURCE_DIR}/src/beam_runtime_image.c"
+    "${PROJECT_SOURCE_DIR}/src/beam_elf_image.c")
 target_include_directories(beam_image_location_tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_compile_definitions(beam_image_location_tests PRIVATE BEAM_TEST_ANDROID_IMAGE)
 target_link_libraries(beam_image_location_tests PRIVATE ${CMAKE_DL_LIBS})
@@ -161,7 +163,7 @@ foreach(_unit IN ITEMS file network zlib)
     list(APPEND _runtime_units --unit beam_${_unit}_component "beam/${_unit_source}"
         $<TARGET_FILE:beam_${_unit}_component>)
 endforeach()
-add_test(NAME native-component-boundary
+add_test(NAME native-library-boundary
     COMMAND ${Python3_EXECUTABLE} -B -m checks.native_component_boundary
         --nm ${CMAKE_NM}
         --readelf ${CMAKE_READELF}
@@ -177,7 +179,7 @@ add_test(NAME native-component-boundary
             "${CMAKE_CURRENT_BINARY_DIR}/libbeam-native-links-$<CONFIG>.txt"
             $<TARGET_FILE:libbeam>
     COMMAND_EXPAND_LISTS)
-set_tests_properties(native-component-boundary PROPERTIES TIMEOUT 60)
+set_tests_properties(native-library-boundary PROPERTIES TIMEOUT 60)
 set_tests_properties(api-validation cli-smoke installed-sdk PROPERTIES TIMEOUT 180)
 add_test(NAME installed-runtime-beam
     COMMAND ${Python3_EXECUTABLE} -B -m installed.cli.baseline.runner
@@ -275,7 +277,7 @@ endif()
 set_tests_properties(api-validation PROPERTIES LABELS "checks;shared")
 set_tests_properties(cli-smoke PROPERTIES LABELS "checks;CLI;shared")
 set_tests_properties(native-artifacts-beam PROPERTIES LABELS "checks;BEAM")
-set_tests_properties(native-component-boundary PROPERTIES LABELS "checks;shared")
+set_tests_properties(native-library-boundary PROPERTIES LABELS "checks;shared")
 set_tests_properties(installed-sdk PROPERTIES LABELS "installed;SDK;shared")
 set_tests_properties(installed-compile PROPERTIES LABELS "installed;CLI;shared")
 set_tests_properties(installed-run PROPERTIES LABELS "installed;CLI;BEAM;network")
@@ -288,7 +290,7 @@ set_tests_properties(installed-components PROPERTIES LABELS "installed;SDK;share
 set_tests_properties(installed-process-owned PROPERTIES LABELS "installed;SDK;shared")
 set_tests_properties(test-support PROPERTIES LABELS "checks;shared")
 set_tests_properties(
-    native-component-boundary
+    native-library-boundary
     installed-sdk
     installed-compile
     installed-run

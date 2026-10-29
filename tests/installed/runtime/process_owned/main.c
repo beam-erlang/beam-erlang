@@ -205,7 +205,22 @@ int main(int argc, char **argv)
           "composition staged the root before execution");
     free(bytes);
     check(beam_vm_set_host_handler(vm, ready, NULL) == BEAM_OK, "register root callback");
-    check(beam_vm_start(vm, &error) == BEAM_INVALID_STATE, "explicit process transfer required");
+    /* Retain the start-and-enter convenience path alongside staged startup. */
+    if (requested != 252 && requested != 254 && requested != 7) {
+        check(beam_vm_start(vm, &error) == BEAM_OK, "start with suspended root");
+        check(beam_vm_call_begin(vm, "process_root", "main", (beam_bytes){NULL,0}) == BEAM_UNSUPPORTED,
+              "staged process-owned startup excludes asynchronous calls");
+        const unsigned char nil[] = {131,106};
+        beam_result setup = {0};
+        check(beam_vm_call(vm, "process_root", "setup", (beam_bytes){nil,sizeof(nil)}, &setup) == BEAM_OK &&
+              setup.kind == BEAM_RETURN, "synchronous setup runs with process permissions denied");
+        beam_result_release(&setup);
+        if (selected_break >= 0) {
+            struct sigaction action;
+            check(sigaction(SIGINT, NULL, &action) == 0 && action.sa_handler == SIG_DFL,
+                  "staged startup preserves interrupt disposition");
+        }
+    }
     if (requested == 253) {
         check(beam_vm_terminate(&vm, NULL) == BEAM_OK, "cancel process-owned preparation");
         check(threads() == before && beam_terminate(&system) == BEAM_OK, "cancelled root cleanup");

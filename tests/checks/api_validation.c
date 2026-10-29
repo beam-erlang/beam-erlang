@@ -40,6 +40,46 @@ static int check_library_path(void)
     return 0;
 }
 
+static int check_embedded_dependencies(void)
+{
+    beam_error error = {0};
+    beam_composition *prepared = NULL;
+    beam_embedded_dependency entries[2] = {
+        {sizeof(beam_embedded_dependency), "fixture_included", BEAM_EMBEDDED_INCLUDED},
+        {sizeof(beam_embedded_dependency), "fixture_excluded", BEAM_EMBEDDED_EXCLUDED}};
+    beam_composition_options options = {.struct_size = sizeof(options),
+        .embedded_dependency_count = 2, .embedded_dependencies = entries};
+    CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_OK);
+    beam_composition_release(&prepared);
+    entries[1].name = entries[0].name;
+    CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_INVALID_ARGUMENT);
+    if (prepared) return 1;
+    entries[1].name = "fixture_excluded";
+    const char *invalid[] = {NULL, "", "pcre2", "asmjit", "STL", "ryu", "zlib", "\xc0\xaf", "\xed\xa0\x80"};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(*invalid); ++i) {
+        entries[0].name = invalid[i];
+        CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_INVALID_ARGUMENT);
+        if (prepared) return 1;
+    }
+    char name[1025];
+    for (size_t i = 0; i < 256; ++i) memcpy(name + i * 4, "\xf0\x9f\x90\xa7", 4);
+    name[1020] = 0; entries[0].name = name;
+    CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_OK);
+    beam_composition_release(&prepared);
+    memcpy(name + 1020, "\xf0\x9f\x90\xa7", 4); name[1024] = 0;
+    CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_INVALID_ARGUMENT);
+    entries[0].name = "fixture_included";
+    entries[0].state = (beam_embedded_dependency_state)2;
+    CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_INVALID_ARGUMENT);
+    entries[0].state = BEAM_EMBEDDED_INCLUDED; --entries[0].struct_size;
+    CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_INVALID_ARGUMENT);
+    ++entries[0].struct_size; options.embedded_dependencies = NULL;
+    CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_INVALID_ARGUMENT);
+    options.embedded_dependencies = entries; options.embedded_dependency_count = 1025;
+    CHECK(beam_composition_prepare(&options, &prepared, &error), BEAM_INVALID_ARGUMENT);
+    return prepared != NULL;
+}
+
 int
 main(void)
 {
@@ -48,7 +88,7 @@ main(void)
     beam_system *system = NULL;
     beam_vm *vm = NULL;
     beam_error error = {0};
-    if (check_library_path() != 0) return 1;
+    if (check_library_path() != 0 || check_embedded_dependencies() != 0) return 1;
     CHECK(beam_query_host(NULL, &error), BEAM_INVALID_ARGUMENT);
     CHECK(beam_query_host(&host, &error), BEAM_INVALID_ARGUMENT);
     host.struct_size = sizeof host;

@@ -21,9 +21,8 @@
  * %CopyrightEnd%
  */
 
+#include "beam_library_platform.h"
 #include "erl_nif.h"
-#include "config.h"
-#include "sys.h"
 
 #include "prim_file_nif.h"
 #include "erl_driver.h"
@@ -580,9 +579,9 @@ int beam_efile_close(efile_data_t *d, posix_errno_t *error) {
     if (from_already_open_fd) {
         fd = w->fd;
     }
-    extern int erts_components_stopping(void);
-    ASSERT(enif_thread_type() == ERL_NIF_THR_DIRTY_IO_SCHEDULER || erts_components_stopping());
-    ASSERT(erts_atomic32_read_nob(&d->state) == EFILE_STATE_CLOSED);
+
+    ASSERT(enif_thread_type() == ERL_NIF_THR_DIRTY_IO_SCHEDULER || beam_native_stop_requested());
+    ASSERT(beam_atomic32_read_nob(&d->state) == EFILE_STATE_CLOSED);
     ASSERT(w->handle != INVALID_HANDLE_VALUE);
 
     handle = w->handle;

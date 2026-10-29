@@ -98,7 +98,7 @@ value() ->
     with hidden_paths([prefix / "lib/beam/runtime",
                        prefix / "lib/beam/ebin", prefix / "libexec/beam",
                        *(prefix / "lib/beam" / inventory for inventory in ("library", "boot", "services")),
-                       *(artifact(prefix, "component." + unit)
+                       *(artifact(prefix, "library." + unit + ".shared")
                          for unit in ("file", "network", "zlib"))]):
         c.compile("--deterministic", "--depfile", depfile, "-I", header.parent,
                   "-o", output, source)
@@ -289,7 +289,7 @@ def compiler_lifetime_case(prefix, work, cmake, build, source, project):
     with hidden_paths([prefix / "lib/beam/runtime",
                        prefix / "lib/beam/ebin", prefix / "libexec/beam",
                        *(prefix / "lib/beam" / inventory for inventory in ("library", "boot", "services")),
-                       *(artifact(prefix, "component." + unit)
+                       *(artifact(prefix, "library." + unit + ".shared")
                          for unit in ("file", "network", "zlib"))]):
         stdout, stderr = run([client_build / "compiler_lifetime", prefix,
                               client / "compiler_lifetime_fixture.erl"], client, env, timeout=60)

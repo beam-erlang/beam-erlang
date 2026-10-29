@@ -44,9 +44,7 @@
 #define STATIC_ERLANG_NIF 1
 #include "socket_backend.h"
 
-#ifdef HAVE_CONFIG_H
-#    include "config.h"
-#endif
+#include "beam_library_platform.h"
 
 #ifndef ESOCK_ENABLE
 #    include <erl_nif.h>
@@ -159,7 +157,6 @@ ERL_NIF_INIT(prim_socket, esock_funcs, on_load, NULL, NULL, NULL)
 #include <mstcpip.h>
 
 #undef WANT_NONBLOCKING
-#include "sys.h"
 
 
 /* AND HERE WE MAY HAVE A BUNCH OF DEFINES....SEE INET DRIVER.... */
@@ -381,7 +378,6 @@ static void (*esock_sctp_freepaddrs)(struct sockaddr *addrs) = NULL;
 #ifndef WANT_NONBLOCKING
 #define WANT_NONBLOCKING
 #endif
-#include "sys.h"
 
 
 /* ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ *
@@ -5690,14 +5686,16 @@ ERL_NIF_TERM esock_supports_options(ErlNifEnv* env)
 
 
 
-extern int erts_components_has_service(unsigned service);
-extern void erts_components_socket_adjust(int delta);
+#include <stdatomic.h>
+static atomic_int native_count;
+int beam_socket_count(void) { return atomic_load_explicit(&native_count, memory_order_relaxed); }
+static void native_adjust(int delta) { atomic_fetch_add_explicit(&native_count, delta, memory_order_relaxed); }
 
 static void beam_socket_unaccount(ESockDescriptor *desc)
 {
     if (desc && desc->beam_accounted) {
         desc->beam_accounted = 0;
-        erts_components_socket_adjust(-1);
+        native_adjust(-1);
     }
 }
 
@@ -5705,10 +5703,8 @@ void beam_socket_account(ESockDescriptor *desc)
 {
     if (!desc || desc->beam_accounted)
         return;
-    if (!erts_components_has_service(1u << 4))
-        return;
     desc->beam_accounted = 1;
-    erts_components_socket_adjust(1);
+    native_adjust(1);
 }
 
 static void beam_socket_note_open(ErlNifEnv *env, ERL_NIF_TERM result)
@@ -5716,8 +5712,6 @@ static void beam_socket_note_open(ErlNifEnv *env, ERL_NIF_TERM result)
     const ERL_NIF_TERM *tuple;
     int arity;
     ESockDescriptor *desc = NULL;
-    if (!erts_components_has_service(1u << 4))
-        return;
     if (!enif_get_tuple(env, result, &arity, &tuple) || arity < 2 ||
         tuple[0] != beam_esock_atom_ok)
         return;

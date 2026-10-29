@@ -108,7 +108,7 @@ def sdk(prefix, cmake):
         raise ValueError('Unsupported Android SDK target/toolchain')
     inventory = json.loads((prefix / 'lib/beam/runtime-artifacts.json').read_text())
     paths = {key: relative(prefix, record['path']) for key, record in inventory['artifacts'].items()}
-    natives = [paths['runtime'], paths['runtime.cxx']] + [paths['component.' + c] for c in COMPONENTS[1:]]
+    natives = [paths['runtime'], paths['runtime.cxx']] + [paths["library." + c + ".shared"] for c in COMPONENTS[1:]]
     closure(natives, facts['android-abi'])
     return prefix, facts, paths
 
@@ -152,7 +152,7 @@ def aar(args):
                 abi = facts['android-abi']
                 target = payload / 'prefab/modules' / module / 'libs' / ('android.' + abi)
                 target.mkdir(parents=True)
-                key = 'runtime' if component == 'runtime' else 'component.' + component
+                key = 'runtime' if component == 'runtime' else "library." + component + ".shared"
                 shutil.copy2(paths[key], target / paths[key].name)
                 json_write(target / 'abi.json', {'abi': abi, 'api': 26, 'ndk': 28, 'stl': 'c++_shared', 'static': False})
                 # Generated SDK headers bind the exact ABI/flavor/build selection.
@@ -183,7 +183,7 @@ def assets(args):
     meta = tomllib.loads((export / 'export.toml').read_text())
     if meta['format'] != 1 or meta['sdk'] != tomllib.loads((prefix / 'lib/beam/sdk.toml').read_text()):
         raise ValueError('Package export selects a different Android SDK')
-    natives = [paths['runtime'], paths['runtime.cxx']] + [paths['component.' + c] for c in args.component]
+    natives = [paths['runtime'], paths['runtime.cxx']] + [paths["library." + c + ".shared"] for c in args.component]
     copies = []
     for record in meta['packages'].values():
         root = relative(export, record['path'])

@@ -183,7 +183,6 @@
 #define ERTS_ENABLE_MSACC 1
 #cmakedefine ERTS_USE_BUILTIN_ZLIB 1
 #cmakedefine ERTS_USE_BUILTIN_RYU 1
-#cmakedefine ERTS_USE_BUILTIN_ZSTD 1
 #cmakedefine ERTS_USE_POLL 1
 #cmakedefine ERTS_ENABLE_KERNEL_POLL 1
 #cmakedefine HAVE_TERMCAP 1

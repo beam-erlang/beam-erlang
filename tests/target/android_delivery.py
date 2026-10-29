@@ -47,7 +47,7 @@ def main():
                 rejected('4k-only-elf',lambda:delivery.elf_bytes(small,abi,native.name),'16 KB')
                 writable=bytearray(original);flags=struct.unpack_from('<I',writable,load+4)[0];struct.pack_into('<I',writable,load+4,flags|3)
                 rejected('writable-executable-segment',lambda:delivery.elf_bytes(writable,abi,native.name),'Writable executable')
-                paths_all=[paths['runtime'],paths['runtime.cxx']]+[paths['component.'+c] for c in ('file','network','zlib')]
+                paths_all=[paths['runtime'],paths['runtime.cxx']]+[paths["library." + c + ".shared"] for c in ('file','network','zlib')]
                 closure=delivery.closure(paths_all,abi)
                 required=next((name for name in closure if any(name in r['needed'] for r in closure.values())),None)
                 if required:

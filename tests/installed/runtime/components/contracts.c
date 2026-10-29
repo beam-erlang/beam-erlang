@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define _POSIX_C_SOURCE 200809L
 #include <beam/beam.h>
+#include "native_counts.h"
+#include <beam/boot.h>
 #include "bytecode_input.h"
 #include "host_observe.h"
 #include <unistd.h>
@@ -67,11 +69,10 @@ int main(int argc,char **argv) {
     }
     char paths[4][4096];
     const char *names[]={"file","network"};
-    beam_component_kind kinds[]={BEAM_COMPONENT_FILE,BEAM_COMPONENT_NETWORK};
-    beam_component_spec components[4];
+    beam_library *libraries[2]={0};
     for(int i=0;i<2;++i) {
         CHECK(snprintf(paths[i],sizeof(paths[i]),"%s/%s",argv[1],beam_test_component(names[i]))<(int)sizeof(paths[i]));
-        components[i]=(beam_component_spec){sizeof(components[i]),kinds[i],i==0 && faults ? argv[5] : paths[i]};
+        CHECK(beam_library_open(i==0&&faults?argv[5]:paths[i],&libraries[i],&error)==BEAM_OK);
     }
     size_t size=strlen(argv[3]); unsigned char *arg=calloc(1,size+12); CHECK(arg);
     unsigned char header[]={131,108,0,0,0,1,109,size>>24,size>>16,size>>8,size};
@@ -83,8 +84,9 @@ int main(int argc,char **argv) {
     for(int pass=0;pass<3;++pass) {
         if(returning) {
             beam_return_options options={.struct_size=sizeof(options)};
-            options.components=components;options.component_count=2;
-            options.services=BEAM_SERVICE_FILE|BEAM_SERVICE_SOCKET;
+            beam_startup_action startup[]={{"beam_file","start",{0}},{"beam_socket","start",{0}}};
+            beam_host_options plan={.struct_size=sizeof(plan),.library_count=2,.libraries=libraries,.startup_count=2,.startup=startup};
+            options.host=&plan;
             options.modules=returning_modules;options.module_count=base.count+1;
             options.entry_module="contract_worker";options.entry_function=faults ? "returning_fault" : "returning";options.arguments=(beam_bytes){arg,size+12};
             beam_return_boot *boot=NULL; beam_outcome out={.struct_size=sizeof(out)};
@@ -95,14 +97,16 @@ int main(int argc,char **argv) {
             if(faults) CHECK(strstr(out.cleanup_error,"file close failed"));
             beam_outcome_release(&out);
         } else {
-            beam_composition_options prep={.struct_size=sizeof(prep),.components=components,.component_count=2,
-                .modules=modules,.module_count=base.count+1,.services=BEAM_SERVICE_OUTPUT|BEAM_SERVICE_CODE};
-            beam_composition *comp=NULL;beam_vm *vm=NULL;beam_vm_options options;beam_vm_options_init(&options);
-            CHECK(beam_composition_prepare(&prep,&comp,&error)==BEAM_OK);
-            options.composition=comp;options.dirty_io_schedulers=1;
-            CHECK(beam_vm_init(system,&options,&vm,&error)==BEAM_OK);beam_composition_release(&comp);
+            beam_composition_options prep={.struct_size=sizeof(prep),.modules=modules,.module_count=base.count+1};
+            beam_startup_action startup[]={{"beam_file","start",{0}},{"beam_socket","start",{0}},{"beam_output","start",{0}},{"beam_code","start",{0}}};
+            beam_host_options plan={.struct_size=sizeof(plan),.composition=&prep,.library_count=2,.libraries=libraries,.startup_count=4,.startup=startup};
+            beam_host *comp=NULL;beam_vm *vm=NULL;beam_vm_options options;beam_vm_options_init(&options);
+            CHECK(beam_host_prepare(&plan,&comp,&error)==BEAM_OK);
+            options.composition=beam_host_composition(comp);options.dirty_io_schedulers=1;
+            CHECK(beam_vm_init(system,&options,&vm,&error)==BEAM_OK);
             CHECK(beam_vm_set_host_handler(vm,handler,NULL)==BEAM_OK);
-            CHECK(beam_vm_start(vm,&error)==BEAM_OK && beam_vm_activate(vm,&error)==BEAM_OK);
+            CHECK(beam_vm_start(vm,&error)==BEAM_OK && beam_host_start(comp,vm,&error)==BEAM_OK);
+            beam_host_release(&comp);
             const char *calls[]={"files","sockets","callbacks","native_faults","abandon","busy","cleanup_fail"};
             for(int i=0;i<7;++i) {
                 if((i==3 || i>=5) && !faults) continue;
@@ -127,5 +131,6 @@ int main(int argc,char **argv) {
     CHECK(beam_terminate(&system)==BEAM_OK);if(saved.value.data)check_result(&saved);
     if(faults && !returning) CHECK(saved_cleanup.cleanup.native_code==EIO && strstr(saved_cleanup.cleanup.message,"file close failed"));
     beam_result_release(&saved);free(bytes.data);free(arg);bytecode_input_release(&base);
+    for(size_t i=0;i<2;++i)beam_library_release(&libraries[i]);
     puts("service contracts passed");return 0;
 }

@@ -176,8 +176,8 @@ erl_sys_late_init(void)
     /* A bare executor does not own the process signal policy or launch
      * external programs. Keep driver registration separate from activation. */
     extern int erts_bare_mode;
-    extern const char *erts_components_program_path(void);
-    if (erts_bare_mode && !erts_components_program_path())
+    extern const char *erts_vm_program_path(void);
+    if (erts_bare_mode && !erts_vm_program_path())
         return;
 
     sys_signal(SIGPIPE, SIG_IGN); /* Ignore - we'll handle the write failure */
@@ -1610,8 +1610,8 @@ static ErlDrvData forker_start(ErlDrvPort port_num, char* name,
     size_t bindirsz = sizeof(bindir);
     Uint csp_path_sz;
     char *child_setup_prog;
-    extern const char *erts_components_program_path(void);
-    const char *selected_helper = erts_bare_mode ? erts_components_program_path() : NULL;
+    extern const char *erts_vm_program_path(void);
+    const char *selected_helper = erts_bare_mode ? erts_vm_program_path() : NULL;
 
     forker_port = erts_drvport2id(port_num);
     forker_selected = 0;

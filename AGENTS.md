@@ -1,7 +1,7 @@
 # BEAM/Erlang contributor instructions
 
 This repository owns the shared VM, `libbeam`, public BEAM/Erlang SDK, modern
-components and commands. Read [architecture](docs/architecture.md) for ownership,
+libraries and commands. Read [architecture](docs/architecture.md) for ownership,
 [build maintenance](cmake/README.md) for bootstrap/refresh, [tests](tests/README.md)
 for coverage and [release operations](release/README.md) for version/support policy.
 These maintained documents describe current contracts; temporary plans, reports,
@@ -31,12 +31,15 @@ Do not reference temporary development records from product documentation.
   host-controlled and process-owned execution, explicit composition and literal
   arguments after `--`. Sequential fresh VMs may differ; concurrent VMs remain
   unsupported.
-- VM lifetimes own native admission, activation, rollback and cleanup. Product
-  policy stays in public-SDK hosts. Native descriptors remain private matching-build
-  contracts, not provider ABIs or hot-reload promises. Current loading/activation
-  remains provisional in [native loading](docs/native-extensions/loading.md).
-- OTP product/private hosts use `BEAM::RuntimeStatic`; modern commands/components
-  use shared linkage. OTP must reproduce the pinned original installation shape
+- VM lifetimes own native admission, binding and cleanup. Returning orchestration
+  and passive library acquisition belong to the optional public-SDK `BEAM::Host`
+  archive, never either VM image. Passive library descriptors are documented
+  experimental exact-SDK inputs, not stable provider ABIs or hot-reload promises.
+  Initializer timing and residency are documented in
+  [native loading](docs/native-extensions/loading.md).
+- OTP product/private hosts use `BEAM::RuntimeStatic`; the modern CLI uses shared
+  linkage. Passive libraries support shared VM/shared libraries, shared VM/static
+  libraries and static VM/static libraries. OTP must reproduce the pinned original installation shape
   for equivalent features, including types, modes and literal link targets.
   Build/SDK provenance stays external. Its own architecture and installed tests
   own application/startup/native behavior.
@@ -218,7 +221,7 @@ its sources; do not copy implementations into product fixtures.
 
 Project run/shell selects an installed generation and never builds/installs on
 launch. Project shell includes library roots without `main/1`, validates the
-complete interactive inventory and uses explicit public composition/activation
+complete interactive inventory and uses generic composition and explicit Host startup
 with host I/O. It adds no implicit file/network/program/acquisition facilities.
 Source tasks execute root `[scripts]` literal argv arrays; package policy and
 native hosting remain distinct. Terminate the tool VM/system before handing off
@@ -230,7 +233,7 @@ installed environments. Preserve optional unbound native outputs, explicit
 
 User manuals belong in `docs/`, organized by reader task: getting started,
 language/runtime, C API guides/reference, modern library, separate native
-components, CLI and packaging. Keep file/network/zlib manuals independent and
+libraries, CLI and packaging. Keep file/network/zlib manuals independent and
 link canonical package policy. Private compiler/shell helpers do not establish
 a public OTP standard library. Keep public examples consistent with canonical
 product fixtures; the first-call sources live in

@@ -6,7 +6,7 @@ on_load() ->
     ok.
 main(Value) ->
     undefined = whereis(code_server),
-    undefined = whereis(beam_service_output),
+    undefined = whereis(beam_output_server),
     undefined = whereis(beam_file_owner),
     undefined = whereis(socket_registry),
     false = erlang:module_loaded(code_server),

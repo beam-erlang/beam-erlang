@@ -820,8 +820,8 @@ int beam_boot_main(const char *command, const char *value, int plain_count, char
     }
     outcome.struct_size = sizeof(outcome);
     options.struct_size = sizeof(options);
-    options.services = BEAM_SERVICE_OUTPUT | BEAM_SERVICE_CODE | BEAM_SERVICE_FILE |
-                       BEAM_SERVICE_PROGRAM | BEAM_SERVICE_SOCKET | BEAM_SERVICE_ZLIB;
+    options.services = BEAM_CLI_OUTPUT | BEAM_CLI_CODE | BEAM_CLI_FILE |
+                       BEAM_CLI_PROGRAM | BEAM_CLI_SOCKET | BEAM_CLI_ZLIB;
     options.runtime_root = root;
     options.profile = compiled.module ? BEAM_CLI_RUN : BEAM_CLI_INTERACTIVE;
     options.entry_module = compiled.module ? "beam_source_run" : "beam_interactive";
@@ -906,7 +906,7 @@ typedef struct application {
     unsigned services;
     beam_return_module *modules;
     size_t count;
-    beam_nif_spec *nifs;
+    beam_cli_nif *nifs;
     size_t nif_count;
     char **required;
     size_t required_count;
@@ -983,12 +983,12 @@ static int application_parse(etf_cursor *c, const char *base, int continuation, 
     for (size_t i = 0; i < count; ++i) {
         char service[24]; unsigned bit = 0;
         if (!etf_atom(c, service, sizeof(service))) goto done;
-        if (!strcmp(service,"output")) bit = BEAM_SERVICE_OUTPUT;
-        else if (!strcmp(service,"code")) bit = BEAM_SERVICE_CODE;
-        else if (!strcmp(service,"file")) bit = BEAM_SERVICE_FILE;
-        else if (!strcmp(service,"network")) bit = BEAM_SERVICE_SOCKET;
-        else if (!strcmp(service,"zlib")) bit = BEAM_SERVICE_ZLIB;
-        else if (!strcmp(service,"program")) bit = BEAM_SERVICE_PROGRAM;
+        if (!strcmp(service,"output")) bit = BEAM_CLI_OUTPUT;
+        else if (!strcmp(service,"code")) bit = BEAM_CLI_CODE;
+        else if (!strcmp(service,"file")) bit = BEAM_CLI_FILE;
+        else if (!strcmp(service,"network")) bit = BEAM_CLI_SOCKET;
+        else if (!strcmp(service,"zlib")) bit = BEAM_CLI_ZLIB;
+        else if (!strcmp(service,"program")) bit = BEAM_CLI_PROGRAM;
         if (!bit || (app->services & bit)) goto done;
         app->services |= bit;
     }
@@ -1023,7 +1023,7 @@ static int application_parse(etf_cursor *c, const char *base, int continuation, 
     if (!app->nifs) { app->nif_count = 0; goto done; }
     for (size_t i = 0; i < app->nif_count; ++i) {
         char *relative;
-        app->nifs[i].struct_size = sizeof(beam_nif_spec);
+        app->nifs[i].struct_size = sizeof(beam_cli_nif);
         if (!etf_tuple(c,2) || !(app->nifs[i].module = etf_string(c)) || !(relative = etf_string(c))) goto done;
         app->nifs[i].path = application_path(app->root, relative); free(relative);
         if (!app->nifs[i].path) goto done;
@@ -1196,7 +1196,7 @@ failed:
         if(!command || outcome.kind!=BEAM_OUTCOME_RETURN) {
             if(outcome.kind!=BEAM_OUTCOME_RETURN && outcome.kind!=BEAM_OUTCOME_HALT && outcome.kind!=BEAM_OUTCOME_FINISH)
                 fprintf(stderr,"beam: application execution failed (outcome %d, service %s)\n",
-                        (int)outcome.kind,outcome.service[0] ? outcome.service : "none");
+                        (int)outcome.kind,outcome.origin[0] ? outcome.origin : "none");
             result=outcome_status(&outcome); beam_outcome_release(&outcome); break;
         }
         etf_cursor action={0};

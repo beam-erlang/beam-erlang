@@ -79,8 +79,9 @@ function(erts_add_emulator_third_party_libraries)
         zlib/inftrees.c
         zlib/inffast.c
     )
-    # Compression is private to each linked VM/component. Do not interpose on
-    # an independently built host or NIF's declared system zlib dependency.
+    # One private codec backs VM internals and the public namespaced interface.
+    # Never interpose on an independently built host or NIF system dependency.
+    target_include_directories(zlib PRIVATE "${CMAKE_SOURCE_DIR}/include")
     set_target_properties(zlib PROPERTIES POSITION_INDEPENDENT_CODE ON
         C_VISIBILITY_PRESET hidden)
 

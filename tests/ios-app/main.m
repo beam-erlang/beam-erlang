@@ -1,3 +1,4 @@
+#include <beam/host.h>
 // SPDX-License-Identifier: Apache-2.0
 // Product-owned UIKit fixture. No playground sources or runtime-private headers.
 #import <UIKit/UIKit.h>
@@ -77,28 +78,31 @@ static beam_status prepare(beam_system *system,callback_context *context,beam_vm
     NSArray * __attribute__((objc_precise_lifetime)) paths=@[[root stringByAppendingPathComponent:@"BEAMfile.framework/BEAMfile"],
         [root stringByAppendingPathComponent:@"BEAMnetwork.framework/BEAMnetwork"],
         [root stringByAppendingPathComponent:@"BEAMzlib.framework/BEAMzlib"]];
-    beam_component_spec components[]={
-        {sizeof(beam_component_spec),BEAM_COMPONENT_FILE,[paths[0] UTF8String]},
-        {sizeof(beam_component_spec),BEAM_COMPONENT_NETWORK,[paths[1] UTF8String]},
-        {sizeof(beam_component_spec),BEAM_COMPONENT_ZLIB,[paths[2] UTF8String]}};
+    beam_library *libraries[3]={0};
+    for(size_t i=0;i<3 && status==BEAM_OK;++i)
+        status=beam_library_open([paths[i] UTF8String],&libraries[i],error);
     size_t count=beam_package_linked_nifs(NULL,0);
-    beam_linked_nif_spec *nifs=calloc(count,sizeof *nifs);
-    if(count && !nifs) status=BEAM_OUT_OF_MEMORY;
-    if(status==BEAM_OK) beam_package_linked_nifs(nifs,count);
-    beam_composition_options spec={.struct_size=sizeof spec,.module_count=total,.modules=modules,
-        .component_count=3,.components=components,.linked_nif_count=count,.linked_nifs=nifs};
-    beam_composition *composition=NULL;
-    if(status==BEAM_OK) status=beam_composition_prepare(&spec,&composition,error);
+    beam_nif_binding *nifs=calloc(count,sizeof(*nifs));
+    if(count&&!nifs)status=BEAM_OUT_OF_MEMORY;
+    if(status==BEAM_OK)beam_package_linked_nifs(nifs,count);
+    beam_composition_options spec={.struct_size=sizeof(spec),.module_count=total,.modules=modules,
+        .binding_count=count,.bindings=nifs};
+    beam_startup_action actions[]={{"beam_file","start",{0}},{"beam_socket","start",{0}},{"zlib","on_load",{0}}};
+    beam_host_options plan={.struct_size=sizeof(plan),.composition=&spec,.library_count=3,.libraries=libraries,
+        .startup_count=3,.startup=actions};
+    beam_host *host=NULL;
+    if(status==BEAM_OK)status=beam_host_prepare(&plan,&host,error);
     free(modules);free(nifs);
-    if(status==BEAM_OK) {
-        beam_vm_options options;beam_vm_options_init(&options);options.composition=composition;
+    for(size_t i=0;i<3;++i)beam_library_release(&libraries[i]);
+    if(status==BEAM_OK){
+        beam_vm_options options;beam_vm_options_init(&options);options.composition=beam_host_composition(host);
         options.schedulers=2;options.dirty_cpu_schedulers=1;options.dirty_io_schedulers=1;
         status=beam_vm_init(system,&options,vm,error);
     }
-    beam_composition_release(&composition);
-    if(status==BEAM_OK) status=beam_vm_set_host_handler(*vm,callback,context);
-    if(status==BEAM_OK) status=beam_vm_start(*vm,error);
-    if(status==BEAM_OK) status=beam_vm_activate(*vm,error);
+    if(status==BEAM_OK)status=beam_vm_set_host_handler(*vm,callback,context);
+    if(status==BEAM_OK)status=beam_vm_start(*vm,error);
+    if(status==BEAM_OK)status=beam_host_start(host,*vm,error);
+    beam_host_release(&host);
     return status;
 }
 

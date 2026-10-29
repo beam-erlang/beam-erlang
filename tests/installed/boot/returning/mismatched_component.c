@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#include "beam_component_internal.h"
-
-const beam_component_descriptor beam_component_descriptor_v1 = {
-    BEAM_COMPONENT_ABI_VERSION, "invalid-build", BEAM_COMPONENT_FILE, 0, NULL,
-    BEAM_COMPONENT_BASE_VERSION, 0
+#include <beam/library.h>
+const beam_library_descriptor beam_library_descriptor_v1 = {
+    sizeof(beam_library_descriptor), BEAM_LIBRARY_FORMAT_VERSION, "invalid-build", "invalid-library", 0, NULL, 0, NULL
 };

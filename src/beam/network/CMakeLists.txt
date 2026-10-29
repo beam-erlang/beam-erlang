@@ -17,7 +17,7 @@ if(WIN32)
 else()
     set(_socket_backend unix/unix_socket_syncio.c)
 endif()
-beam_add_component(beam_network_component NAME network KIND BEAM_COMPONENT_NETWORK
+beam_add_library(beam_network_component NAME network
     MODULES ${BEAM_NETWORK_COMPONENT_MODULES} BEAM_FILES ${BEAM_NETWORK_COMPONENT_BEAM_FILES}
     NIF_ENTRIES - - - - - beam_prim_socket_nif_init
     NATIVE_SOURCES prim_socket_nif.c socket_dbg.c socket_tarray.c socket_util.c ${_socket_backend}
@@ -26,6 +26,7 @@ target_include_directories(beam_network_component PRIVATE "${CMAKE_CURRENT_SOURC
 target_link_libraries(beam_network_component PRIVATE beam_files_dyncall_headers)
 if(WIN32)
     target_link_libraries(beam_network_component PRIVATE ws2_32)
+    target_link_libraries(beam_network_component_static PUBLIC ws2_32)
 endif()
 foreach(_value IN ITEMS MODULES BEAM_FILES)
     set(BEAM_NETWORK_COMPONENT_${_value} "${BEAM_NETWORK_COMPONENT_${_value}}" PARENT_SCOPE)

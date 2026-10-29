@@ -1,28 +1,23 @@
 # libbeam-network.so
 
-The network component adds numeric-address TCP sockets through `beam_socket`.
+The network library adds numeric-address TCP sockets through `beam_socket`.
 Its complete module inventory is `beam_socket`, `socket_registry`, `socket`,
-`maps`, `lists` and `prim_socket`. The latter modules support the component;
+`maps`, `lists` and `prim_socket`. The latter modules support the library;
 their inclusion does not make the complete OTP networking or standard-library
 surface part of the modern interface.
 
 ## Select the capability
 
-Select `BEAM_COMPONENT_NETWORK` with the exact path to
-`<prefix>/lib/libbeam-network.so`. Its service bit is `BEAM_SERVICE_SOCKET`.
-Supply the ordinary services inventory and the base library, which includes
-`beam_time`. Follow the [component lifecycle](../README.md#selection-and-activation)
-to prepare, start and activate it. Networking is independent of file and zlib
-selection.
+Acquire `libbeam-network.so` or link `BEAM::NetworkStatic`, then supply its inputs
+to composition. After start, explicitly call `beam_socket:start/0`; it creates the
+real socket registry and passes its PID/configuration to native loading. The
+facade uses ordinary base code, including `beam_time`. See the
+[library lifecycle](../README.md#selection-and-startup).
 
-Activation initializes native socket support and its registry before admitting
-application calls. Each listener or connected socket belongs to one Erlang
-process. Passing the handle in a message does not transfer ownership. Native
-resources, polling registrations and pending I/O are reclaimed on owner death
-or VM termination even if other processes retain the handle. Editing the
-handle's descriptive owner field grants no access to a native socket. The
-registry is managed by the VM's service lifecycle; an
-application does not start it itself.
+Sockets belong to their opening Erlang process. Passing a handle does not
+transfer ownership. Resources, polling registrations and pending I/O are reclaimed
+on owner death or VM termination. The library monitors its actual registry and
+reports its failure through the generic runtime failure mechanism.
 
 ## Connect and send
 
@@ -113,10 +108,10 @@ cancellation API.
 
 The modern facade currently covers numeric IPv4 TCP. It does not expose DNS,
 IPv6, UDP, TLS, distributed Erlang, socket-option control or ownership transfer.
-The component ships no legacy inet drivers or `prim_net`. Its support module
+The library ships no legacy inet drivers or `prim_net`. Its support module
 exports are not a promise that every upstream `socket` operation is available
 in a minimal modern composition.
 
 The current implementation is defined by
 [beam_socket.erl](../../../src/beam/network/beam_socket.erl) and the
-[network component recipe](../../../src/beam/network/CMakeLists.txt).
+[network library recipe](../../../src/beam/network/CMakeLists.txt).

@@ -5438,7 +5438,7 @@ prepare_loading(Module, <<"FOR1",_/bits>>=Code) ->
 prepare_loading(Module, Code0) ->
     %% Corrupt header or compressed module, attempt to decompress it before
     %% passing it to the loader and leave error signalling to the BIF.
-    Code = try zlib:gunzip(Code0) of
+    Code = try erts_internal:beamfile_gunzip(erlang:iolist_to_binary(Code0)) of
                Decompressed -> Decompressed
            catch
                _:_ -> Code0

@@ -67,10 +67,9 @@ BIF_RETTYPE erts_internal_open_port_2(BIF_ALIST_2)
     int err_type, err_num;
     ErtsLink *proc_lnk, *port_lnk;
 
-    if (erts_bare_mode && !erts_vm_native_admitted(BEAM_NATIVE_PORTS)) {
-        extern int erts_components_program_enabled(void);
-        if (!erts_components_program_enabled())
-            BIF_ERROR(BIF_P, EXC_NOTSUP);
+    if (erts_bare_mode && !erts_vm_native_admitted(BEAM_NATIVE_PORTS) &&
+        !erts_vm_native_admitted(BEAM_NATIVE_MANAGED_PORTS)) {
+        BIF_ERROR(BIF_P, EXC_NOTSUP);
     }
 
     port = open_port(BIF_P, BIF_ARG_1, BIF_ARG_2, &err_type, &err_num);

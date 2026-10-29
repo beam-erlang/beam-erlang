@@ -1,25 +1,26 @@
 # libbeam-zlib.so
 
-The zlib component supplies the `zlib` Erlang module and its native compression
-implementation. It supports zlib-wrapped, raw DEFLATE and gzip data. It operates
+The zlib library supplies the `zlib` Erlang module and its native compression
+bridge. Compression is supplied by the codec embedded in `libbeam`, through
+`<beam/zlib.h>`. The library embeds no second codec. It supports zlib-wrapped,
+raw DEFLATE and gzip data. It operates
 on in-memory bytes and can be selected without file or network access.
 
 ## Select the capability
 
-Select `BEAM_COMPONENT_ZLIB` with the exact path to
-`<prefix>/lib/libbeam-zlib.so`. Its corresponding service bit is
-`BEAM_SERVICE_ZLIB`. Supply the ordinary services inventory and follow the
-[component lifecycle](../README.md#selection-and-activation). A returning host
-also supplies its complete base and boot inventories.
+Acquire `libbeam-zlib.so` or link `BEAM::ZlibStatic`, then supply its inputs to
+composition. After VM start, explicitly call `zlib:on_load/0` to load the resident
+implementation. This creates no sentinel owner process and requires neither file
+nor network support. See the [library lifecycle](../README.md#selection-and-startup).
 
-VM activation binds the native implementation before application calls. Do not
-call the module's internal `on_load` exports as an activation API. Omitting the
-component leaves the `zlib` module absent. The VM's own compressed-bytecode and
-external-term support remains a separate internal use of compression.
+Omitting the library leaves `zlib` absent. The VM's compressed-bytecode and ETF
+support uses the same runtime-owned codec without requiring this module or
+its NIF bridge. Native callers can use the [public C interface](../../c-api/zlib.md)
+without acquiring this library.
 
 ## Compress a value
 
-With the component active:
+With the library active:
 
 ```erlang
 Compressed = zlib:gzip(<<"hello, BEAM/Erlang">>),
@@ -109,10 +110,10 @@ particular, `uncompress/1` reports caught failures as `badarg`.
 Using a stream from another process requires an explicit control transfer.
 Closing releases its active compression state; resource finalization releases
 the remaining native allocation. VM termination finalizes retained resources
-before releasing the component mapping. Use explicit close for prompt cleanup
+before releasing the library mapping. Use explicit close for prompt cleanup
 during a running VM.
 
 The implementation and embedded module inventory are defined by
 [zlib.erl](../../../src/beam/zlib/zlib.erl),
 [zlib_nif.c](../../../src/beam/zlib/zlib_nif.c) and the
-[zlib component recipe](../../../src/beam/zlib/CMakeLists.txt).
+[zlib library recipe](../../../src/beam/zlib/CMakeLists.txt).

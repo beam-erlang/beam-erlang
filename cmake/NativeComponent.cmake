@@ -1,7 +1,7 @@
 # Common private compilation context for core and distribution native code.
 # Each component declares its own sources, local headers and atom-table policy.
 function(beam_configure_native_component target)
-    target_link_libraries(${target} PRIVATE beam-erlang::erts_headers)
+    target_link_libraries(${target} PRIVATE $<BUILD_INTERFACE:beam-erlang::erts_headers>)
     target_compile_definitions(${target} PRIVATE
         HAVE_CONFIG_H ${BEAM_PLATFORM_DEFINITIONS}
         STATIC_ERLANG_DRIVER

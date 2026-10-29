@@ -12,7 +12,11 @@ extern "C" {
 typedef enum beam_sdk_inventory_kind {
     BEAM_SDK_INVENTORY_BASE,
     BEAM_SDK_INVENTORY_BOOT,
-    BEAM_SDK_INVENTORY_SERVICES
+    BEAM_SDK_INVENTORY_SERVICES,
+    BEAM_SDK_INVENTORY_STARTUP,
+    BEAM_SDK_INVENTORY_HOST,
+    BEAM_SDK_INVENTORY_OUTPUT,
+    BEAM_SDK_INVENTORY_CODE
 } beam_sdk_inventory_kind;
 
 typedef struct beam_sdk_inventory {

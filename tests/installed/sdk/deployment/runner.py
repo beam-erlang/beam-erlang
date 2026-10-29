@@ -49,8 +49,8 @@ def main():
             bundle = root / ('relocated 日本 é ' + case); stage.rename(bundle)
             expected = {'bin/deployment_host', artifact_relative(sdk,'runtime')}
             if case != 'bare': expected |= set(RETURNING_ASSETS)
-            if case in ('file', 'network'): expected.add(artifact_relative(sdk,'component.'+case))
-            if case == 'zlib': expected |= {artifact_relative(sdk,'component.zlib')}
+            if case in ('file', 'network'): expected.add(artifact_relative(sdk,"library." + case + ".shared"))
+            if case == 'zlib': expected |= {artifact_relative(sdk,'library.zlib.shared')}
             if case == 'program': expected.add('libexec/beam/erl_child_setup')
             actual = {p.relative_to(bundle).as_posix() for p in bundle.rglob('*') if p.is_file()}
             assert actual == expected, (case, actual ^ expected)
@@ -65,7 +65,7 @@ def main():
             for generated in (build / 'beam-deployment').rglob('*'):
                 if generated.is_file(): assert str(sdk) not in generated.read_text()
             test_env = dict(env, DEPLOY_EXPECT_ROOT=str(bundle))
-            selected={name:artifact_relative(sdk,'component.'+name) for name in ('file','network','zlib')}
+            selected={name:artifact_relative(sdk,"library." + name + ".shared") for name in ('file','network','zlib')}
             hidden = root / 'unavailable-sdk'; sdk.rename(hidden)
             try:
                 out, err = run([host, case], work, test_env)
@@ -90,7 +90,7 @@ def main():
             if invalid.exists(): shutil.rmtree(invalid)
             run([args.cmake, '-S', source, '-B', invalid, f'-DCMAKE_PREFIX_PATH={sdk}', f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", *options], work, env, success=False)
         # Bare SDK clients do not require an optional native component to exist.
-        asset = sdk / artifact_relative(sdk,'component.network'); held = asset.with_suffix('.held'); asset.rename(held)
+        asset = sdk / artifact_relative(sdk,'library.network.shared'); held = asset.with_suffix('.held'); asset.rename(held)
         try:
             run([args.cmake, '-S', source, '-B', root / 'bare-without-network', f'-DCMAKE_PREFIX_PATH={sdk}', f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", '-DPROFILE=bare'], work, env)
             run([args.cmake, '-S', source, '-B', root / 'missing-network', f'-DCMAKE_PREFIX_PATH={sdk}', f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", '-DPROFILE=beam-returning', '-DCOMPONENTS=network'], work, env, success=False)

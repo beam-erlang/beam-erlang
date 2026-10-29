@@ -1,4 +1,5 @@
 #include <beam/beam.h>
+#include <beam/host.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,9 +34,11 @@ int main(int argc,char **argv) {
     FILE *f=fopen(argv[1],"rb"); CHECK(f); CHECK(!fseek(f,0,SEEK_END)); long size=ftell(f); CHECK(size>0);
     rewind(f); unsigned char *bytes=malloc(size); CHECK(bytes && fread(bytes,1,size,f)==(size_t)size); fclose(f);
     beam_module_spec module={"probe",{bytes,(size_t)size},argv[1]};
-    beam_nif_spec nif={sizeof(nif),"probe",argv[2]};
-    beam_composition_options spec={.struct_size=sizeof(spec),.module_count=1,.modules=&module,.nif_count=1,.nifs=&nif};
-    beam_module_spec partial_modules[2]; beam_nif_spec partial_nifs[2];
+    beam_nif_binding nif={.struct_size=sizeof(nif)};
+    beam_native_image *images[2]={0};
+    beam_native_owner owners[2]={{.struct_size=sizeof(beam_native_owner)},{.struct_size=sizeof(beam_native_owner)}};
+    beam_composition_options spec={.struct_size=sizeof(spec),.module_count=1,.modules=&module,.binding_count=1,.bindings=&nif,.native_owner_count=1,.native_owners=owners};
+    beam_module_spec partial_modules[2]; beam_nif_binding partial_nifs[2];
     unsigned char *extra=NULL;
     if(argc==6) {
         FILE *second=fopen(argv[4],"rb"); CHECK(second);
@@ -43,11 +46,11 @@ int main(int argc,char **argv) {
         extra=malloc(length); CHECK(extra && fread(extra,1,length,second)==(size_t)length); fclose(second);
         partial_modules[0]=module;
         partial_modules[1]=(beam_module_spec){"probe2",{extra,(size_t)length},argv[4]};
-        partial_nifs[0]=nif; partial_nifs[1]=(beam_nif_spec){sizeof(nif),"probe2",argv[5]};
-        spec.modules=partial_modules;spec.module_count=2;spec.nifs=partial_nifs;spec.nif_count=2;
+
+        spec.modules=partial_modules;spec.module_count=2;spec.bindings=partial_nifs;spec.binding_count=2;spec.native_owner_count=2;
     }
     if (!strcmp(argv[3], "ordinary-foreign-runtime")) {
-        spec.nif_count = 0; spec.native_admission = BEAM_NATIVE_NIFS;
+        spec.binding_count = 0; spec.native_owner_count = 0; spec.native_admission = BEAM_NATIVE_NIFS;
         CHECK(beam_composition_prepare(&spec, &composition, &error) == BEAM_OK);
         CHECK(beam_init(&system, &error) == BEAM_OK);
         size_t n = strlen(argv[2]); unsigned char *arg = malloc(n+12); CHECK(arg);
@@ -65,7 +68,12 @@ int main(int argc,char **argv) {
         beam_vm_enter(vm, &error);
         CHECK(!"Process-owned native rejection returned");
     }
-    beam_status status=beam_composition_prepare(&spec,&composition,&error);
+    beam_status status=beam_host_open_nif(argv[2],"probe",&images[0],&nif,&owners[0],&error);
+    if(status==BEAM_OK && argc==6){
+        partial_nifs[0]=nif;partial_nifs[1].struct_size=sizeof(nif);
+        status=beam_host_open_nif(argv[5],"probe2",&images[1],&partial_nifs[1],&owners[1],&error);
+    }
+    if(status==BEAM_OK)status=beam_composition_prepare(&spec,&composition,&error);
     if (!strcmp(argv[3],"foreign-runtime")) {
         CHECK(status==BEAM_INVALID_ARGUMENT && !composition);
         CHECK(!strcmp(error.message,"native library depends on another BEAM runtime image"));
@@ -81,36 +89,36 @@ int main(int argc,char **argv) {
     }
     if (!strcmp(argv[3],"prepare-failure")) { CHECK(status!=BEAM_OK && !composition); free(bytes); return 0; }
     CHECK(status==BEAM_OK); free(bytes); free(extra);
-    beam_nif_spec duplicate[]={nif,nif};
+    beam_nif_binding duplicate[]={nif,nif};
     beam_composition *invalid=NULL;
-    spec.nifs=duplicate; spec.nif_count=2;
+    spec.bindings=duplicate; spec.binding_count=2;
     /* The accepted composition owns copied bytes; inspect its inventory. */
     const beam_module_spec *copied; size_t count;
     CHECK(beam_composition_get_modules(composition,&copied,&count)==BEAM_OK);
     spec.modules=copied;
     CHECK(beam_composition_prepare(&spec,&invalid,&error)==BEAM_INVALID_ARGUMENT && !invalid);
+    for(size_t j=0;j<2;++j)beam_native_image_release(&images[j]);
     CHECK(beam_init(&system,&error)==BEAM_OK);
     const unsigned char args[]={131,106};
     for(int i=0;i<2;++i) {
         beam_vm_options options; beam_vm_options_init(&options); options.composition=composition;
         CHECK(beam_vm_init(system,&options,&vm,&error)==BEAM_OK);
-        beam_activation_info activation={.struct_size=sizeof(activation)};
-        CHECK(beam_vm_get_activation(vm,&activation)==BEAM_OK && activation.state==BEAM_ACTIVATION_PREPARED);
         CHECK(beam_vm_start(vm,&error)==BEAM_OK);
         beam_result result={0};
-        CHECK(beam_vm_call(vm,"probe","retain",(beam_bytes){args,sizeof(args)},&result)==BEAM_INVALID_STATE);
-        status=beam_vm_activate(vm,&error);
+        CHECK(beam_vm_call(vm,"probe","retain",(beam_bytes){args,sizeof(args)},&result)==BEAM_OK);
+        CHECK(result.kind == BEAM_EXCEPTION); /* Still unbound; no implicit initializer. */
+        beam_result_release(&result);
+        status=beam_vm_bind_nif(vm,"probe",&error);
+        if(status==BEAM_OK && argc==6) status=beam_vm_bind_nif(vm,"probe2",&error);
         if (!strcmp(argv[3],"activation-failure") || !strcmp(argv[3],"partial")) {
             CHECK(status!=BEAM_OK);
-            CHECK(beam_vm_get_activation(vm,&activation)==BEAM_OK && activation.state==BEAM_ACTIVATION_FAILED && activation.failure.message[0]);
             beam_vm_report report={.struct_size=sizeof(report)};
-            CHECK(beam_vm_get_report(vm,&report)==BEAM_OK && report.cause==BEAM_TERMINAL_COMPONENT_FAILURE &&
-                  !strcmp(report.component,!strcmp(argv[3],"partial") ? "probe2" : "probe") && report.failure.message[0]);
+            CHECK(beam_vm_get_report(vm,&report)==BEAM_OK && report.cause==BEAM_TERMINAL_FAILURE &&
+                  !strcmp(report.origin,!strcmp(argv[3],"partial") ? "probe2" : "probe") && report.failure.message[0]);
             CHECK(beam_vm_call(vm,"probe","retain",(beam_bytes){args,sizeof(args)},&result)!=BEAM_OK);
         }
         else {
             CHECK(status==BEAM_OK);
-            CHECK(beam_vm_get_activation(vm,&activation)==BEAM_OK && activation.state==BEAM_ACTIVATION_ACTIVE);
             CHECK(beam_vm_call(vm,"probe","packets",(beam_bytes){args,sizeof(args)},&result)==BEAM_OK);
             if(result.kind!=BEAM_RETURN) {
                 fprintf(stderr,"packet result kind=%d ETF=",result.kind);
@@ -142,7 +150,7 @@ int main(int argc,char **argv) {
         beam_vm_report final={.struct_size=sizeof(final)};
         CHECK(beam_vm_terminate_report(&vm,NULL,&final)==BEAM_OK);
         CHECK(!final.has_cleanup_error);
-        CHECK(final.cause==(!strcmp(argv[3],"success") ? BEAM_TERMINAL_NONE : BEAM_TERMINAL_COMPONENT_FAILURE));
+        CHECK(final.cause==(!strcmp(argv[3],"success") ? BEAM_TERMINAL_NONE : BEAM_TERMINAL_FAILURE));
     }
     CHECK(beam_terminate(&system)==BEAM_OK);
     puts("NATIVE_LIFETIMES_OK"); return 0;

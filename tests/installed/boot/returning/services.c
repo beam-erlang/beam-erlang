@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "support.h"
+#include "native_counts.h"
 #include <unistd.h>
 #ifdef __APPLE__
 #include <sys/resource.h>
@@ -33,7 +34,7 @@ void file_mode(const char *root, const char *fixture, const char *work)
     arguments = list_of_binaries(items, sizes, 2);
     add_program(modules, &count, fixture);
     start_system();
-    run_entry(root, "file_report", arguments, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
+    run_entry(root, "file_report", arguments, TEST_FILE, modules, count, &output, &outcome);
     {
         int lines = 0, bytes = 0;
         etf_reader cursor = read_term(outcome.term, 2);
@@ -79,7 +80,7 @@ void file_mode(const char *root, const char *fixture, const char *work)
         const unsigned char *edge_items[] = {missing_item, (const unsigned char *)full};
         size_t edge_sizes[] = {missing_size, strlen(full)};
         beam_bytes edge_args = list_of_binaries(edge_items, edge_sizes, 2);
-        run_entry(root, "file_edges", edge_args, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
+        run_entry(root, "file_edges", edge_args, TEST_FILE, modules, count, &output, &outcome);
         free((void *)edge_args.data);
 #ifdef __APPLE__
         check(!setrlimit(RLIMIT_FSIZE, &saved_limit), "restore file-size limit");
@@ -115,10 +116,10 @@ void file_mode(const char *root, const char *fixture, const char *work)
             printf("file-omitted %.*s\n", (int)text_size, text);
         }
         beam_outcome_release(&outcome);
-        run_entry(root, "file_owner_death", missing_args, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
-        check(outcome.kind == BEAM_OUTCOME_SERVICE_FAILURE, "file owner death");
-        check(strcmp(outcome.service, "file") == 0, "file owner service");
-        printf("file-owner-death %s\n", outcome.service);
+        run_entry(root, "file_owner_death", missing_args, TEST_FILE, modules, count, &output, &outcome);
+        check(outcome.kind == BEAM_OUTCOME_FAILURE, "file owner death");
+        check(strcmp(outcome.origin, "file") == 0, "file owner service");
+        printf("file-owner-death %s\n", outcome.origin);
         beam_outcome_release(&outcome);
         free((void *)missing_args.data);
     }
@@ -130,11 +131,11 @@ void file_mode(const char *root, const char *fixture, const char *work)
         beam_bytes dummy_args = list_of_binaries(dummy_items, dummy_sizes, 1);
         snprintf(rejected, sizeof(rejected), "%s/onload_rejected.beam", fixture);
         modules[count++] = module_from_file(rejected, "onload_rejected", 1);
-        run_entry(root, "ret", dummy_args, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
-        check(outcome.kind == BEAM_OUTCOME_SERVICE_FAILURE, "file activation");
-        check(strcmp(outcome.service, "onload_rejected") == 0, "file activation service");
-        check(strcmp(outcome.service, "still_loaded") != 0, "file activation committed");
-        printf("file-activation %s\n", outcome.service);
+        run_entry(root, "ret", dummy_args, TEST_FILE, modules, count, &output, &outcome);
+        check(outcome.kind == BEAM_OUTCOME_FAILURE, "file activation");
+        check(strcmp(outcome.origin, "onload_rejected") == 0, "file activation service");
+        check(strcmp(outcome.origin, "still_loaded") != 0, "file activation committed");
+        printf("file-activation %s\n", outcome.origin);
         beam_outcome_release(&outcome);
         free((void *)modules[count - 1].bytes.data);
         count--;
@@ -159,9 +160,9 @@ void echo_mode(const char *root, const char *fixture)
     int before = beam_socket_count();
     add_program(modules, &count, fixture);
     start_system();
-    run_entry(root, "echo", arguments, BEAM_SERVICE_SOCKET, modules, count, &output, &outcome);
+    run_entry(root, "echo", arguments, TEST_SOCKET, modules, count, &output, &outcome);
     if (outcome.kind != BEAM_OUTCOME_RETURN) {
-        fprintf(stderr, "echo kind %d service %s\n", (int)outcome.kind, outcome.service);
+        fprintf(stderr, "echo kind %d service %s\n", (int)outcome.kind, outcome.origin);
         if (outcome.term.data)
             fwrite(outcome.term.data, 1, outcome.term.size, stderr);
         fputc('\n', stderr);
@@ -189,11 +190,11 @@ void echo_mode(const char *root, const char *fixture)
     }
     check(beam_socket_count() == before, "socket closed");
     beam_outcome_release(&outcome);
-    run_entry(root, "echo_partial", arguments, BEAM_SERVICE_SOCKET, modules, count, &output, &outcome);
+    run_entry(root, "echo_partial", arguments, TEST_SOCKET, modules, count, &output, &outcome);
     expect_one_binary(&outcome, "echo-partial", "part");
     check(beam_socket_count() == before, "partial socket closed");
     beam_outcome_release(&outcome);
-    run_entry(root, "echo_peer", arguments, BEAM_SERVICE_SOCKET, modules, count, &output, &outcome);
+    run_entry(root, "echo_peer", arguments, TEST_SOCKET, modules, count, &output, &outcome);
     expect_one_binary(&outcome, "echo-peer", "PEER_EOF");
     check(beam_socket_count() == before, "peer socket closed");
     beam_outcome_release(&outcome);
@@ -204,19 +205,19 @@ void echo_mode(const char *root, const char *fixture)
         const unsigned char *item = (const unsigned char *)faults[i];
         size_t size = strlen(faults[i]);
         beam_bytes fault = list_of_binaries(&item, &size, 1);
-        run_entry(root, "echo_fault", fault, BEAM_SERVICE_SOCKET, modules, count, &output, &outcome);
+        run_entry(root, "echo_fault", fault, TEST_SOCKET, modules, count, &output, &outcome);
         expect_exception_tag(&outcome, reasons[i],
                              i == 5 ? "deliberate_client_failure" : NULL);
         check(beam_socket_count() == before, "fault socket cleanup");
         beam_outcome_release(&outcome);
         free((void *)fault.data);
-        run_entry(root, "echo_partial", arguments, BEAM_SERVICE_SOCKET, modules, count, &output, &outcome);
+        run_entry(root, "echo_partial", arguments, TEST_SOCKET, modules, count, &output, &outcome);
         expect_one_binary(&outcome, "echo-recovery", "part");
         check(!outcome.has_cleanup_error && beam_socket_count() == before, "fresh echo cleanup");
         beam_outcome_release(&outcome);
         printf("echo-%s recovered\n", faults[i]);
     }
-    run_entry(root, "echo_abandon", arguments, BEAM_SERVICE_SOCKET, modules, count, &output, &outcome);
+    run_entry(root, "echo_abandon", arguments, TEST_SOCKET, modules, count, &output, &outcome);
     {
         int port = 0;
         etf_reader reader = read_term(outcome.term, 0);
@@ -227,14 +228,14 @@ void echo_mode(const char *root, const char *fixture)
     }
     check(beam_socket_count() == before, "abandoned listener cleanup");
     beam_outcome_release(&outcome);
-    run_entry(root, "echo_partial", arguments, BEAM_SERVICE_SOCKET, modules, count, &output, &outcome);
+    run_entry(root, "echo_partial", arguments, TEST_SOCKET, modules, count, &output, &outcome);
     expect_one_binary(&outcome, "echo-abandoned-recovery", "part");
     check(!outcome.has_cleanup_error && beam_socket_count() == before, "fresh abandoned listener cleanup");
     beam_outcome_release(&outcome);
-    run_entry(root, "echo_owner", arguments, BEAM_SERVICE_SOCKET, modules, count, &output, &outcome);
-    check(outcome.kind == BEAM_OUTCOME_SERVICE_FAILURE, "socket owner death");
-    check(strcmp(outcome.service, "socket") == 0, "socket owner service");
-    printf("echo-owner-death %s\n", outcome.service);
+    run_entry(root, "echo_owner", arguments, TEST_SOCKET, modules, count, &output, &outcome);
+    check(outcome.kind == BEAM_OUTCOME_FAILURE, "socket owner death");
+    check(strcmp(outcome.origin, "socket") == 0, "socket owner service");
+    printf("echo-owner-death %s\n", outcome.origin);
     check(beam_socket_count() == before, "owner socket closed");
     beam_outcome_release(&outcome);
     stop_system();
@@ -285,7 +286,7 @@ void record_mode(const char *root, const char *fixture, const char *work)
     arguments = list_of_binaries(items, sizes, 1);
     add_program(modules, &count, fixture);
     start_system();
-    run_entry(root, "record_service", arguments, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
+    run_entry(root, "record_service", arguments, TEST_FILE, modules, count, &output, &outcome);
     check_record_result(&outcome);
     beam_outcome_release(&outcome);
     check(beam_file_descriptor_count() == before, "record descriptors closed");
@@ -294,7 +295,7 @@ void record_mode(const char *root, const char *fixture, const char *work)
         const unsigned char *item = (const unsigned char *)faults[i];
         size_t size = strlen(faults[i]);
         beam_bytes fault = list_of_binaries(&item, &size, 1);
-        run_entry(root, "record_fault", fault, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
+        run_entry(root, "record_fault", fault, TEST_FILE, modules, count, &output, &outcome);
         expect_exception_tag(&outcome, i ? "worker_timeout" : "worker_failed",
                              i ? NULL : "deliberate_worker_failure");
         check(beam_file_descriptor_count() == before, "failed record descriptors closed");
@@ -309,7 +310,7 @@ void record_mode(const char *root, const char *fixture, const char *work)
     file = fopen(path, "rb");
     check(file == NULL && (errno == EACCES || errno == EPERM),
           "record permission check requires an unprivileged user");
-    run_entry(root, "record_unreadable", arguments, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
+    run_entry(root, "record_unreadable", arguments, TEST_FILE, modules, count, &output, &outcome);
     expect_exception_tag(&outcome, "record_permission_denied", NULL);
     check(beam_file_descriptor_count() == before, "unreadable record descriptors closed");
     beam_outcome_release(&outcome);
@@ -320,7 +321,7 @@ void record_mode(const char *root, const char *fixture, const char *work)
           memcmp(preserved, sentinel, preserved_size) == 0, "unreadable records preserved");
     free(preserved);
     check(unlink(path) == 0, "remove sentinel");
-    run_entry(root, "record_service", arguments, BEAM_SERVICE_FILE, modules, count, &output, &outcome);
+    run_entry(root, "record_service", arguments, TEST_FILE, modules, count, &output, &outcome);
     check_record_result(&outcome);
     check(beam_file_descriptor_count() == before, "fresh record descriptors closed");
     beam_outcome_release(&outcome);
@@ -344,33 +345,33 @@ void zlib_mode(const char *root, const char *fixture)
     int before = beam_zlib_stream_count();
     add_program(modules, &count, fixture);
     start_system();
-    run_entry(root, "zlib_explicit", arguments, BEAM_SERVICE_ZLIB, modules, count, &output, &outcome);
+    run_entry(root, "zlib_explicit", arguments, TEST_ZLIB, modules, count, &output, &outcome);
     check(outcome.kind == BEAM_OUTCOME_RETURN, "zlib explicit");
     check(beam_zlib_stream_count() == before, "explicit stream closed");
     beam_outcome_release(&outcome);
-    run_entry(root, "zlib_abandon", arguments, BEAM_SERVICE_ZLIB, modules, count, &output, &outcome);
+    run_entry(root, "zlib_abandon", arguments, TEST_ZLIB, modules, count, &output, &outcome);
     check(outcome.kind == BEAM_OUTCOME_RETURN, "zlib abandon");
     check(beam_zlib_stream_count() == before, "abandoned stream closed");
     beam_outcome_release(&outcome);
-    run_entry(root, "zlib_persist", arguments, BEAM_SERVICE_ZLIB, modules, count, &output, &outcome);
+    run_entry(root, "zlib_persist", arguments, TEST_ZLIB, modules, count, &output, &outcome);
     check(outcome.kind == BEAM_OUTCOME_RETURN, "zlib persist");
     check(beam_zlib_stream_count() == before, "persistent stream closed");
     beam_outcome_release(&outcome);
-    run_entry(root, "zlib_owner", arguments, BEAM_SERVICE_ZLIB, modules, count, &output, &outcome);
-    check(outcome.kind == BEAM_OUTCOME_SERVICE_FAILURE, "zlib owner death");
-    check(strcmp(outcome.service, "zlib") == 0, "zlib owner service");
-    printf("zlib-owner-death %s\n", outcome.service);
+    run_entry(root, "zlib_owner", arguments, TEST_ZLIB, modules, count, &output, &outcome);
+    check(outcome.kind == BEAM_OUTCOME_FAILURE, "zlib owner death");
+    check(strcmp(outcome.origin, "zlib") == 0, "zlib owner service");
+    printf("zlib-owner-death %s\n", outcome.origin);
     beam_outcome_release(&outcome);
     {
         char rejected[4096];
         snprintf(rejected, sizeof(rejected), "%s/onload_rejected.beam", fixture);
         modules[count++] = module_from_file(rejected, "onload_rejected", 1);
         run_entry(root, "ret", arguments, 0, modules, count, &output, &outcome);
-        check(outcome.kind == BEAM_OUTCOME_SERVICE_FAILURE, "onload failure");
-        check(strcmp(outcome.service, "onload_rejected") == 0, "onload rolled back");
-        check(strcmp(outcome.service, "still_loaded") != 0, "onload left committed");
-        printf("onload-rollback %s\n", outcome.service);
-        printf("onload-not-committed %s\n", outcome.service);
+        check(outcome.kind == BEAM_OUTCOME_FAILURE, "onload failure");
+        check(strcmp(outcome.origin, "onload_rejected") == 0, "onload rolled back");
+        check(strcmp(outcome.origin, "still_loaded") != 0, "onload left committed");
+        printf("onload-rollback %s\n", outcome.origin);
+        printf("onload-not-committed %s\n", outcome.origin);
         beam_outcome_release(&outcome);
         free((void *)modules[count - 1].bytes.data);
     }

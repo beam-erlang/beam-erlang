@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "beam_composition_internal.h"
-#include "beam_runtime_image.h"
 #include "beam_component_build.h"
 #include "beam_platform.h"
 #include "beam_core_modules.h"
+#include "beam_embedded_dependencies.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,6 +13,70 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stdint.h>
+
+static uint32_t read_u32(const unsigned char *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) | p[3];
+}
+
+static int valid_module(const char *name, beam_bytes bytes)
+{
+    size_t offset = 12;
+    int found = 0;
+    if (!name || !*name || !bytes.data || bytes.size < 12 ||
+        memcmp(bytes.data, "FOR1", 4) || memcmp(bytes.data + 8, "BEAM", 4) ||
+        read_u32(bytes.data + 4) != bytes.size - 8)
+        return 0;
+    while (offset < bytes.size) {
+        size_t size, padded;
+        const unsigned char *chunk;
+        if (bytes.size - offset < 8)
+            return 0;
+        size = read_u32(bytes.data + offset + 4);
+        chunk = bytes.data + offset + 8;
+        if (size > bytes.size - offset - 8)
+            return 0;
+        if (!memcmp(bytes.data + offset, "AtU8", 4)) {
+            size_t length, skip = 5;
+            uint32_t count;
+            unsigned first;
+            if (found || size < 5 || !(count = read_u32(chunk)))
+                return 0;
+            first = chunk[4];
+            if (!(count & 0x80000000u)) {
+                length = first;
+            } else if (!(first & 8)) {
+                length = first >> 4;
+            } else if (!(first & 16)) {
+                if (size < 6)
+                    return 0;
+                length = ((first & 0xe0u) << 3) | chunk[5];
+                skip = 6;
+            } else {
+                size_t i, length_bytes = (first >> 5) + 2;
+                if (length_bytes > sizeof(size_t) || length_bytes > size - 5)
+                    return 0;
+                length = 0;
+                for (i = 0; i < length_bytes; ++i)
+                    length = (length << 8) | chunk[5 + i];
+                skip = 5 + length_bytes;
+            }
+            if (length > size - skip || length != strlen(name) ||
+                memcmp(chunk + skip, name, length))
+                return 0;
+            found = 1;
+        }
+        padded = (size + 3) & ~(size_t)3;
+        if (padded < size || padded > bytes.size - offset - 8)
+            return 0;
+        offset += 8 + padded;
+    }
+    return found;
+}
+
+
+const char *beam_build_id(void) { return BEAM_COMPONENT_BUILD_ID; }
 
 static beam_status fail(beam_error *error, beam_status status, const char *message)
 {
@@ -33,17 +97,13 @@ void beam_composition_release(beam_composition **out)
     composition = *out;
     *out = NULL;
     if (beam_reference_add(&composition->references, -1)) return;
-    for (size_t i = 0; i < composition->count; ++i)
-        beam_component_release(composition->components[i]);
     for (size_t i = 0; i < composition->module_count; ++i) {
         free((void *)composition->modules[i].name);
         free((void *)composition->modules[i].bytes.data);
         free((void *)composition->modules[i].origin);
     }
     for (size_t i = 0; i < composition->nif_count; ++i) {
-        if (composition->nifs[i].mapping) beam_dlclose(composition->nifs[i].mapping);
         free(composition->nifs[i].module);
-        free(composition->nifs[i].path);
     }
     for (size_t i = 0; i < composition->builtin_nif_count; ++i) {
         free((void *)composition->builtin_nifs[i].name);
@@ -55,9 +115,17 @@ void beam_composition_release(beam_composition **out)
     }
     free(composition->builtin_nifs);
     free(composition->builtin_drivers);
+    for (size_t i = 0; i < composition->embedded_dependency_count; ++i)
+        free((void *)composition->embedded_dependencies[i].name);
+    free(composition->embedded_dependencies);
     free(composition->program_helper);
     free(composition->nifs);
     free(composition->modules);
+    while (composition->native_owner_count) {
+        beam_native_owner *owner = &composition->native_owners[--composition->native_owner_count];
+        owner->release(owner->context);
+    }
+    free(composition->native_owners);
     free(composition);
 }
 
@@ -87,15 +155,7 @@ static beam_status copy_module(beam_composition *composition, const beam_module_
 {
     beam_module_spec *copy;
     const char *origin = module->origin ? module->origin : "memory";
-    if (!valid_utf8(module->name, 255) || !valid_utf8(origin, (size_t)-1))
-        return fail(error, BEAM_INVALID_ARGUMENT, "module name and origin must be nonempty UTF-8");
-    for (size_t i = 0; i < sizeof(beam_core_module_names) / sizeof(beam_core_module_names[0]); ++i)
-        if (!strcmp(module->name, beam_core_module_names[i]))
-            return fail(error, BEAM_INVALID_ARGUMENT, "composition cannot replace a core module");
-    for (size_t i = 0; i < composition->module_count; ++i)
-        if (!strcmp(module->name, composition->modules[i].name))
-            return fail(error, BEAM_INVALID_ARGUMENT, "conflicting composition module names");
-    if (!beam_component_valid_module(module->name, module->bytes))
+    if (!valid_module(module->name, module->bytes))
         return fail(error, BEAM_INVALID_BEAM, "invalid composition module bytes or identity");
     copy = &composition->modules[composition->module_count++];
     copy->name = strdup(module->name);
@@ -115,59 +175,75 @@ beam_status beam_composition_prepare(const beam_composition_options *options,
     beam_status status = BEAM_OK;
     if (error) memset(error, 0, sizeof(*error));
     if (!out || *out || !options || options->struct_size != sizeof(*options) ||
-        (options->native_admission & ~15u) ||
-        options->linked_nif_count > 1024 ||
-        (options->linked_nif_count && !options->linked_nifs) ||
+        (options->native_admission & ~31u) ||
+        options->embedded_dependency_count > 1024 ||
+        (options->embedded_dependency_count && !options->embedded_dependencies) ||
+        options->native_owner_count > 4096 ||
+        (options->native_owner_count && !options->native_owners) ||
+        options->binding_count > 1024 || (options->binding_count && !options->bindings) ||
         options->builtin_nif_count > 1024 || options->builtin_driver_count > 1024 ||
         (options->builtin_nif_count && !options->builtin_nifs) ||
         (options->builtin_driver_count && (!options->builtin_drivers ||
             !(options->native_admission & BEAM_NATIVE_DRIVERS))) ||
-        options->component_count > 3 || options->module_count > 4096 || options->nif_count > 1024 ||
-        options->activation_count > 4096 || (options->activation_count && !options->activation_modules) ||
+        options->module_count > 4096 ||
         options->preload_count > 4096 || (options->preload_count && !options->preloads) ||
-        (options->services & ~(BEAM_SERVICE_OUTPUT | BEAM_SERVICE_CODE | BEAM_SERVICE_ZLIB |
-                               BEAM_SERVICE_FILE | BEAM_SERVICE_SOCKET | BEAM_SERVICE_PROGRAM)) ||
-        (options->nif_count && !options->nifs) ||
-        (options->component_count && !options->components) ||
         (options->module_count && !options->modules))
         return fail(error, BEAM_INVALID_ARGUMENT, "invalid composition specification");
     composition = calloc(1, sizeof(*composition));
     if (!composition) return fail(error, BEAM_OUT_OF_MEMORY, "could not allocate composition");
     composition->references = 1;
+    if (options->embedded_dependency_count) {
+        static const char *const reserved[] = {
+#define BEAM_EMBEDDED_NAME(name, state) name,
+            BEAM_VM_EMBEDDED_DEPENDENCIES(BEAM_EMBEDDED_NAME)
+#undef BEAM_EMBEDDED_NAME
+        };
+        composition->embedded_dependencies = calloc(options->embedded_dependency_count,
+                                                     sizeof(beam_embedded_dependency));
+        if (!composition->embedded_dependencies) { status = BEAM_OUT_OF_MEMORY; goto failed; }
+        for (size_t i = 0; i < options->embedded_dependency_count; ++i) {
+            const beam_embedded_dependency *entry = &options->embedded_dependencies[i];
+            int valid = entry->struct_size == sizeof(*entry) && valid_utf8(entry->name, 255) &&
+                (entry->state == BEAM_EMBEDDED_INCLUDED || entry->state == BEAM_EMBEDDED_EXCLUDED);
+            if (valid) {
+                for (size_t j = 0; j < sizeof(reserved) / sizeof(*reserved); ++j)
+                    if (!strcmp(entry->name, reserved[j])) valid = 0;
+                for (size_t j = 0; j < i; ++j)
+                    if (!strcmp(entry->name, options->embedded_dependencies[j].name)) valid = 0;
+            }
+            if (!valid) {
+                status = fail(error, BEAM_INVALID_ARGUMENT, "invalid embedded dependency declaration");
+                goto failed;
+            }
+            beam_embedded_dependency *copy =
+                &composition->embedded_dependencies[composition->embedded_dependency_count++];
+            *copy = *entry;
+            copy->name = strdup(entry->name);
+            if (!copy->name) { status = BEAM_OUT_OF_MEMORY; goto failed; }
+        }
+    }
     composition->native_admission = options->native_admission;
-    for (size_t i = 0; i < options->component_count; ++i) {
-        const beam_component_spec *spec = &options->components[i];
-        if (!beam_component_kind_valid(spec->kind) ||
-            (composition->selected & (1u << spec->kind))) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, "invalid or duplicate component");
-            goto failed;
+    composition->native_owners = calloc(options->native_owner_count ? options->native_owner_count : 1,
+                                        sizeof(*composition->native_owners));
+    if (!composition->native_owners) { status = BEAM_OUT_OF_MEMORY; goto failed; }
+    for (size_t i = 0; i < options->native_owner_count; ++i) {
+        const beam_native_owner *owner = &options->native_owners[i];
+        if (owner->struct_size != sizeof(*owner) || !owner->retain || !owner->release) {
+            status = fail(error, BEAM_INVALID_ARGUMENT, "invalid native lifetime owner"); goto failed;
         }
-        status = beam_component_acquire(spec, &composition->components[composition->count], error);
-        if (status != BEAM_OK) goto failed;
-        ++composition->count;
-        composition->selected |= 1u << spec->kind;
-        if (spec->kind == BEAM_COMPONENT_FILE) composition->services |= BEAM_SERVICE_FILE;
-        if (spec->kind == BEAM_COMPONENT_NETWORK) composition->services |= BEAM_SERVICE_SOCKET;
-        if (spec->kind == BEAM_COMPONENT_ZLIB) composition->services |= BEAM_SERVICE_ZLIB;
     }
-    if ((options->services & (BEAM_SERVICE_FILE | BEAM_SERVICE_SOCKET | BEAM_SERVICE_ZLIB)) &
-        ~composition->services) {
-        status = fail(error, BEAM_INVALID_ARGUMENT, "service selection requires its native component");
-        goto failed;
+    for (size_t i = 0; i < options->native_owner_count; ++i) {
+        beam_native_owner *owner = &composition->native_owners[composition->native_owner_count++];
+        *owner = options->native_owners[i];
+        owner->retain(owner->context);
     }
-    composition->services |= options->services;
-    if (
-#ifndef _WIN32
-        (composition->services & BEAM_SERVICE_PROGRAM) ||
-#endif
-        options->program_helper) {
+    if (options->program_helper) {
         if (!valid_utf8(options->program_helper, (size_t)-1) || !beam_path_absolute(options->program_helper)) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, "program service requires an absolute helper path");
+            status = fail(error, BEAM_INVALID_ARGUMENT, "program helper requires an absolute path");
             goto failed;
         }
-        if (!(composition->services & BEAM_SERVICE_PROGRAM) &&
-            !(composition->native_admission & BEAM_NATIVE_PORTS)) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, "helper requires program or native port admission");
+        if (!(composition->native_admission & (BEAM_NATIVE_PORTS | BEAM_NATIVE_MANAGED_PORTS))) {
+            status = fail(error, BEAM_INVALID_ARGUMENT, "helper requires port admission");
             goto failed;
         }
         int helper_error = 0;
@@ -190,35 +266,37 @@ beam_status beam_composition_prepare(const beam_composition_options *options,
         }
         composition->program_helper = strdup(options->program_helper);
         if (!composition->program_helper) { status = BEAM_OUT_OF_MEMORY; goto failed; }
-    } else if (options->program_helper) {
-        status = fail(error, BEAM_INVALID_ARGUMENT, "program helper requires program selection");
-        goto failed;
     }
-    size_t total = options->module_count + options->activation_count + options->preload_count;
-    for (size_t i = 0; i < composition->count; ++i)
-        total += beam_component_data(composition->components[i])->module_count;
+    size_t total = options->module_count + options->preload_count;
+    /* Resolve name conflicts across the whole inventory before validating
+     * bytecode identities, independently of host merge order. Owners are
+     * already retained because inventory metadata can reside in native images. */
+    for (size_t i = 0; i < total; ++i) {
+        const beam_module_spec *module = i < options->preload_count
+            ? &options->preloads[i] : &options->modules[i - options->preload_count];
+        const char *origin = module->origin ? module->origin : "memory";
+        if (!valid_utf8(module->name, 255) || !valid_utf8(origin, (size_t)-1)) {
+            status = fail(error, BEAM_INVALID_ARGUMENT, "module name and origin must be nonempty UTF-8");
+            goto failed;
+        }
+        for (size_t j = 0; j < sizeof(beam_core_module_names) / sizeof(beam_core_module_names[0]); ++j)
+            if (!strcmp(module->name, beam_core_module_names[j])) {
+                status = fail(error, BEAM_INVALID_ARGUMENT, "composition cannot replace a core module");
+                goto failed;
+            }
+        for (size_t j = 0; j < i; ++j) {
+            const beam_module_spec *previous = j < options->preload_count
+                ? &options->preloads[j] : &options->modules[j - options->preload_count];
+            if (!strcmp(module->name, previous->name)) {
+                status = fail(error, BEAM_INVALID_ARGUMENT, "conflicting composition module names");
+                goto failed;
+            }
+        }
+    }
     composition->modules = calloc(total ? total : 1, sizeof(*composition->modules));
     if (!composition->modules) {
         status = fail(error, BEAM_OUT_OF_MEMORY, "could not allocate composition inventory");
         goto failed;
-    }
-    for (size_t i = 0; i < composition->count; ++i) {
-        const beam_component *component = composition->components[i];
-        const beam_component_descriptor *descriptor = beam_component_data(component);
-        for (size_t j = 0; j < descriptor->module_count; ++j) {
-            const beam_component_module *source = &descriptor->modules[j];
-            size_t size = strlen(beam_component_path(component)) + strlen(source->name) + 2;
-            char *origin = malloc(size);
-            if (!origin) {
-                status = fail(error, BEAM_OUT_OF_MEMORY, "could not copy component origin");
-                goto failed;
-            }
-            snprintf(origin, size, "%s#%s", beam_component_path(component), source->name);
-            beam_module_spec module = {source->name, {source->bytes, source->size}, origin};
-            status = copy_module(composition, &module, error);
-            free(origin);
-            if (status != BEAM_OK) goto failed;
-        }
     }
     composition->preload_count = options->preload_count;
     composition->preloads = composition->modules + composition->module_count;
@@ -231,92 +309,29 @@ beam_status beam_composition_prepare(const beam_composition_options *options,
         status = copy_module(composition, &options->modules[i], error);
         if (status != BEAM_OK) goto failed;
     }
-    if (composition->services || options->activation_count) {
-        for (size_t i = 0; i < sizeof(beam_activation_support_modules) / sizeof(beam_activation_support_modules[0]); ++i) {
-            int found = 0;
-            for (size_t j = 0; j < options->module_count; ++j)
-                if (!strcmp(options->modules[j].name, beam_activation_support_modules[i])) found = 1;
-            if (!found) {
-                char message[256];
-                snprintf(message, sizeof(message), "required ordinary activation support is missing: %s",
-                         beam_activation_support_modules[i]);
-                status = fail(error, BEAM_INVALID_ARGUMENT, message);
-                goto failed;
-            }
-        }
-    }
     if (!options->defer_modules) composition->staged_count = composition->module_count;
-    composition->activation_count = options->activation_count;
-    composition->activation_modules = composition->modules + composition->module_count;
-    for (size_t i = 0; i < options->activation_count; ++i) {
-        status = copy_module(composition, &options->activation_modules[i], error);
-        if (status != BEAM_OK) goto failed;
-    }
-    size_t selected_nifs = options->nif_count + options->linked_nif_count;
-    composition->nifs = calloc(selected_nifs ? selected_nifs : 1, sizeof(*composition->nifs));
+    composition->nifs = calloc(options->binding_count ? options->binding_count : 1, sizeof(*composition->nifs));
     if (!composition->nifs) { status = BEAM_OUT_OF_MEMORY; goto failed; }
-    for (size_t i = 0; i < options->nif_count; ++i) {
-        const beam_nif_spec *spec = &options->nifs[i];
-        beam_selected_nif *nif = &composition->nifs[composition->nif_count++];
-        int supplied = 0;
-        if (spec->struct_size != sizeof(*spec) || !valid_utf8(spec->module, 255) ||
-            !valid_utf8(spec->path, (size_t)-1) || !beam_path_absolute(spec->path)) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, "invalid NIF specification"); goto failed;
-        }
-        nif->path = beam_runtime_image_location(spec->path);
-        if (!nif->path) {
-            status = fail(error, errno == ENOMEM ? BEAM_OUT_OF_MEMORY : BEAM_RUNTIME_NOT_FOUND,
-                          "NIF image location is unavailable"); goto failed;
-        }
-        for (size_t j = 0; j < options->module_count; ++j)
-            if (!strcmp(spec->module, options->modules[j].name)) supplied = 1;
-        for (size_t j = 0; j < i; ++j)
-            if (!strcmp(spec->module, composition->nifs[j].module) ||
-                !strcmp(nif->path, composition->nifs[j].path)) supplied = 0;
-        if (!supplied) { status = fail(error, BEAM_INVALID_ARGUMENT, "NIF needs a unique ordinary module and library"); goto failed; }
-        nif->module = strdup(spec->module);
-        if (!nif->module || !nif->path) { status = BEAM_OUT_OF_MEMORY; goto failed; }
-        char inspection_error[256];
-        if (!beam_runtime_preflight(nif->path, inspection_error, sizeof(inspection_error))) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, inspection_error); goto failed;
-        }
-        nif->mapping = beam_dlopen(nif->path);
-        if (!nif->mapping) { status = fail(error, BEAM_RUNTIME_NOT_FOUND, beam_dlerror()); goto failed; }
-        if (!beam_runtime_mapping_matches(nif->mapping)) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, BEAM_RUNTIME_IMAGE_ERROR); goto failed;
-        }
-        for (size_t j = 0; j < i; ++j) {
-            if (nif->mapping == composition->nifs[j].mapping) {
-                status = fail(error, BEAM_INVALID_ARGUMENT, "native library already selected"); goto failed;
-            }
-        }
-        const char *stamp = beam_dlsym(nif->mapping, "beam_nif_sdk_v1");
-        nif->initializer = beam_dlsym(nif->mapping, "nif_init");
-        if (!stamp || strcmp(stamp, BEAM_COMPONENT_BUILD_ID) || !nif->initializer) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, "NIF SDK provenance or initializer mismatch"); goto failed;
-        }
-    }
-    for (size_t i = 0; i < options->linked_nif_count; ++i) {
-        const beam_linked_nif_spec *spec = &options->linked_nifs[i];
-        int supplied = 0;
+    for (size_t i = 0; i < options->binding_count; ++i) {
+        const beam_nif_binding *spec = &options->bindings[i];
         if (spec->struct_size != sizeof(*spec) || !valid_utf8(spec->module, 255) ||
             !spec->build_id || strcmp(spec->build_id, BEAM_COMPONENT_BUILD_ID) ||
-            !spec->initialize) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, "invalid linked NIF descriptor or SDK identity");
-            goto failed;
+            (!!spec->initialize == !!spec->native_initialize)) {
+            status = fail(error, BEAM_INVALID_ARGUMENT, "invalid native binding or SDK identity"); goto failed;
         }
+        int supplied = 0;
         for (size_t j = 0; j < options->module_count; ++j)
             if (!strcmp(spec->module, options->modules[j].name)) supplied = 1;
         for (size_t j = 0; j < composition->nif_count; ++j)
             if (!strcmp(spec->module, composition->nifs[j].module)) supplied = 0;
         if (!supplied) {
-            status = fail(error, BEAM_INVALID_ARGUMENT, "linked NIF requires a unique supplied ordinary module");
-            goto failed;
+            status = fail(error, BEAM_INVALID_ARGUMENT, "native binding requires a unique ordinary module"); goto failed;
         }
         beam_selected_nif *nif = &composition->nifs[composition->nif_count++];
         nif->module = strdup(spec->module);
         if (!nif->module) { status = BEAM_OUT_OF_MEMORY; goto failed; }
-        nif->initializer = (void *)spec->initialize;
+        nif->resident_initializer = !!spec->initialize;
+        nif->initializer = spec->initialize ? (void *)spec->initialize : (void *)spec->native_initialize;
     }
     composition->builtin_nifs = calloc(options->builtin_nif_count ? options->builtin_nif_count : 1,
                                         sizeof(*composition->builtin_nifs));
@@ -339,11 +354,6 @@ beam_status beam_composition_prepare(const beam_composition_options *options,
             if (!strcmp(spec->name, composition->builtin_nifs[j].name)) supplied = 0;
         for (size_t j = 0; j < composition->nif_count; ++j)
             if (!strcmp(spec->name, composition->nifs[j].module)) supplied = 0;
-        for (size_t j = 0; j < composition->count; ++j) {
-            const beam_component_descriptor *component = beam_component_data(composition->components[j]);
-            for (size_t k = 0; k < component->module_count; ++k)
-                if (!strcmp(spec->name, component->modules[k].name)) supplied = 0;
-        }
         if (!supplied) {
             status = fail(error, BEAM_INVALID_ARGUMENT, "built-in NIF conflicts with another native or core selection"); goto failed;
         }
@@ -394,76 +404,4 @@ beam_status beam_composition_get_modules(const beam_composition *composition,
     *modules = composition->modules;
     *count = composition->module_count;
     return BEAM_OK;
-}
-
-/* Private serializer for the fixed activation protocol. No VM terms or
- * allocator storage escape preparation/owner-thread execution. */
-typedef struct activation_buffer {
-    beam_buffer bytes;
-    size_t capacity;
-} activation_buffer;
-
-static int append(activation_buffer *b, const void *data, size_t size)
-{
-    if (size > SIZE_MAX - b->bytes.size) return 0;
-    size_t needed = b->bytes.size + size;
-    if (needed > b->capacity) {
-        size_t capacity = b->capacity ? b->capacity : 128;
-        while (capacity < needed) {
-            if (capacity > SIZE_MAX / 2) { capacity = needed; break; }
-            capacity *= 2;
-        }
-        void *grown = realloc(b->bytes.data, capacity);
-        if (!grown) return 0;
-        b->bytes.data = grown;
-        b->capacity = capacity;
-    }
-    memcpy(b->bytes.data + b->bytes.size, data, size);
-    b->bytes.size = needed;
-    return 1;
-}
-static int byte(activation_buffer *b, unsigned value)
-{
-    unsigned char c = value;
-    return append(b, &c, 1);
-}
-static int length(activation_buffer *b, size_t value)
-{
-    if (value > UINT32_MAX) return 0;
-    unsigned char bytes[] = {value >> 24, value >> 16, value >> 8, value};
-    return append(b, bytes, 4);
-}
-static int atom(activation_buffer *b, const char *name)
-{
-    size_t n = strlen(name);
-    return n <= 65535 && byte(b, 118) && byte(b, n >> 8) && byte(b, n) && append(b, name, n);
-}
-static int binary(activation_buffer *b, const void *data, size_t size)
-{
-    return byte(b, 109) && length(b, size) && append(b, data, size);
-}
-beam_status beam_composition_activation_arguments(const beam_composition *c, beam_buffer *out)
-{
-    activation_buffer b = {0};
-    if (!byte(&b, 131) || !byte(&b, 108) || !length(&b, 3) ||
-        !byte(&b, 97) || !byte(&b, c->services) ||
-        !byte(&b, 108) || !length(&b, c->activation_count)) goto failed;
-    for (size_t i = 0; i < c->activation_count; ++i) {
-        const beam_module_spec *m = &c->activation_modules[i];
-        if (!byte(&b, 104) || !byte(&b, 3) || !atom(&b, m->name) ||
-            !binary(&b, m->bytes.data, m->bytes.size) ||
-            !binary(&b, m->origin, strlen(m->origin))) goto failed;
-    }
-    if (!byte(&b, 106) || !byte(&b, 108) || !length(&b, c->module_count)) goto failed;
-    for (size_t i = 0; i < c->module_count; ++i) {
-        const beam_module_spec *m = &c->modules[i];
-        if (!byte(&b, 104) || !byte(&b, 2) || !atom(&b, m->name) ||
-            !binary(&b, m->origin, strlen(m->origin))) goto failed;
-    }
-    if (!byte(&b, 106) || !byte(&b, 106)) goto failed;
-    *out = b.bytes;
-    return BEAM_OK;
-failed:
-    free(b.bytes.data);
-    return BEAM_OUT_OF_MEMORY;
 }

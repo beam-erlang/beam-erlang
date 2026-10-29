@@ -1,5 +1,6 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(beam_socket).
+-export([start/0]).
 -export([listen/2, accept/2, connect/2, send/3, recv/3, close/2, sockname/1]).
 
 -spec listen(#{addr := {byte(), byte(), byte(), byte()}, port := non_neg_integer()},
@@ -206,4 +207,22 @@ socket_error(Reason) ->
     end,
     Domain = case Reason of timeout -> socket; closed -> socket; _ -> posix end,
     #{kind => Kind, service => socket, native => #{domain => Domain, code => Reason}}.
-selected(Name) -> erts_internal:component_ready(Name).
+selected(_Name) -> is_pid(whereis(socket_registry)).
+
+%% The actual native owner is monitored by its library, independently of entry.
+start() ->
+    ok = prim_socket:on_load(),
+    Parent = self(),
+    {Watcher, Ref} = spawn_monitor(fun() ->
+        Owner = whereis(socket_registry),
+        Monitor = monitor(process, Owner),
+        Parent ! {self(), ready},
+        receive
+            {'DOWN', Monitor, process, Owner, Reason} ->
+                erts_internal:request_failure(socket, Reason)
+        end
+    end),
+    receive
+        {Watcher, ready} -> demonitor(Ref, [flush]), ok;
+        {'DOWN', Ref, process, Watcher, Reason} -> exit(Reason)
+    end.

@@ -58,7 +58,8 @@ extra service or process and selects no OS capabilities.
 | [`beam_host`](services.md#beam_host) | `lib/beam/services` | Low-level host-request bridge for embedding protocols |
 
 The complete boot inventory also includes internal `beam_return_boot`; the
-complete services inventory also includes internal `beam_component_services`.
+aggregate services inventory also includes `beam_startup`. Independent
+`startup`, `host`, `output` and `code` inventories permit smaller selections.
 Loading either inventory alone grants no capabilities. Hosts supply and verify
 whole selected inventories; applications use the public facades above.
 

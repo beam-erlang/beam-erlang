@@ -3,10 +3,21 @@
 #define BEAM_CLI_RECIPE_H
 
 #include <beam/beam.h>
+#include <beam/boot.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum beam_cli_facility {
+    BEAM_CLI_OUTPUT=1u<<0, BEAM_CLI_CODE=1u<<1, BEAM_CLI_ZLIB=1u<<2,
+    BEAM_CLI_FILE=1u<<3, BEAM_CLI_SOCKET=1u<<4, BEAM_CLI_PROGRAM=1u<<5
+} beam_cli_facility;
+typedef struct beam_cli_nif {
+    size_t struct_size;
+    const char *module;
+    const char *path;
+} beam_cli_nif;
 
 /* Discover the installed returning-boot composition and call beam_return_prepare.
  * Base, boot and services are explicitly verified ordinary bytecode. Native
@@ -35,7 +46,7 @@ typedef struct beam_cli_recipe_return_options {
     size_t required_count;
     const char *const *required_modules;
     size_t nif_count;
-    const beam_nif_spec *nifs;
+    const beam_cli_nif *nifs;
 } beam_cli_recipe_return_options;
 
 beam_status beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,

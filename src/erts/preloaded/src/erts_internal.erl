@@ -61,7 +61,7 @@
          '@flush_monitor_messages_refopt'/0]).
 
 -export([await_result/1, gather_io_bytes/2]).
--export([host_request/1, component_ready/1, component_failed/2]).
+-export([host_request/1, request_failure/2]).
 
 
 -export([time_unit/0, perf_counter_unit/0]).
@@ -123,7 +123,7 @@
 
 -export([crasher/6]).
 
--export([prepare_loading/2, beamfile_chunk/2, beamfile_module_md5/1]).
+-export([beamfile_gunzip/1, prepare_loading/2, beamfile_chunk/2, beamfile_module_md5/1]).
 
 -export([no_aux_work_threads/0]).
 
@@ -156,8 +156,7 @@ await_port_send_result(Ref, Busy, Ok) ->
 host_request(_Request) ->
     erlang:nif_error(undefined).
 
-component_ready(_Service) -> erlang:nif_error(undefined).
-component_failed(_Service, _Reason) -> erlang:nif_error(undefined).
+request_failure(_Service, _Reason) -> erlang:nif_error(undefined).
 
 await_result(Ref) when is_reference(Ref) ->
     receive
@@ -1090,9 +1089,11 @@ crasher(Node,Mod,Fun,Args,Opts,Reason) ->
     erlang:exit(Reason).
 
 %%
-%% Actual BIF for erlang:prepare_loading/2, which decompresses the module when
-%% necessary to save us from having to do it in C code.
-%%
+%% Private gzip decoding uses the VM codec without an optional library.
+-spec beamfile_gunzip(binary()) -> binary().
+beamfile_gunzip(_Code) -> erlang:nif_error(undefined).
+
+%% Actual BIF for erlang:prepare_loading/2, after optional gzip decoding.
 -spec prepare_loading(Module, Code) -> PreparedCode | {error, Reason} when
       Module :: module(),
       Code :: binary(),

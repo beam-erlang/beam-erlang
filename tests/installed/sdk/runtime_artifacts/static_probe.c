@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <beam/beam.h>
+#include <beam/native_image.h>
 #include <beam/sdk/inventories.h>
 #include <erl_driver.h>
 #include <dlfcn.h>
@@ -36,12 +37,7 @@ int main(int argc, char **argv)
     if (chdir("/")) return 6;
     if (beam_library_path(path, sizeof(path), &required, &error) != BEAM_OK ||
         strcmp(path, executable) || required != strlen(path) + 1) return 2;
-    beam_component_spec component = {sizeof(component), BEAM_COMPONENT_FILE, "/absent-component.so"};
-    beam_composition_options options = {.struct_size = sizeof(options),
-        .component_count = 1, .components = &component};
-    beam_composition *composition = NULL;
-    if (beam_composition_prepare(&options, &composition, &error) != BEAM_UNSUPPORTED || composition)
-        return 3;
+    if (!beam_runtime_static()) return 3;
     void *native = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (!native) { fprintf(stderr, "%s\n", dlerror()); return 8; }
     ErlDrvTermData (*nil)(void) = dlsym(native, "sdk_probe_nil");

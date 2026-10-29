@@ -2,7 +2,7 @@
 #ifndef BEAM_BOOT_H
 #define BEAM_BOOT_H
 
-#include "runtime.h"
+#include "host.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,7 +18,7 @@ typedef enum beam_outcome_kind {
     BEAM_OUTCOME_EXCEPTION = 1,
     BEAM_OUTCOME_FINISH = 2,
     BEAM_OUTCOME_HALT = 3,
-    BEAM_OUTCOME_SERVICE_FAILURE = 4
+    BEAM_OUTCOME_FAILURE = 4
 } beam_outcome_kind;
 
 typedef struct beam_outcome {
@@ -27,7 +27,7 @@ typedef struct beam_outcome {
     int halt_status;
     int has_cleanup_error;
     char cleanup_error[256];
-    char service[1024];
+    char origin[1024];
     beam_buffer term;
 } beam_outcome;
 
@@ -71,9 +71,9 @@ typedef beam_input_status (*beam_input_handler)(void *context,
 typedef struct beam_return_module {
     const char *name;
     beam_bytes bytes;
-    /* Nonzero modules are activated by the controller, including reviewed
+    /* Nonzero modules use explicit host initialization, including reviewed
      * on_load. Zero modules are loaded before the entry and cannot use on_load. */
-    int service;
+    int deferred;
     /* Optional copied source label for code provenance; NULL means "memory".
      * The VM does not interpret this label as a path or acquire its contents. */
     const char *origin;
@@ -81,14 +81,12 @@ typedef struct beam_return_module {
 
 typedef struct beam_return_options {
     size_t struct_size;
-    unsigned services;
     const char *entry_module;
     const char *entry_function;
     /* Uncompressed ETF proper list, including the version byte. Empty means []. */
     beam_bytes arguments;
     size_t module_count;
     const beam_return_module *modules;
-    const char *bindir;
     beam_output_handler output;
     void *output_context;
     beam_code_handler code;
@@ -97,16 +95,9 @@ typedef struct beam_return_options {
     void *input_context;
     /* NULL selects conservative VM defaults with one normal scheduler. */
     const beam_vm_options *vm;
-    /* Complete ordinary base, boot and services inventories are required.
-     * FILE, NETWORK and ZLIB exactly match their service bits; zero native
-     * components are valid when those capabilities are unselected.
-     * Preparation retains each mapped unit and copies its module bytes without
-     * starting a VM or activating native implementations. */
-    size_t component_count;
-    const beam_component_spec *components;
-    /* Explicit dynamic NIF bindings, copied and admitted by composition. */
-    size_t nif_count;
-    const beam_nif_spec *nifs;
+    /* Optional library inputs and explicit startup policy. Returning modules
+     * are merged with this plan; library acquisition remains caller-owned. */
+    const beam_host_options *host;
 } beam_return_options;
 
 typedef struct beam_return_boot beam_return_boot;
@@ -121,12 +112,6 @@ beam_status beam_return_discard(beam_return_boot **boot);
 beam_status beam_return_run(beam_system *system, beam_return_boot **boot,
                             beam_outcome *out, beam_error *error);
 void beam_outcome_release(beam_outcome *outcome);
-
-/* Diagnostics: semantic counts of returning-boot native resources. They survive VM teardown
- * and are not cleared by the next initialization. */
-int beam_zlib_stream_count(void);
-int beam_file_descriptor_count(void);
-int beam_socket_count(void);
 
 #ifdef __cplusplus
 }

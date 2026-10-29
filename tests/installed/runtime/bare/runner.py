@@ -56,7 +56,7 @@ def main():
         generated.mkdir()
         header = ["/* Compiled acceptance fixtures; generated in the test build directory. */"]
         for name in ("bare_fixture", "bare_second", "bare_on_load", "bare_bridge",
-                     "bare_observe", "bare_io", "bare_management", "bare_scheduler_stress",
+                     "bare_observe", "bare_io", "bare_management", "bare_gzip", "bare_scheduler_stress",
                      "bare_prim_eval", "base_contract", "base_conflict", "bare_async"):
             source = args.source_dir / "fixtures" / f"{name}.erl"
             module = "beam_map" if name == "base_conflict" else name

@@ -30,6 +30,6 @@ watch(Pid) ->
     spawn(fun() ->
         Ref = monitor(process, Pid),
         receive {'DOWN', Ref, process, Pid, Reason} ->
-            erts_internal:component_failed(output, Reason)
+            erts_internal:request_failure(output, Reason)
         end
     end).

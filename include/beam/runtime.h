@@ -90,7 +90,10 @@ typedef enum beam_native_admission {
     BEAM_NATIVE_NIFS = 1u << 0,
     BEAM_NATIVE_DRIVERS = 1u << 1,
     BEAM_NATIVE_PORTS = 1u << 2,
-    BEAM_NATIVE_DISTRIBUTION = 1u << 3
+    BEAM_NATIVE_DISTRIBUTION = 1u << 3,
+    /* Built-in ports with managed shutdown, including direct child reaping.
+     * Does not authorize dynamic drivers, NIFs or distribution. */
+    BEAM_NATIVE_MANAGED_PORTS = 1u << 4
 } beam_native_admission;
 
 /* Borrow immutable embedded-core names. Pure inspection; no VM initialization. */
@@ -127,7 +130,7 @@ typedef struct beam_vm_options {
     size_t min_heap_size;
     size_t min_bin_vheap_size;
     size_t max_heap_size;
-    /* Optional immutable component preparation, retained by initialization. */
+    /* Optional immutable composition preparation, retained by initialization. */
     const beam_composition *composition;
     /* Execution ownership selects neither a framework nor native facilities. */
     beam_execution_mode execution;
@@ -237,7 +240,6 @@ typedef struct beam_buffer {
 /* Query the absolute location of the runtime image without initializing it.
  * This is libbeam.so for shared hosts and the executable for static hosts.
  * Android may return an absolute APK archive-member location (archive!/member).
- * Component and shared-NIF paths accept the same explicit Android location.
  * required receives the buffer size including NUL. NULL buffer with capacity
  * zero queries the size. An insufficient buffer returns BEAM_INVALID_ARGUMENT
  * and leaves buffer unchanged while reporting required. */
@@ -273,18 +275,18 @@ typedef struct beam_vm_state_info {
 typedef enum beam_terminal_cause {
     BEAM_TERMINAL_NONE,
     BEAM_TERMINAL_HALT,
-    BEAM_TERMINAL_COMPONENT_FAILURE,
+    BEAM_TERMINAL_FAILURE,
     BEAM_TERMINAL_HOST_REQUEST
 } beam_terminal_cause;
 
-/* Copied, VM-independent observation. Set struct_size exactly. Component is a
+/* Copied, VM-independent observation. Set struct_size exactly. Origin is a
  * UTF-8 facility/module identity, not text parsed from failure.message. Cleanup
  * diagnostics never replace the winning terminal cause or a copied call result. */
 typedef struct beam_vm_report {
     size_t struct_size;
     beam_terminal_cause cause;
     int halt_status;
-    char component[1024];
+    char origin[1024];
     beam_error failure;
     int has_cleanup_error;
     beam_error cleanup;
@@ -316,12 +318,16 @@ beam_status beam_vm_init(beam_system *system, const beam_vm_options *options,
 
 /* Start an initialized VM's workers and required Erlang helpers. Subsequent
  * calls execute Erlang; background processes can run between calls. Starting
- * an already running or stopped VM is invalid. */
+ * an already running or stopped VM is invalid. A process-owned VM keeps its
+ * root suspended: synchronous setup calls and explicit bindings may follow;
+ * process-lifetime permissions remain denied until beam_vm_enter commits. */
 beam_status beam_vm_start(beam_vm *vm, beam_error *error);
 
 /* Enter a process-owned VM through the same initialization and worker-start
- * mechanisms. The supplied root is the initial system process, held suspended
- * until selected components are ready. Returned validation/activation failures
+ * mechanisms, or commit an already started process-owned VM after synchronous
+ * setup and all explicit bindings. Asynchronous call/pump APIs are excluded.
+ * The supplied root is the initial system process, held suspended until commit.
+ * Returned validation/binding failures
  * retain the VM handle for inspection and termination. After the root is
  * admitted, process ownership is irrevocable and this operation never returns.
  * Halt exits the process; root failure retains fatal system-process semantics.
@@ -449,39 +455,6 @@ beam_status beam_vm_wake(beam_vm *vm);
 beam_status beam_vm_stop(beam_vm *vm, int *halt_status);
 void beam_result_release(beam_result *result);
 
-typedef enum beam_service {
-    BEAM_SERVICE_OUTPUT = 1u << 0,
-    BEAM_SERVICE_CODE = 1u << 1,
-    BEAM_SERVICE_ZLIB = 1u << 2,
-    BEAM_SERVICE_FILE = 1u << 3,
-    BEAM_SERVICE_SOCKET = 1u << 4,
-    BEAM_SERVICE_PROGRAM = 1u << 5
-} beam_service;
-
-/* Fixed matching-build runtime units, not a third-party extension ABI. */
-typedef enum beam_component_kind {
-    BEAM_COMPONENT_FILE = 1,
-    BEAM_COMPONENT_NETWORK = 2,
-    BEAM_COMPONENT_ZLIB = 4
-} beam_component_kind;
-
-typedef struct beam_component_spec {
-    size_t struct_size;
-    beam_component_kind kind;
-    const char *path;
-} beam_component_spec;
-
-/* A selected external NIF. Paths are absolute UTF-8; the matching SDK stamp
- * and initializer are validated before activation. Load information is undefined. */
-/* Explicit matching-SDK binding to a supplied ordinary module. Preparation
- * copies both strings and retains the mapping through VM reclamation. Native
- * constructors may execute while mapping; load callbacks wait for activation. */
-typedef struct beam_nif_spec {
-    size_t struct_size;
-    const char *module;
-    const char *path;
-} beam_nif_spec;
-
 /* Already-linked native implementations. Initializers and returned tables must
  * remain resident until VM termination. Preparation copies descriptors and
  * strings but never calls initializers. They run at VM native-registry init;
@@ -489,6 +462,24 @@ typedef struct beam_nif_spec {
  * defines enif_entry_t and erl_drv_entry; no VM-private types are exposed. */
 struct enif_entry_t;
 struct erl_drv_entry;
+/* Preparation retains owners before using native pointers. Final release
+ * follows all VM native reclamation, including failed initialization. Callbacks
+ * must not reenter the VM; their code/context must survive final release. */
+typedef struct beam_native_owner {
+    size_t struct_size;
+    void *context;
+    void (*retain)(void *context);
+    void (*release)(void *context);
+} beam_native_owner;
+
+/* The platform entry ABI differs from a normalized resident accessor on
+ * Windows. The VM supplies the platform native callback table. */
+#if defined(_WIN32)
+struct beam_nif_callbacks;
+typedef struct enif_entry_t *(*beam_native_nif_initializer)(struct beam_nif_callbacks *);
+#else
+typedef struct enif_entry_t *(*beam_native_nif_initializer)(void);
+#endif
 typedef struct beam_builtin_nif {
     size_t struct_size;
     const char *name;
@@ -496,16 +487,15 @@ typedef struct beam_builtin_nif {
     struct enif_entry_t *(*initialize)(void);
     int taint;
 } beam_builtin_nif;
-/* Explicit ordinary-module activation, separate from the built-in registry.
- * Preparation copies strings without invoking initialize. The linked image
- * must remain resident through VM termination. Activation invokes initialize
- * and the NIF load callback with undefined load information. */
-typedef struct beam_linked_nif_spec {
+/* Explicit bindings supplied after acquisition. Exactly one initializer is
+ * required. Registration grants no ordinary dynamic loading permission. */
+typedef struct beam_nif_binding {
     size_t struct_size;
     const char *module;
     const char *build_id;
     struct enif_entry_t *(*initialize)(void);
-} beam_linked_nif_spec;
+    beam_native_nif_initializer native_initialize;
+} beam_nif_binding;
 
 typedef struct beam_builtin_driver {
     size_t struct_size;
@@ -515,109 +505,69 @@ typedef struct beam_builtin_driver {
     int taint;
 } beam_builtin_driver;
 
-/* A framework-neutral native composition. Service requests and activation
- * modules require ordinary beam_component_services, beam_host, beam_output
- * and beam_code inputs. Merely supplying these modules grants no facilities.
- * Modules and native configuration are copied; mappings remain retained. */
+/* Supplemental product build facts for system_info(embedded_3pps). These do not
+ * load code or grant native permissions. VM-owned names cannot be overridden. */
+typedef enum beam_embedded_dependency_state {
+    BEAM_EMBEDDED_INCLUDED = 0,
+    BEAM_EMBEDDED_EXCLUDED = 1
+} beam_embedded_dependency_state;
+
+typedef struct beam_embedded_dependency {
+    size_t struct_size;
+    const char *name;
+    beam_embedded_dependency_state state;
+} beam_embedded_dependency;
+
+/* Immutable VM inputs. Preparation copies module bytes, names and origins,
+ * validates conflicts, and retains native owners before storing pointers.
+ * No library acquisition or Erlang/native load initialization takes place. */
 typedef struct beam_composition_options {
     size_t struct_size;
-    size_t component_count;
-    const beam_component_spec *components;
-    /* Ordinary application and support modules. Preparation copies names, bytes and
-     * origins and rejects conflicts with selected components or core code.
-     * Initialization performs full code validation; on_load is not admitted. */
+    /* Initialization loads ordinary code and rejects on_load. */
     size_t module_count;
     const beam_module_spec *modules;
-    /* Keep ordinary application modules in the copied inventory without loading
-     * them during VM initialization. The host explicitly loads their bytes;
-     * explicitly selected native component code is still staged automatically.
-     * Deferred service support must be loaded before beam_vm_activate. */
+    /* Copy ordinary code without loading it at initialization. The host may
+     * load these bytes explicitly before or after start. */
     int defer_modules;
-    size_t nif_count;
-    const beam_nif_spec *nifs;
-    /* Additional host-backed facilities. Native bits require their components;
-     * selected native components also imply their corresponding service bits. */
-    unsigned services;
-    /* Exact absolute UTF-8 executable path, required for PROGRAM on Unix.
-     * Windows starts programs natively and requires no external helper.
-     * If supplied, copied and validated at preparation. */
+    /* Absolute executable helper path, independent of supplied modules.
+     * Requires PORTS or MANAGED_PORTS admission. Copied and validated. */
     const char *program_helper;
-    /* Explicit reviewed modules activated after native facilities and before
-     * entry admission. on_load is allowed here only, with failure rollback. */
-    size_t activation_count;
-    const beam_module_spec *activation_modules;
-    /* Ordinary native loading and distribution are process-lifetime facilities.
-     * VM initialization rejects these permissions in host-controlled execution.
-     * PORTS permits a copied program_helper without BEAM service components. */
+    /* Ordinary native permissions require process ownership and take effect
+     * at entry commit. MANAGED_PORTS permits returning program execution. */
     unsigned native_admission;
-    /* Explicit additional preloaded code, copied and always staged before
-     * execution, even when ordinary modules are deferred. Names are reported
-     * by erlang:pre_loaded() for this VM's lifetime (including framework
-     * restarts). Core/component/ordinary-name conflicts and on_load are
-     * rejected. This grants no native permissions. Sticky-code policy belongs
-     * to the framework; the nine mandatory core modules remain unchanged. */
+    /* Additional preloads always load at initialization and survive framework
+     * restarts. Core and ordinary module conflicts and on_load are rejected. */
     size_t preload_count;
     const beam_module_spec *preloads;
-    /* Fixed for this VM lifetime, including restarts. Explicit built-in NIFs
-     * do not authorize unrelated dynamic loading. Drivers require process-owned
-     * native driver admission. No hot registration is supported. */
+    /* Resident tables are obtained during VM initialization. NIF load callbacks
+     * run only when the owning module calls erlang:load_nif/2. Executable code
+     * without an owner must remain resident until VM termination. */
     size_t builtin_nif_count;
     const beam_builtin_nif *builtin_nifs;
     size_t builtin_driver_count;
     const beam_builtin_driver *builtin_drivers;
-    size_t linked_nif_count;
-    const beam_linked_nif_spec *linked_nifs;
+    size_t binding_count;
+    const beam_nif_binding *bindings;
+    size_t native_owner_count;
+    const beam_native_owner *native_owners;
+    /* At most 1024 unique nonempty UTF-8 names, each at most 255 characters.
+     * Preparation copies entries without creating atoms. Facts survive restart
+     * and remain fixed until the VM releases its retained preparation. */
+    size_t embedded_dependency_count;
+    const beam_embedded_dependency *embedded_dependencies;
 } beam_composition_options;
-
-typedef enum beam_component_state {
-    BEAM_COMPONENT_ABSENT,
-    BEAM_COMPONENT_PREPARED,
-    BEAM_COMPONENT_ACTIVE,
-    BEAM_COMPONENT_FAILED,
-    BEAM_COMPONENT_STOPPED
-} beam_component_state;
-
-typedef struct beam_component_info {
-    size_t struct_size;
-    beam_component_state state;
-    beam_error failure;
-} beam_component_info;
 
 beam_status beam_composition_prepare(const beam_composition_options *options,
                                      beam_composition **out, beam_error *error);
 void beam_composition_release(beam_composition **composition);
-/* Borrow the immutable initial code inventory, including explicitly selected component
- * modules. Valid until this preparation is released. This is not a live
+/* Borrow the immutable initial code inventory. Valid until this preparation is released. This is not a live
  * VM code snapshot and excludes the nine mandatory core modules. */
 beam_status beam_composition_get_modules(const beam_composition *composition,
                                          const beam_module_spec **modules, size_t *count);
-/* Activate all selected facilities after start, before application calls.
- * A failed activation stops the VM; terminate it before retrying. */
-beam_status beam_vm_activate(beam_vm *vm, beam_error *error);
-beam_status beam_vm_get_component(beam_vm *vm, beam_component_kind kind,
-                                  beam_component_info *out);
-
-typedef enum beam_activation_state {
-    BEAM_ACTIVATION_ABSENT,
-    BEAM_ACTIVATION_PREPARED,
-    BEAM_ACTIVATION_ACTIVE,
-    BEAM_ACTIVATION_FAILED,
-    BEAM_ACTIVATION_STOPPED
-} beam_activation_state;
-
-typedef struct beam_activation_info {
-    size_t struct_size;
-    beam_activation_state state;
-    beam_error failure;
-} beam_activation_info;
-
-/* Observe aggregate activation without executing Erlang or joining workers.
- * No requested services, activation modules or NIFs means ABSENT, even if
- * support bytecode is supplied. FAILED retains its copied diagnostic after
- * stop; other requested work becomes STOPPED on shutdown. Exact facility or
- * module identity is available in beam_vm_get_report. Owner-thread only;
- * struct_size must match and output remains unchanged on error. */
-beam_status beam_vm_get_activation(beam_vm *vm, beam_activation_info *out);
+/* Bind one predeclared explicit native implementation. Success is idempotent
+ * within this VM, and supplies undefined load information. Validation errors
+ * change nothing; a native initialization failure stops the VM. */
+beam_status beam_vm_bind_nif(beam_vm *vm, const char *module, beam_error *error);
 
 #ifdef __cplusplus
 }

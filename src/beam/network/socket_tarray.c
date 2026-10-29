@@ -26,9 +26,7 @@
  *
  */
 
-#ifdef HAVE_CONFIG_H
-#    include "config.h"
-#endif
+#include "beam_library_platform.h"
 
 #ifdef ESOCK_ENABLE
 
@@ -37,7 +35,6 @@
 #include <erl_nif.h>
 
 #include "socket_int.h"
-#include <sys.h>
 #include "socket_util.h"
 #include "socket_tarray.h"
 

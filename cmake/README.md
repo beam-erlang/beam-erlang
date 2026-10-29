@@ -65,6 +65,11 @@ Core and base bytecode are also verified deterministically by mandatory
 The test suite does not repeat those successful build compilations; its compiler
 checks exercise independent integrity rejection and source/seed correspondence.
 
+The public in-memory zlib interface and VM internals use one runtime-owned
+codec. Optional zlib libraries contain only ordinary module bytes and their NIF
+bridge. Native consumers use `<beam/zlib.h>` from the selected SDK; they do not
+include the private vendor header or compile another project codec.
+
 ## Reviewed artifact refresh
 
 Refresh targets write reviewable candidates beneath the selected build directory.

@@ -2585,12 +2585,10 @@ bare_stop_step(void *unused)
             break;
         {
             extern void erts_bare_release_persistent_nif_resources(void);
-            extern void erts_components_capture_cleanup(void);
             /* Schedulers are still alive, so resource destructors queued here
              * run in the aux drain below. Persistent-term headers are unlinked
              * first; later literal release must not free them again. */
             erts_bare_release_persistent_nif_resources();
-            erts_components_capture_cleanup();
         }
         erts_atomic32_set_relb(&bare_drain_remaining, erts_no_aux_work_threads);
         erts_schedule_multi_misc_aux_work(0, 0, erts_no_aux_work_threads - 1,

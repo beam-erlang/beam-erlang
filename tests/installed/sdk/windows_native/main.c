@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <beam/beam.h>
+#include <beam/host.h>
 #include <beam/sdk/inventories.h>
 #include <windows.h>
 #include <tlhelp32.h>
@@ -178,15 +179,18 @@ int wmain(int argc, wchar_t **argv)
         CHECK(!fclose(file));
     }
     CHECK(beam_bytecode_verify(beam_sdk_inventory_get(BEAM_SDK_INVENTORY_SERVICES)->bytecode,modules+1,4,&error) == BEAM_OK);
-    beam_nif_spec nif = {sizeof(nif),"pkg_acceptance",native};
+    beam_nif_binding nif={.struct_size=sizeof(nif)};
+    beam_native_owner owner={.struct_size=sizeof(owner)};beam_native_image *image=NULL;
     beam_composition_options preparation = {.struct_size=sizeof(preparation),.module_count=5,.modules=modules,
-        .services=BEAM_SERVICE_PROGRAM};
+        .native_admission=BEAM_NATIVE_MANAGED_PORTS};
 #ifdef BUILTIN_HEADER
     preparation.builtin_nif_count = 1; preparation.builtin_nifs = BUILTIN_REGISTRATION();
 #else
-    preparation.nif_count = 1; preparation.nifs = &nif;
+    CHECK(beam_host_open_nif(native,"pkg_acceptance",&image,&nif,&owner,&error)==BEAM_OK);
+    preparation.binding_count=1;preparation.bindings=&nif;preparation.native_owner_count=1;preparation.native_owners=&owner;
 #endif
     CHECK(beam_composition_prepare(&preparation,&composition,&error) == BEAM_OK);
+    beam_native_image_release(&image);
     beam_builtin_nif broken = {sizeof(broken),"pkg_acceptance",beam_build_id(),failed_initializer,0};
     beam_composition_options rejected = {.struct_size=sizeof(rejected),.module_count=1,.modules=&module,
         .builtin_nif_count=1,.builtin_nifs=&broken};
@@ -226,7 +230,9 @@ int wmain(int argc, wchar_t **argv)
         options.composition = composition;
         CHECK(beam_vm_init(system,&options,&vm,&error) == BEAM_OK);
         CHECK(beam_vm_start(vm,&error) == BEAM_OK);
-        CHECK(beam_vm_activate(vm,&error) == BEAM_OK);
+#ifndef BUILTIN_HEADER
+        CHECK(beam_vm_bind_nif(vm,"pkg_acceptance",&error) == BEAM_OK);
+#endif
 #ifdef BUILTIN_HEADER
         const unsigned char load[] = {131,108,0,0,0,1,107,0,7,'b','u','i','l','t','i','n',106};
         CHECK(beam_vm_call(vm,"pkg_acceptance","load",(beam_bytes){load,sizeof(load)},&result) == BEAM_OK);

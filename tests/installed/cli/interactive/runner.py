@@ -298,7 +298,7 @@ def missing_assets(prefix, fixture, work, env):
     root = prefix / "lib/beam/runtime/beam"
     assets = [root / "cli", root / "interactive",
               prefix / "libexec/beam/erl_child_setup",
-               *(artifact(prefix, "component." + unit) for unit in ("file", "network", "zlib"))]
+               *(artifact(prefix, "library." + unit + ".shared") for unit in ("file", "network", "zlib"))]
     assets.extend(prefix / relative for relative in RETURNING_ASSETS)
     assets.extend(root.joinpath("interactive/ebin").glob("*.beam"))
     assets.extend(path for path in root.joinpath("cli/ebin").glob("*.beam") if path.stem not in {"lists", "maps"})

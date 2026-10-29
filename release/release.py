@@ -278,7 +278,7 @@ def stage_runtime_notices(notices):
     shutil.copytree(ROOT / 'LICENSES', notices / 'LICENSES')
     for relative in ['emulator/asmjit/LICENSE.md', 'emulator/ryu/LICENSE-Apache2',
                      'emulator/ryu/LICENSE-Boost', 'emulator/ryu/xcharconv_ryu.h.sha.license',
-                     'emulator/pcre/LICENCE', 'emulator/zstd/LICENSE', 'emulator/zstd/COPYING']:
+                     'emulator/pcre/LICENCE']:
         target = notices / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'src/erts' / relative, target)

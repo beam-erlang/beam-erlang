@@ -4,11 +4,23 @@
 #include <stdlib.h>
 #include "packet_probe.h"
 static ErlNifResourceType *resource;
+#ifdef STATIC_ERLANG_NIF
+int probe_report_cleanup, probe_reclaimed;
+#endif
 static void event(char c) {
     const char *path = getenv("NIF_ACCEPTANCE_LOG");
     if (path) { FILE *f=fopen(path,"a"); if (!f) abort(); fputc(c,f); fclose(f); }
 }
-static void destroy(ErlNifEnv *env, void *value) { (void)env; (void)value; event('D'); }
+static void destroy(ErlNifEnv *env, void *value) {
+    (void)env; (void)value; event('D');
+#ifdef STATIC_ERLANG_NIF
+    if (probe_report_cleanup) {
+        if (!beam_native_stop_requested()) abort();
+        beam_native_report_cleanup(41, "injected destructor diagnostic");
+        probe_reclaimed = 1;
+    }
+#endif
+}
 static int load(ErlNifEnv *env, void **private, ERL_NIF_TERM info) {
     if (!enif_is_identical(info,enif_make_atom(env,"undefined"))) return 1;
 #ifdef FAIL_LOAD
@@ -19,7 +31,16 @@ static int load(ErlNifEnv *env, void **private, ERL_NIF_TERM info) {
     if (!resource) { enif_free(*private); return 1; }
     event('L'); return 0;
 }
-static void unload(ErlNifEnv *env, void *private) { (void)env; enif_free(private); event('U'); }
+static void unload(ErlNifEnv *env, void *private) {
+    (void)env; enif_free(private); event('U');
+#ifdef STATIC_ERLANG_NIF
+    if (probe_report_cleanup) {
+        if (probe_reclaimed != 1 || !beam_native_stop_requested()) abort();
+        beam_native_report_cleanup(42, "later unload diagnostic");
+        probe_reclaimed = 2;
+    }
+#endif
+}
 static ERL_NIF_TERM hold(ErlNifEnv *env,int n,const ERL_NIF_TERM a[]) {
     (void)n; (void)a;
     ErlNifPid self, copied;

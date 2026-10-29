@@ -28,8 +28,8 @@
 #ifndef PRIM_SOCKET_INT_H__
 #define PRIM_SOCKET_INT_H__
 
+#include "beam_library_platform.h"
 #include <erl_nif.h>
-#include <sys.h>
 
 #include "socket_int.h"
 #include "socket_dbg.h"

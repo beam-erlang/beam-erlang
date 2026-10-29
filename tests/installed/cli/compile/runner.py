@@ -38,7 +38,7 @@ def inactive_and_help(prefix, work):
     assets = [prefix / "lib/beam/runtime", prefix / "lib/beam/tools/compiler", prefix / "lib/beam/ebin",
               prefix / "libexec/beam",
                        *(prefix / "lib/beam" / inventory for inventory in ("library", "boot", "services")),
-              *(artifact(prefix, "component." + unit)
+              *(artifact(prefix, "library." + unit + ".shared")
                 for unit in ("file", "network", "zlib"))]
     with hidden_paths(assets):
         for runtime in ("beam",):

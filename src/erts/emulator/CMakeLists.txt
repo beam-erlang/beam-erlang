@@ -96,17 +96,17 @@ target_sources(beam_emulator PRIVATE
     ${CMAKE_SOURCE_DIR}/src/beam.c
     ${CMAKE_SOURCE_DIR}/src/beam_memory.c
     ${CMAKE_SOURCE_DIR}/src/beam_native.c
+    ${CMAKE_SOURCE_DIR}/src/beam_zlib.c
     ${CMAKE_SOURCE_DIR}/src/beam_packet.c
-    ${CMAKE_SOURCE_DIR}/src/beam_services.c
+    ${CMAKE_SOURCE_DIR}/src/beam_runtime_state.c
     ${CMAKE_SOURCE_DIR}/src/beam_composition.c
-    ${CMAKE_SOURCE_DIR}/src/beam_component.c
 )
 if(MSVC)
     set_source_files_properties(
-        "${CMAKE_SOURCE_DIR}/src/beam.c" "${CMAKE_SOURCE_DIR}/src/beam_services.c"
+        "${CMAKE_SOURCE_DIR}/src/beam.c" "${CMAKE_SOURCE_DIR}/src/beam_runtime_state.c"
         PROPERTIES COMPILE_OPTIONS /experimental:c11atomics)
 endif()
-target_include_directories(beam_emulator PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(beam_emulator PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
 erts_add_emulator_third_party_libraries()
 erts_add_ethread_library()
 
@@ -126,7 +126,7 @@ function(beam_link_runtime TARGET)
 endfunction()
 
 # libbeam.so is the VM. beam is a thin executable that calls it.
-add_library(libbeam SHARED $<TARGET_OBJECTS:beam_return_helper>
+add_library(libbeam SHARED
     ${CMAKE_SOURCE_DIR}/src/beam_runtime_image.c
     ${CMAKE_SOURCE_DIR}/src/beam_elf_image.c)
 add_library(BEAM::Runtime ALIAS libbeam)
@@ -157,7 +157,7 @@ add_library(libbeam_static STATIC
     ${CMAKE_SOURCE_DIR}/src/beam_elf_image.c)
 target_compile_definitions(libbeam_static PRIVATE BEAM_STATIC_RUNTIME=1)
 foreach(_objects IN ITEMS beam_emulator beam_core_preload beam_core_shared_data_native
-        beam_return_helper ryu pcre zlib ethread)
+        ryu pcre zlib ethread)
     target_sources(libbeam_static PRIVATE $<TARGET_OBJECTS:${_objects}>)
 endforeach()
 set(_static_name beam)

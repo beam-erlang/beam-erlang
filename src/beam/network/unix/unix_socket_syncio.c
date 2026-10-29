@@ -30,9 +30,7 @@
  *
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include "beam_library_platform.h"
 
 #ifdef ESOCK_ENABLE
 
@@ -60,7 +58,6 @@
 #ifndef WANT_NONBLOCKING
 #define WANT_NONBLOCKING
 #endif
-#include "sys.h"
 
 #ifdef HAVE_SYS_SOCKIO_H
 #include <sys/sockio.h>

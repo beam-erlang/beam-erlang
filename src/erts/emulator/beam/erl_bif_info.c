@@ -62,6 +62,7 @@
 #include "erl_debugger.h"
 #include "erl_record.h"
 #include "beam_internal.h"
+#include "beam_embedded_dependencies.h"
 
 #ifdef ERTS_ENABLE_LOCK_COUNT
 #include "erl_lock_count.h"
@@ -3567,70 +3568,34 @@ BIF_RETTYPE system_info_1(BIF_ALIST_1)
         res = erts_bld_sint64(&hp, NULL, (Sint64) erts_halt_flush_timeout);
         BIF_RET(res);
     } else if (ERTS_IS_ATOM_STR("embedded_3pps", BIF_ARG_1)) {
-        Uint xtra;
-        Eterm res, *hp;
-        Eterm included = NIL, excluded = NIL;
-        Eterm ks[2], vs[2];
+        Eterm included = NIL, excluded = NIL, ks[2], vs[2];
         ErtsHeapFactory hfact;
-        ERTS_DECL_AM(included);
-        ERTS_DECL_AM(excluded);
-        ERTS_DECL_AM(asmjit);
-        ERTS_DECL_AM(pcre2);
-        ERTS_DECL_AM(ryu);
-        ERTS_DECL_AM(STL);
-        ERTS_DECL_AM(zstd);
-        ERTS_DECL_AM(zlib);
-
+        const beam_embedded_dependency *supplements;
+        size_t count = erts_vm_embedded_dependencies(&supplements);
+#define BEAM_EMBEDDED_ENTRY(name, state) {sizeof(beam_embedded_dependency), name, state},
+        static const beam_embedded_dependency core[] = {
+            BEAM_VM_EMBEDDED_DEPENDENCIES(BEAM_EMBEDDED_ENTRY)
+        };
+#undef BEAM_EMBEDDED_ENTRY
         erts_factory_proc_init(&hfact, BIF_P);
-
-        xtra = 2*8 /* cons-cells */ + MAP_HEADER_FLATMAP_SZ + 2 /* map size */;
-
-        hp = erts_produce_heap(&hfact, 2, xtra);
-#ifdef ERTS_USE_BUILTIN_ZLIB
-        included = CONS(hp, AM_zlib, included);
-#else
-        excluded = CONS(hp, AM_zlib, excluded);
-#endif
-        xtra -= 2;
-
-        hp = erts_produce_heap(&hfact, 2, xtra);
-#ifdef ERTS_USE_BUILTIN_ZSTD
-        included = CONS(hp, AM_zstd, included);
-#else
-        excluded = CONS(hp, AM_zstd, excluded);
-#endif
-        xtra -= 2;
-
-        hp = erts_produce_heap(&hfact, 4, xtra);
-#ifdef ERTS_USE_BUILTIN_RYU
-        included = CONS(hp, AM_STL, included);
-        included = CONS(hp+2, AM_ryu, included);
-#else
-        excluded = CONS(hp, AM_STL, excluded);
-        excluded = CONS(hp+2, AM_ryu, excluded);
-#endif
-        xtra -= 4;
-
-        hp = erts_produce_heap(&hfact, 2, xtra);
-        included = CONS(hp, AM_pcre2, included);
-        xtra -= 2;
-
-        hp = erts_produce_heap(&hfact, 2, xtra);
-#ifdef BEAMASM
-        included = CONS(hp, AM_asmjit, included);
-#else
-        excluded = CONS(hp, AM_asmjit, excluded);
-#endif
-        xtra -= 2;
-
-        ks[0] = AM_included;
-        vs[0] = included;
-
-        ks[1] = AM_excluded;
-        vs[1] = excluded;
-
-        res = erts_map_from_ks_and_vs(&hfact, ks, vs, 2);
-
+        /* Cons in reverse so each inventory retains its declaration order. */
+        for (int group = 0; group < 2; ++group) {
+            const beam_embedded_dependency *entries = group ? core : supplements;
+            size_t length = group ? sizeof(core) / sizeof(*core) : count;
+            while (length) {
+                const beam_embedded_dependency *entry = &entries[--length];
+                Eterm name = erts_atom_put((const byte *)entry->name, strlen(entry->name),
+                                           ERTS_ATOM_ENC_UTF8, 1);
+                Eterm *hp = erts_produce_heap(&hfact, 2, 0);
+                if (entry->state == BEAM_EMBEDDED_INCLUDED)
+                    included = CONS(hp, name, included);
+                else
+                    excluded = CONS(hp, name, excluded);
+            }
+        }
+        ks[0] = am_atom_put("included", 8); vs[0] = included;
+        ks[1] = am_atom_put("excluded", 8); vs[1] = excluded;
+        Eterm res = erts_map_from_ks_and_vs(&hfact, ks, vs, 2);
         erts_factory_close(&hfact);
 
         BIF_RET(res);

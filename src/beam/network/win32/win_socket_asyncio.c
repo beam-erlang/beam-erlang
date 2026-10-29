@@ -81,9 +81,7 @@
  */
 
 
-#ifdef HAVE_CONFIG_H
-#    include "config.h"
-#endif
+#include "beam_library_platform.h"
 
 #ifdef ESOCK_ENABLE
 
@@ -94,7 +92,6 @@
 #include <mswsock.h>
 #include <stdio.h>
 
-#include <sys.h>
 
 #include "socket_int.h"
 #include "socket_io.h"

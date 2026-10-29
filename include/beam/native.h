@@ -7,6 +7,19 @@ extern "C" {
 #endif
 
 /* Experimental shared mechanisms for native SDK consumers. */
+/* Valid from native callbacks throughout the current VM lifetime, including
+ * quiescent destruction. Querying never pumps or reenters the VM. */
+int beam_native_stop_requested(void);
+/* Copy the first cleanup diagnostic without replacing the terminal outcome.
+ * Thread-safe within native callbacks; message must be NUL-terminated and is
+ * truncated to the report capacity. This does not request shutdown. */
+void beam_native_report_cleanup(int native_code, const char *message);
+/* Request coordinated VM shutdown from a native worker or monitor. Copies
+ * bounded diagnostics; first terminal cause wins. Does not invoke or wait for
+ * an owner-thread callback. Valid only while the calling native code belongs
+ * to the active VM, including its quiescent destruction. */
+void beam_native_request_failure(const char *origin, const char *reason);
+
 typedef enum beam_native_trace_backend {
     BEAM_NATIVE_TRACE_NONE = 0,
     BEAM_NATIVE_TRACE_DTRACE = 1,

@@ -118,7 +118,7 @@ main(["retain_sleep", Path, Ending]) ->
 main(["retain_unused_program", Path, Ending]) ->
     retain(Path, Ending, false);
 main(["kill_output"]) ->
-    exit(whereis(beam_service_output), kill),
+    exit(whereis(beam_output_server), kill),
     receive after 3000 -> error(owner_death_not_observed) end;
 main(["kill_io_leader"]) ->
     exit(group_leader(), kill),

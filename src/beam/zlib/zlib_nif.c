@@ -22,13 +22,12 @@
  */
 
 
+#include "beam_library_platform.h"
 #include <stdio.h>
 
-#include "erl_zlib.h"
+#include <beam/zlib.h>
 
 #include "erl_nif.h"
-#include "config.h"
-#include "sys.h"
 
 #ifdef VALGRIND
 #  include <valgrind/memcheck.h>
@@ -54,7 +53,6 @@ static ERL_NIF_TERM am_error;
 static ERL_NIF_TERM am_continue;
 static ERL_NIF_TERM am_finished;
 
-static ERL_NIF_TERM am_not_supported;
 static ERL_NIF_TERM am_need_dictionary;
 
 static ERL_NIF_TERM am_empty;
@@ -89,15 +87,15 @@ typedef enum {
 } zlib_eos_behavior_t;
 
 typedef struct {
-    z_stream s;
+    beam_zlib_stream s;
     zlib_state_t state;
 
     zlib_eos_behavior_t eos_behavior;
 
     /* These refer to the plaintext CRC, and are only needed for zlib:crc32/1
      * which is deprecated. */
-    uLong input_crc;
-    uLong output_crc;
+    beam_zlib_ulong input_crc;
+    beam_zlib_ulong output_crc;
     int want_input_crc;
     int want_output_crc;
 
@@ -118,15 +116,17 @@ typedef struct {
     int beam_accounted;
 } zlib_data_t;
 
-extern int erts_components_has_service(unsigned service);
-extern void erts_components_zlib_adjust(int delta);
+#include <stdatomic.h>
+static atomic_int native_count;
+int beam_zlib_stream_count(void) { return atomic_load_explicit(&native_count, memory_order_relaxed); }
+static void native_adjust(int delta) { atomic_fetch_add_explicit(&native_count, delta, memory_order_relaxed); }
 
 static void beam_zlib_account_open(zlib_data_t *d)
 {
-    if (!erts_components_has_service(1u << 2) || d->beam_accounted)
+    if (d->beam_accounted)
         return;
     d->beam_accounted = 1;
-    erts_components_zlib_adjust(1);
+    native_adjust(1);
 }
 
 static void beam_zlib_account_close(zlib_data_t *d)
@@ -135,7 +135,7 @@ static void beam_zlib_account_close(zlib_data_t *d)
      * The flag still means one active stream until this single decrement. */
     if (d->beam_accounted) {
         d->beam_accounted = 0;
-        erts_components_zlib_adjust(-1);
+        native_adjust(-1);
     }
 }
 
@@ -215,7 +215,6 @@ static int load(ErlNifEnv *env, void** priv_data, ERL_NIF_TERM load_info)
     am_continue = enif_make_atom(env, "continue");
     am_finished = enif_make_atom(env, "finished");
 
-    am_not_supported = enif_make_atom(env, "not_supported");
     am_need_dictionary = enif_make_atom(env, "need_dictionary");
 
     am_empty = enif_make_atom(env, "empty");
@@ -267,28 +266,28 @@ static void zlib_free(void* data, void* addr)
 static ERL_NIF_TERM zlib_return(ErlNifEnv *env, int code) {
     ERL_NIF_TERM reason;
     switch(code) {
-    case Z_OK:
+    case BEAM_ZLIB_OK:
         reason = am_ok;
         break;
-    case Z_STREAM_END:
+    case BEAM_ZLIB_STREAM_END:
         reason = am_stream_end;
         break;
-    case Z_ERRNO:
+    case BEAM_ZLIB_ERRNO:
         reason = enif_make_int(env, errno);
         break;
-    case Z_STREAM_ERROR:
+    case BEAM_ZLIB_STREAM_ERROR:
         reason = enif_raise_exception(env, am_stream_error);
         break;
-    case Z_DATA_ERROR:
+    case BEAM_ZLIB_DATA_ERROR:
         reason = enif_raise_exception(env, am_data_error);
         break;
-    case Z_MEM_ERROR:
+    case BEAM_ZLIB_MEM_ERROR:
         reason = am_mem_error;
         break;
-    case Z_BUF_ERROR:
+    case BEAM_ZLIB_BUF_ERROR:
         reason = am_buf_error;
         break;
-    case Z_VERSION_ERROR:
+    case BEAM_ZLIB_VERSION_ERROR:
         reason = am_version_error;
         break;
     default:
@@ -301,9 +300,9 @@ static ERL_NIF_TERM zlib_return(ErlNifEnv *env, int code) {
 static void zlib_internal_close(zlib_data_t *d) {
     beam_zlib_account_close(d);
     if(d->state == ST_DEFLATE) {
-        deflateEnd(&d->s);
+        beam_zlib_deflate_end(&d->s);
     } else if(d->state == ST_INFLATE) {
-        inflateEnd(&d->s);
+        beam_zlib_inflate_end(&d->s);
     }
 
     if(d->state != ST_CLOSED) {
@@ -354,11 +353,11 @@ static void zlib_reset_input(zlib_data_t *d) {
     if(d->stash_env != NULL) {
         enif_free_env(d->stash_env);
         d->stash_env = NULL;
-        d->stash_term = NIL;
+        d->stash_term = 0; /* Unused while stash_env is NULL. */
     }
 }
 
-static int zlib_flush_queue(int (*codec)(z_stream*, int), ErlNifEnv *env,
+static int zlib_flush_queue(int (*codec)(beam_zlib_stream*, int), ErlNifEnv *env,
         zlib_data_t *d, size_t input_limit, ErlNifBinary *output_buffer, int flush,
         size_t *bytes_produced, size_t *bytes_consumed, size_t *bytes_remaining) {
 
@@ -368,7 +367,7 @@ static int zlib_flush_queue(int (*codec)(z_stream*, int), ErlNifEnv *env,
 
     input_vec = enif_ioq_peek(d->input_queue, &vec_len);
     vec_idx = 0;
-    res = Z_OK;
+    res = BEAM_ZLIB_OK;
 
     *bytes_produced = 0;
     *bytes_consumed = 0;
@@ -376,7 +375,7 @@ static int zlib_flush_queue(int (*codec)(z_stream*, int), ErlNifEnv *env,
     d->s.avail_out = output_buffer->size;
     d->s.next_out = output_buffer->data;
 
-    while(res == Z_OK && vec_idx < vec_len && *bytes_consumed < input_limit) {
+    while(res == BEAM_ZLIB_OK && vec_idx < vec_len && *bytes_consumed < input_limit) {
         size_t timeslice_percent, block_consumed, block_size;
 
         block_size = MIN(input_vec[vec_idx].iov_len, input_limit);
@@ -385,16 +384,16 @@ static int zlib_flush_queue(int (*codec)(z_stream*, int), ErlNifEnv *env,
         d->s.avail_in = block_size;
 
         /* We don't flush until reaching the end of our input. */
-        res = codec(&d->s, Z_NO_FLUSH);
+        res = codec(&d->s, BEAM_ZLIB_NO_FLUSH);
 
-        ASSERT(d->s.avail_in == 0 || d->s.avail_out == 0 || res != Z_OK);
+        ASSERT(d->s.avail_in == 0 || d->s.avail_out == 0 || res != BEAM_ZLIB_OK);
 
         block_consumed = block_size - d->s.avail_in;
         *bytes_consumed += block_consumed;
 
         if(d->want_input_crc) {
             d->input_crc =
-                crc32(d->input_crc, input_vec[vec_idx].iov_base, block_consumed);
+                beam_zlib_crc32(d->input_crc, input_vec[vec_idx].iov_base, block_consumed);
         }
 
         timeslice_percent = (100 * block_consumed) / input_limit;
@@ -407,10 +406,10 @@ static int zlib_flush_queue(int (*codec)(z_stream*, int), ErlNifEnv *env,
 
     if(!enif_ioq_deq(d->input_queue, *bytes_consumed, bytes_remaining)) {
         *bytes_remaining = 0;
-        res = Z_BUF_ERROR;
+        res = BEAM_ZLIB_BUF_ERROR;
     }
 
-    if(res == Z_OK && (*bytes_remaining == 0) && d->s.avail_out > 0) {
+    if(res == BEAM_ZLIB_OK && (*bytes_remaining == 0) && d->s.avail_out > 0) {
         /* We've reached the end of our input and need to flush the zlib state.
          *
          * Note that we do this even when the flush parameter is Z_NO_FLUSH as
@@ -427,7 +426,7 @@ static int zlib_flush_queue(int (*codec)(z_stream*, int), ErlNifEnv *env,
     return res;
 }
 
-static ERL_NIF_TERM zlib_codec(int (*codec)(z_stream*, int),
+static ERL_NIF_TERM zlib_codec(int (*codec)(beam_zlib_stream*, int),
                                ErlNifEnv *env, zlib_data_t *d,
                                int input_chunk_size,
                                int output_chunk_size,
@@ -438,24 +437,24 @@ static ERL_NIF_TERM zlib_codec(int (*codec)(z_stream*, int),
     int res;
 
     if(!enif_alloc_binary(output_chunk_size, &output_buffer)) {
-        return zlib_return(env, Z_MEM_ERROR);
+        return zlib_return(env, BEAM_ZLIB_MEM_ERROR);
     }
 
     res = zlib_flush_queue(codec, env, d, input_chunk_size, &output_buffer,
         flush, &bytes_produced, &bytes_consumed, &bytes_remaining);
 
-    if(res < 0 && res != Z_BUF_ERROR) {
+    if(res < 0 && res != BEAM_ZLIB_BUF_ERROR) {
         enif_release_binary(&output_buffer);
         return zlib_return(env, res);
     }
 
-    if(res == Z_STREAM_END) {
+    if(res == BEAM_ZLIB_STREAM_END) {
         d->eos_seen = 1;
     }
 
     if(d->want_output_crc) {
         d->output_crc =
-            crc32(d->output_crc, output_buffer.data, bytes_produced);
+            beam_zlib_crc32(d->output_crc, output_buffer.data, bytes_produced);
     }
 
     if(bytes_consumed == 0 && bytes_produced == 0 && bytes_remaining != 0) {
@@ -463,7 +462,7 @@ static ERL_NIF_TERM zlib_codec(int (*codec)(z_stream*, int),
          * well-formed input. */
 
         enif_release_binary(&output_buffer);
-        return zlib_return(env, Z_DATA_ERROR);
+        return zlib_return(env, BEAM_ZLIB_DATA_ERROR);
     } else {
         ERL_NIF_TERM flushed_output;
 
@@ -481,7 +480,7 @@ static ERL_NIF_TERM zlib_codec(int (*codec)(z_stream*, int),
 
         if(bytes_remaining == 0 && bytes_produced < output_chunk_size) {
             return enif_make_tuple2(env, am_finished, flushed_output);
-        } else if(res != Z_NEED_DICT) {
+        } else if(res != BEAM_ZLIB_NEED_DICT) {
             return enif_make_tuple2(env, am_continue, flushed_output);
         }
 
@@ -521,7 +520,7 @@ static ERL_NIF_TERM zlib_clearStash(ErlNifEnv *env, int argc, const ERL_NIF_TERM
 
     enif_free_env(d->stash_env);
     d->stash_env = NULL;
-    d->stash_term = NIL;
+    d->stash_term = 0; /* Unused while stash_env is NULL. */
 
     return am_ok;
 }
@@ -549,7 +548,7 @@ static ERL_NIF_TERM zlib_open(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
 
     d = (zlib_data_t *) enif_alloc_resource(rtype_zlib, sizeof(zlib_data_t));
 
-    memset(&d->s, 0, sizeof(z_stream));
+    memset(&d->s, 0, sizeof(beam_zlib_stream));
 
     enif_self(env, &d->controlling_process);
 
@@ -560,7 +559,7 @@ static ERL_NIF_TERM zlib_open(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     d->s.zalloc = zlib_alloc;
     d->s.zfree  = zlib_free;
     d->s.opaque = d;
-    d->s.data_type = Z_BINARY;
+    d->s.data_type = BEAM_ZLIB_BINARY;
 
     d->eos_behavior = EOS_BEHAVIOR_CUT;
     d->eos_seen = 0;
@@ -571,11 +570,11 @@ static ERL_NIF_TERM zlib_open(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     d->want_input_crc = 0;
     d->is_raw_stream = 0;
 
-    d->output_crc = crc32(0L, Z_NULL, 0);
-    d->input_crc = crc32(0L, Z_NULL, 0);
+    d->output_crc = beam_zlib_crc32(0L, BEAM_ZLIB_NULL, 0);
+    d->input_crc = beam_zlib_crc32(0L, BEAM_ZLIB_NULL, 0);
 
     d->stash_env = NULL;
-    d->stash_term = NIL;
+    d->stash_term = 0; /* Unused while stash_env is NULL. */
 
     d->inflateChunk_buffer_size = 4000;
     d->beam_accounted = 0;
@@ -643,9 +642,9 @@ static ERL_NIF_TERM zlib_deflateInit(ErlNifEnv *env, int argc, const ERL_NIF_TER
         return enif_raise_exception(env, am_already_initialized);
     }
 
-    res = deflateInit2(&d->s, level, method, windowBits, memLevel, strategy);
+    res = beam_zlib_deflate_init2(&d->s, level, method, windowBits, memLevel, strategy);
 
-    if(res == Z_OK) {
+    if(res == BEAM_ZLIB_OK) {
         d->state = ST_DEFLATE;
         beam_zlib_account_open(d);
         d->eos_seen = 0;
@@ -655,8 +654,8 @@ static ERL_NIF_TERM zlib_deflateInit(ErlNifEnv *env, int argc, const ERL_NIF_TER
         d->want_output_crc = 0;
         d->want_input_crc = d->is_raw_stream;
 
-        d->output_crc = crc32(0L, Z_NULL, 0);
-        d->input_crc = crc32(0L, Z_NULL, 0);
+        d->output_crc = beam_zlib_crc32(0L, BEAM_ZLIB_NULL, 0);
+        d->input_crc = beam_zlib_crc32(0L, BEAM_ZLIB_NULL, 0);
     }
 
     return zlib_return(env, res);
@@ -676,13 +675,13 @@ static ERL_NIF_TERM zlib_deflateSetDictionary(ErlNifEnv *env, int argc, const ER
         return enif_raise_exception(env, am_not_initialized);
     }
 
-    if((res = deflateSetDictionary(&d->s, bin.data, bin.size)) == Z_OK) {
-        uLong checksum = d->s.adler;
+    if((res = beam_zlib_deflate_set_dictionary(&d->s, bin.data, bin.size)) == BEAM_ZLIB_OK) {
+        beam_zlib_ulong checksum = d->s.adler;
 
         /* d->s.adler is not updated in raw deflate mode, so we'll calculate it
          * ourselves in case the user wants to rely on that behavior. */
         if(d->is_raw_stream) {
-            checksum = adler32(0, bin.data, bin.size);
+            checksum = beam_zlib_adler32(0, bin.data, bin.size);
         }
 
         return enif_make_ulong(env, checksum);
@@ -703,9 +702,9 @@ static ERL_NIF_TERM zlib_deflateReset(ErlNifEnv *env, int argc, const ERL_NIF_TE
         return enif_raise_exception(env, am_not_initialized);
     }
 
-    res = deflateReset(&d->s);
+    res = beam_zlib_deflate_reset(&d->s);
 
-    d->input_crc = crc32(0L, Z_NULL, 0);
+    d->input_crc = beam_zlib_crc32(0L, BEAM_ZLIB_NULL, 0);
     d->eos_seen = 0;
 
     zlib_reset_input(d);
@@ -725,10 +724,10 @@ static ERL_NIF_TERM zlib_deflateEnd(ErlNifEnv *env, int argc, const ERL_NIF_TERM
         return enif_raise_exception(env, am_not_initialized);
     }
 
-    res = deflateEnd(&d->s);
+    res = beam_zlib_deflate_end(&d->s);
 
-    if(res == Z_OK && enif_ioq_size(d->input_queue) > 0) {
-        res = Z_DATA_ERROR;
+    if(res == BEAM_ZLIB_OK && enif_ioq_size(d->input_queue) > 0) {
+        res = BEAM_ZLIB_DATA_ERROR;
     }
 
     zlib_reset_input(d);
@@ -741,7 +740,7 @@ static ERL_NIF_TERM zlib_deflateParams(ErlNifEnv *env, int argc, const ERL_NIF_T
     zlib_data_t *d;
 
     int res, level, strategy;
-    Bytef dummy_buffer;
+    beam_zlib_byte dummy_buffer;
 
     if(argc != 3 || !get_zlib_data(env, argv[0], &d)
                  || !enif_get_int(env, argv[1], &level)
@@ -768,10 +767,10 @@ static ERL_NIF_TERM zlib_deflateParams(ErlNifEnv *env, int argc, const ERL_NIF_T
     d->s.next_out = &dummy_buffer;
     d->s.avail_out = 1;
 
-    res = deflateParams(&d->s, level, strategy);
+    res = beam_zlib_deflate_params(&d->s, level, strategy);
 
     if(d->s.avail_out == 0) {
-        return zlib_return(env, Z_STREAM_ERROR);
+        return zlib_return(env, BEAM_ZLIB_STREAM_ERROR);
     }
 
     return zlib_return(env, res);
@@ -793,7 +792,7 @@ static ERL_NIF_TERM zlib_deflate(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
         return enif_raise_exception(env, am_not_initialized);
     }
 
-    return zlib_codec(&deflate, env, d, input_chunk_size, output_chunk_size, flush);
+    return zlib_codec(&beam_zlib_deflate, env, d, input_chunk_size, output_chunk_size, flush);
 }
 
 /* inflate */
@@ -813,9 +812,9 @@ static ERL_NIF_TERM zlib_inflateInit(ErlNifEnv *env, int argc, const ERL_NIF_TER
         return enif_raise_exception(env, am_already_initialized);
     }
 
-    res = inflateInit2(&d->s, windowBits);
+    res = beam_zlib_inflate_init2(&d->s, windowBits);
 
-    if(res == Z_OK) {
+    if(res == BEAM_ZLIB_OK) {
         d->state = ST_INFLATE;
         beam_zlib_account_open(d);
 
@@ -827,8 +826,8 @@ static ERL_NIF_TERM zlib_inflateInit(ErlNifEnv *env, int argc, const ERL_NIF_TER
         d->want_output_crc = d->is_raw_stream;
         d->want_input_crc = 0;
 
-        d->output_crc = crc32(0L, Z_NULL, 0);
-        d->input_crc = crc32(0L, Z_NULL, 0);
+        d->output_crc = beam_zlib_crc32(0L, BEAM_ZLIB_NULL, 0);
+        d->input_crc = beam_zlib_crc32(0L, BEAM_ZLIB_NULL, 0);
     }
 
     return zlib_return(env, res);
@@ -848,31 +847,10 @@ static ERL_NIF_TERM zlib_inflateSetDictionary(ErlNifEnv *env, int argc, const ER
         return enif_raise_exception(env, am_not_initialized);
     }
 
-    res = inflateSetDictionary(&d->s, bin.data, bin.size);
+    res = beam_zlib_inflate_set_dictionary(&d->s, bin.data, bin.size);
 
     return zlib_return(env, res);
 }
-
-#ifdef HAVE_ZLIB_INFLATEGETDICTIONARY
-/* Work around broken build system with runtime version test */
-static int zlib_supports_inflateGetDictionary(void) {
-    static int supportsGetDictionary = -1;
-
-#if defined(__APPLE__) && defined(__MACH__)
-    if(supportsGetDictionary < 0) {
-        unsigned int v[4] = {0, 0, 0, 0};
-        unsigned hexver;
-
-        sscanf(zlibVersion(), "%u.%u.%u.%u", &v[0], &v[1], &v[2], &v[3]);
-
-        hexver = (v[0] << (8*3)) | (v[1] << (8*2)) | (v[2] << (8)) | v[3];
-        supportsGetDictionary = (hexver >= 0x1020701); /* 1.2.7.1 */
-    }
-#endif
-
-    return supportsGetDictionary;
-}
-#endif
 
 static ERL_NIF_TERM zlib_inflateGetDictionary(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
     zlib_data_t *d;
@@ -885,16 +863,15 @@ static ERL_NIF_TERM zlib_inflateGetDictionary(ErlNifEnv *env, int argc, const ER
         return enif_raise_exception(env, am_not_initialized);
     }
 
-#ifdef HAVE_ZLIB_INFLATEGETDICTIONARY
-    if(zlib_supports_inflateGetDictionary()) {
+    {
         ErlNifBinary obin;
-        uInt len;
+        beam_zlib_uint len;
         int res;
 
         enif_alloc_binary(INFL_DICT_SZ, &obin);
         len = 0;
 
-        if((res = inflateGetDictionary(&d->s, obin.data, &len)) < 0) {
+        if((res = beam_zlib_inflate_get_dictionary(&d->s, obin.data, &len)) < 0) {
             enif_release_binary(&obin);
             return zlib_return(env, res);
         }
@@ -902,9 +879,6 @@ static ERL_NIF_TERM zlib_inflateGetDictionary(ErlNifEnv *env, int argc, const ER
         enif_realloc_binary(&obin, (size_t)len);
         return enif_make_binary(env, &obin);
     }
-#endif
-
-    return enif_raise_exception(env, am_not_supported);
 }
 
 static ERL_NIF_TERM zlib_inflateReset(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
@@ -919,9 +893,9 @@ static ERL_NIF_TERM zlib_inflateReset(ErlNifEnv *env, int argc, const ERL_NIF_TE
         return enif_raise_exception(env, am_not_initialized);
     }
 
-    res = inflateReset(&d->s);
+    res = beam_zlib_inflate_reset(&d->s);
 
-    d->output_crc = crc32(0L, Z_NULL, 0);
+    d->output_crc = beam_zlib_crc32(0L, BEAM_ZLIB_NULL, 0);
     d->eos_seen = 0;
 
     zlib_reset_input(d);
@@ -941,10 +915,10 @@ static ERL_NIF_TERM zlib_inflateEnd(ErlNifEnv *env, int argc, const ERL_NIF_TERM
         return enif_raise_exception(env, am_not_initialized);
     }
 
-    res = inflateEnd(&d->s);
+    res = beam_zlib_inflate_end(&d->s);
 
-    if(res == Z_OK && (!d->eos_seen || enif_ioq_size(d->input_queue) > 0)) {
-        res = Z_DATA_ERROR;
+    if(res == BEAM_ZLIB_OK && (!d->eos_seen || enif_ioq_size(d->input_queue) > 0)) {
+        res = BEAM_ZLIB_DATA_ERROR;
     }
 
     zlib_reset_input(d);
@@ -974,11 +948,11 @@ static ERL_NIF_TERM zlib_inflate(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
 
         switch(d->eos_behavior) {
         case EOS_BEHAVIOR_ERROR:
-            return zlib_return(env, Z_DATA_ERROR);
+            return zlib_return(env, BEAM_ZLIB_DATA_ERROR);
         case EOS_BEHAVIOR_RESET:
-            res = inflateReset(&d->s);
+            res = beam_zlib_inflate_reset(&d->s);
 
-            if(res != Z_OK) {
+            if(res != BEAM_ZLIB_OK) {
                 return zlib_return(env, res);
             }
 
@@ -990,7 +964,7 @@ static ERL_NIF_TERM zlib_inflate(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
         }
     }
 
-    return zlib_codec(&inflate, env, d, input_chunk_size, output_chunk_size, flush);
+    return zlib_codec(&beam_zlib_inflate, env, d, input_chunk_size, output_chunk_size, flush);
 }
 
 static ERL_NIF_TERM zlib_enqueue_input(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {

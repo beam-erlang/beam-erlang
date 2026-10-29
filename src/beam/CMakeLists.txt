@@ -63,7 +63,7 @@ set_target_properties(beam_service_artifacts PROPERTIES
 add_library(beam_cli_recipe STATIC
     "${CMAKE_SOURCE_DIR}/src/beam_cli_recipe.c")
 target_include_directories(beam_cli_recipe PRIVATE ${BEAM_RUN_INCLUDE_DIRECTORY} ${BEAM_CLI_INCLUDE_DIRECTORY} ${BEAM_INTERACTIVE_INCLUDE_DIRECTORY})
-target_link_libraries(beam_cli_recipe PUBLIC BEAM::Runtime)
+target_link_libraries(beam_cli_recipe PUBLIC BEAM::Host BEAM::Runtime)
 set(_cli_component_directory lib)
 if(WIN32)
     set(_cli_component_directory bin)
@@ -111,9 +111,14 @@ add_custom_command(OUTPUT "${_sdk_inventories}"
     COMMAND ${CMAKE_COMMAND} "-DINPUT_DIR=${_bytecode_include}" "-DOUTPUT=${_sdk_inventories}"
         -P "${CMAKE_SOURCE_DIR}/cmake/GenerateSDKInventories.cmake"
     DEPENDS beam_base_inventory beam_boot_inventory beam_services_inventory
+        beam_startup_inventory beam_host_inventory beam_output_inventory beam_code_inventory
         "${_bytecode_include}/beam_base_inventory.inc"
         "${_bytecode_include}/beam_boot_inventory.inc"
         "${_bytecode_include}/beam_services_inventory.inc"
+        "${_bytecode_include}/beam_startup_inventory.inc"
+        "${_bytecode_include}/beam_host_inventory.inc"
+        "${_bytecode_include}/beam_output_inventory.inc"
+        "${_bytecode_include}/beam_code_inventory.inc"
         "${CMAKE_SOURCE_DIR}/cmake/GenerateSDKInventories.cmake" VERBATIM)
 add_library(beam_sdk_support INTERFACE)
 add_library(BEAM::SDKSupport ALIAS beam_sdk_support)

@@ -41,7 +41,8 @@ function(beam_target_nif target)
 extern \"C\" {
 #endif
 const beam_builtin_nif *${_symbol}_registration(void);
-const beam_linked_nif_spec *${_symbol}_binding(void);
+const beam_nif_binding *${_symbol}_binding(void);
+struct enif_entry_t *${_symbol}_initialize(void);
 #ifdef __cplusplus
 }
 #endif
@@ -56,7 +57,7 @@ extern ErlNifEntry *${_symbol}_nif_init(ERL_NIF_INIT_ARGS);
 #ifdef __cplusplus
 }
 #endif
-static ErlNifEntry *${_symbol}_initialize(void) {
+ErlNifEntry *${_symbol}_initialize(void) {
     return ${_symbol}_nif_init(
 #ifdef _WIN32
         NULL
@@ -67,10 +68,10 @@ static const beam_builtin_nif registration = {
     sizeof(beam_builtin_nif), \"${NIF_MODULE}\", \"${_identity}\", ${_symbol}_initialize, 1
 };
 const beam_builtin_nif *${_symbol}_registration(void) { return &registration; }
-static const beam_linked_nif_spec binding = {
-    sizeof(beam_linked_nif_spec), \"${NIF_MODULE}\", \"${_identity}\", ${_symbol}_initialize
+static const beam_nif_binding binding = {
+    sizeof(beam_nif_binding), \"${NIF_MODULE}\", \"${_identity}\", ${_symbol}_initialize, NULL
 };
-const beam_linked_nif_spec *${_symbol}_binding(void) { return &binding; }
+const beam_nif_binding *${_symbol}_binding(void) { return &binding; }
 " NEWLINE_STYLE UNIX @ONLY)
         target_sources("${target}" PRIVATE "${_source}")
         target_compile_definitions("${target}" PRIVATE "STATIC_ERLANG_NIF_LIBNAME=${_symbol}")
@@ -79,6 +80,7 @@ const beam_linked_nif_spec *${_symbol}_binding(void) { return &binding; }
         set_target_properties("${target}" PROPERTIES
             BEAM_NIF_KIND static BEAM_NIF_MODULE "${NIF_MODULE}"
             BEAM_NIF_INITIALIZER "${_symbol}_nif_init"
+            BEAM_NIF_RESIDENT_INITIALIZER "${_symbol}_initialize"
             BEAM_NIF_REGISTRATION "${_symbol}_registration"
             BEAM_NIF_BINDING "${_symbol}_binding"
             BEAM_NIF_HEADER "${_header}" BEAM_NIF_SDK_BUILD_ID "${_identity}")

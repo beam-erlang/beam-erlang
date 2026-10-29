@@ -68,11 +68,30 @@ def main():
             assert not constructor_log.exists(), 'Rejected foreign constructor ran'
             env.pop('NIF_CONSTRUCTOR_LOG', None)
             shutil.rmtree(prefix)
+        for payload in ('bytecode', 'mixed'):
+            host = stage / 'bin' / ('library_' + payload)
+            shutil.copy2(build / host.name, host)
+            library_log = root / (payload + '.events')
+            env['NIF_ACCEPTANCE_LOG'] = str(library_log)
+            result = execute([host])
+            assert result.stdout == 'PASSIVE_LIBRARY_OK\n' and not result.stderr, result
+            if payload == 'mixed':
+                assert library_log.read_text() == 'LDU' * 2
+            else:
+                assert not library_log.exists()
+            if args.linkage == 'shared':
+                suffix = '.dylib' if sys.platform == 'darwin' else '.so'
+                shared = stage / 'lib' / ('libfourth_' + payload + '_SHARED' + suffix)
+                shutil.copy2(build / shared.name, shared)
+                result = execute([host, shared])
+                assert result.stdout == 'PASSIVE_LIBRARY_OK\n' and not result.stderr, result
+                if payload == 'mixed':
+                    assert library_log.read_text() == 'LDU' * 4
         builtin_log = root / 'builtins.events'
         env['NIF_ACCEPTANCE_LOG'] = str(builtin_log)
         result = execute([stage / 'bin/builtins', build / 'probe.beam'])
         assert result.stdout == 'BUILTIN_LIFETIMES_OK\n' and not result.stderr, result
-        assert builtin_log.read_text() == 'LDU' * 4
+        assert builtin_log.read_text() == 'LDU' * 6
         modes = ['probe', 'fail_load', 'bad_abi', 'bad_module', 'bad_function', 'unstamped', 'wrongstamp']
         if sys.platform.startswith('linux'):
             # Section headers are not a runtime ELF input. Retain loadable

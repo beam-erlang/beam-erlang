@@ -10,6 +10,7 @@ controls the VM, while an extension runs when that VM invokes it.
 | [NIF API](nif.md) | Terms, environments, resources, native functions, scheduling and callbacks. |
 | [Driver API](drivers.md) | Port output, queues, asynchronous work, synchronization and driver utilities. |
 | [Driver entry](driver-entry.md) | The `ErlDrvEntry` structure and callback contracts. |
+| [Passive libraries](libraries.md) | Exact-SDK containers, public authoring, native owners and individual binding. |
 | [Loading and lifetime](loading.md) | Current host selection, activation, native admission and cleanup; this design remains under review. |
 
 Use a selected installed SDK. `BEAM::NIF` and `BEAM::Driver` expose its public

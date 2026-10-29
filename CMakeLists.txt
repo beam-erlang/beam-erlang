@@ -41,7 +41,7 @@ endforeach()
 configure_file("${CMAKE_SOURCE_DIR}/cmake/beam_core_modules.h.in"
     "${CMAKE_BINARY_DIR}/erts/beam_core_modules.h" @ONLY)
 include(cmake/ComponentBuildId.cmake)
-set(BEAM_PUBLIC_HEADERS beam.h runtime.h boot.h native.h sdk/bytecode.h sdk/inventories.h)
+set(BEAM_PUBLIC_HEADERS beam.h runtime.h boot.h native.h zlib.h native_image.h library.h host.h sdk/bytecode.h sdk/inventories.h)
 
 # Keep generated headers and object outputs at their established build paths.
 add_library(beam_erts_headers INTERFACE)

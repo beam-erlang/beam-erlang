@@ -9,7 +9,7 @@ check() ->
     false = erlang:module_loaded(beam_file),
     false = erlang:module_loaded(beam_socket),
     false = erlang:module_loaded(init),
-    undefined = whereis(beam_service_output),
+    undefined = whereis(beam_output_server),
     undefined = whereis(beam_service_file),
     undefined = whereis(beam_service_socket),
     undefined = whereis(code_server),

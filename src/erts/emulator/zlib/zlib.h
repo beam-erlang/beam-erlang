@@ -82,6 +82,16 @@ extern "C" {
   even in the case of corrupted input.
 */
 
+/* BEAM builds share the public declarations rather than aliasing mirror structs. */
+#ifdef BEAM_ZLIB_TYPES
+#  include <beam/zlib.h>
+typedef beam_zlib_alloc_fn alloc_func;
+typedef beam_zlib_free_fn free_func;
+typedef beam_zlib_stream z_stream;
+typedef beam_zlib_stream *z_streamp;
+typedef beam_zlib_gzip_header gz_header;
+typedef beam_zlib_gzip_header *gz_headerp;
+#else
 typedef voidpf (*alloc_func)(voidpf opaque, uInt items, uInt size);
 typedef void   (*free_func)(voidpf opaque, voidpf address);
 
@@ -133,6 +143,8 @@ typedef struct gz_header_s {
 } gz_header;
 
 typedef gz_header FAR *gz_headerp;
+#endif
+
 
 /*
      The application must update next_in and avail_in when avail_in has dropped

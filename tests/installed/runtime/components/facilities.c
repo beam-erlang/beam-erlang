@@ -1,6 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define _POSIX_C_SOURCE 200809L
 #include <beam/beam.h>
+#include "native_counts.h"
+#include <beam/boot.h>
+#ifdef BEAM_TEST_STATIC_LIBRARIES
+#include <beam/libraries/zlib.h>
+#endif
+#include <beam/native.h>
+enum { TEST_OUTPUT=1, TEST_CODE=2, TEST_ZLIB=4, TEST_PROGRAM=32 };
 #include "bytecode_input.h"
 #include "host_observe.h"
 #include <unistd.h>
@@ -52,6 +59,13 @@ static beam_status handler(void *opaque, beam_bytes request, beam_host_reply *re
         CHECK(beam_host_reply_copy(reply,(beam_bytes){value,sizeof(value)})==BEAM_INVALID_STATE);
         return BEAM_OK;
     }
+    const unsigned char cleanup[]={131,119,7,'c','l','e','a','n','u','p'};
+    if(request.size==sizeof(cleanup)&&!memcmp(request.data,cleanup,sizeof(cleanup))){
+        beam_native_report_cleanup(77,"facility-cleanup");
+        beam_native_report_cleanup(78,"later-cleanup");
+        const unsigned char ok[]={131,119,2,'o','k'};
+        return beam_host_reply_copy(reply,(beam_bytes){ok,sizeof(ok)});
+    }
     CHECK(request.size > 4 && request.data[0] == 131 && request.data[1] == 104);
     const unsigned char *p = request.data + 3;
     size_t n;
@@ -86,7 +100,7 @@ static unsigned integer(const beam_result *r)
 int main(int argc, char **argv)
 {
     CHECK(argc == 5);
-    beam_system *system = NULL; beam_composition *composition = NULL;
+    beam_system *system = NULL; beam_host *host = NULL;
     beam_buffer code = read_bytes(argv[2]); context c = {.helper = read_bytes(argv[3])};
     beam_module_spec module = {"facility_worker", {code.data, code.size}, "copied:facility-worker"};
     bytecode_input base = {0};
@@ -96,18 +110,31 @@ int main(int argc, char **argv)
     char zlib_path[4096], helper[4096];
     CHECK(snprintf(zlib_path, sizeof(zlib_path), "%s/" BEAM_TEST_ZLIB_RELATIVE, argv[1]) < (int)sizeof(zlib_path));
     CHECK(snprintf(helper, sizeof(helper), "%s/libexec/beam/erl_child_setup", argv[1]) < (int)sizeof(helper));
-    unsigned services = !strcmp(argv[4], "host") ? BEAM_SERVICE_OUTPUT | BEAM_SERVICE_CODE :
-        !strcmp(argv[4], "zlib") ? BEAM_SERVICE_ZLIB : BEAM_SERVICE_PROGRAM;
-    beam_component_spec components[] = {{sizeof(components[0]), BEAM_COMPONENT_ZLIB, zlib_path}};
-    beam_composition_options preparation = {.struct_size=sizeof(preparation), .modules=modules, .module_count=base.count+1,
-        .components=components, .component_count=services==BEAM_SERVICE_ZLIB ? 1 : 0, .services=services,
-        .program_helper=services==BEAM_SERVICE_PROGRAM ? helper : NULL};
+    unsigned services = !strcmp(argv[4], "host") ? TEST_OUTPUT | TEST_CODE :
+        !strcmp(argv[4], "zlib") ? TEST_ZLIB : TEST_PROGRAM;
+    beam_library *library=NULL;
+    if(services==TEST_ZLIB) {
+#ifdef BEAM_TEST_STATIC_LIBRARIES
+        CHECK(beam_library_from_static(beam_zlib_library(),&library,&error)==BEAM_OK);
+#else
+        CHECK(beam_library_open(zlib_path,&library,&error)==BEAM_OK);
+#endif
+    }
+    beam_composition_options preparation={.struct_size=sizeof(preparation),.modules=modules,.module_count=base.count+1,
+        .native_admission=services==TEST_PROGRAM?BEAM_NATIVE_MANAGED_PORTS:0,
+        .program_helper=services==TEST_PROGRAM?helper:NULL};
+    beam_startup_action startup[2];size_t startup_count=0;
+    if(services==TEST_ZLIB)startup[startup_count++]=(beam_startup_action){"zlib","on_load",{0}};
+    if(services&TEST_OUTPUT)startup[startup_count++]=(beam_startup_action){"beam_output","start",{0}};
+    if(services&TEST_CODE)startup[startup_count++]=(beam_startup_action){"beam_code","start",{0}};
+    beam_host_options plan={.struct_size=sizeof(plan),.composition=&preparation,.library_count=library?1:0,
+        .libraries=&library,.startup_count=startup_count,.startup=startup};
     CHECK(beam_init(&system, &error) == BEAM_OK);
     int descriptors=entries("/proc/self/fd"), threads=entries("/proc/self/task");
-    CHECK(beam_composition_prepare(&preparation, &composition, &error) == BEAM_OK);
-    beam_composition_release(&composition);
+    CHECK(beam_host_prepare(&plan, &host, &error) == BEAM_OK);
+    beam_host_release(&host);
     CHECK(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == threads);
-    CHECK(beam_composition_prepare(&preparation, &composition, &error) == BEAM_OK);
+    CHECK(beam_host_prepare(&plan, &host, &error) == BEAM_OK);
     memset(helper, '?', strlen(helper)); /* configuration is already copied */
     free(code.data);
     bytecode_input_release(&base);
@@ -116,11 +143,11 @@ int main(int argc, char **argv)
     beam_result completed={0};
     for (int pass=0;pass<3;++pass) {
         beam_vm_options options; beam_vm_options_init(&options);
-        options.composition=composition;
+        options.composition=beam_host_composition(host);
         CHECK(beam_vm_init(system, &options, &c.vm, &error) == BEAM_OK);
         CHECK(beam_vm_set_host_handler(c.vm, handler, &c) == BEAM_OK);
         CHECK(beam_vm_start(c.vm, &error) == BEAM_OK);
-        CHECK(beam_vm_activate(c.vm, &error) == BEAM_OK);
+        CHECK(beam_host_start(host,c.vm, &error) == BEAM_OK);
         beam_result r=call(c.vm,"fresh",(beam_bytes){empty,sizeof(empty)});
         CHECK(integer(&r)==42); beam_result_release(&r);
         unsigned pid=0;
@@ -128,25 +155,26 @@ int main(int argc, char **argv)
             r=call(c.vm,"exercise",(beam_bytes){args,sizeof(args)});
             CHECK(integer(&r)==42); beam_result_release(&r);
         }
-        if (services==BEAM_SERVICE_PROGRAM) {
+        if (services==TEST_PROGRAM) {
             r=call(c.vm,"pid",(beam_bytes){empty,sizeof(empty)});
             pid=integer(&r); CHECK(pid>0 && !kill(pid,0)); beam_result_release(&r);
         }
-        if (services==BEAM_SERVICE_ZLIB) CHECK(beam_zlib_stream_count()>0);
+        if (services==TEST_ZLIB) CHECK(beam_zlib_stream_count()>0);
         if (pass==0) {
             r=call(c.vm,"cleanup",(beam_bytes){empty,sizeof(empty)});
             CHECK(integer(&r)==42); beam_result_release(&r);
         }
         if (pass==1) {
-            const char *name=services==BEAM_SERVICE_PROGRAM ? "program" : services==BEAM_SERVICE_ZLIB ? "zlib" : "output";
+            const char *name=services==TEST_PROGRAM ? "program" : services==TEST_ZLIB ? "zlib" : "output";
             unsigned char fault[64]={131,108,0,0,0,1,119,0}; size_t n=strlen(name);
             fault[7]=n; memcpy(fault+8,name,n); fault[8+n]=106;
             r=call(c.vm,"fail",(beam_bytes){fault,9+n}); CHECK(r.kind==BEAM_HALT); beam_result_release(&r);
             beam_vm_report report={.struct_size=sizeof(report)};
-            CHECK(beam_vm_get_report(c.vm,&report)==BEAM_OK && report.cause==BEAM_TERMINAL_COMPONENT_FAILURE &&
-                !strcmp(report.component,name) && report.failure.message[0]);
-            beam_activation_info info={.struct_size=sizeof(info)};
-            CHECK(beam_vm_get_activation(c.vm,&info)==BEAM_OK && info.state==BEAM_ACTIVATION_FAILED);
+            CHECK(beam_vm_get_report(c.vm,&report)==BEAM_OK && report.cause==BEAM_TERMINAL_FAILURE &&
+                !strcmp(report.origin,name) && report.failure.message[0]);
+            beam_vm_state_info state;
+            /* Synchronous calls join a terminal request before returning. */
+            CHECK(beam_vm_get_state(c.vm,&state)==BEAM_OK && state.state==BEAM_VM_STOPPED);
         }
         if (pass==2) {
             completed=call(c.vm,"complete",(beam_bytes){empty,sizeof(empty)});
@@ -164,8 +192,8 @@ int main(int argc, char **argv)
         CHECK(entries("/proc/self/fd")==descriptors && entries("/proc/self/task")==threads && !beam_zlib_stream_count());
     }
     CHECK(!strcmp(saved.cleanup.message,"facility-cleanup"));
-    CHECK(services != (BEAM_SERVICE_OUTPUT|BEAM_SERVICE_CODE) || (c.output==6 && c.code==6));
-    beam_composition_release(&composition); free(c.helper.data);
+    CHECK(services != (TEST_OUTPUT|TEST_CODE) || (c.output==6 && c.code==6));
+    beam_host_release(&host);beam_library_release(&library);free(c.helper.data);
     CHECK(beam_terminate(&system)==BEAM_OK && !strcmp(saved.cleanup.message,"facility-cleanup"));
     CHECK(completed.value.size==3 && completed.value.data[2]==42);
     beam_result_release(&completed);

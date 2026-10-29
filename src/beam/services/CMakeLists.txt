@@ -1,5 +1,5 @@
 # Ordinary activation support, separate from selecting native capabilities.
-set(BEAM_SERVICES_MODULES beam_component_services beam_host beam_output beam_code)
+set(BEAM_SERVICES_MODULES beam_startup beam_host beam_output beam_code)
 set(BEAM_SERVICES_SOURCES)
 set(BEAM_SERVICES_BEAM_FILES)
 foreach(_module IN LISTS BEAM_SERVICES_MODULES)
@@ -29,3 +29,13 @@ set_target_properties(beam_host_artifact PROPERTIES BEAM_HOST_ARTIFACT "${_beam_
 beam_add_bytecode_inventory(beam_services_inventory NAME services
     MODULES ${BEAM_SERVICES_MODULES} INPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/beam/services/ebin"
     INSTALL_ROOT lib/beam/services DEPENDS beam_services_modules)
+
+# Independent support inventories; the aggregate services inventory remains an
+# optional deployment convenience for hosts using all four policies.
+foreach(_policy startup host output code)
+    set(_root "${CMAKE_BINARY_DIR}/lib/beam/${_policy}")
+    file(MAKE_DIRECTORY "${_root}")
+    beam_add_bytecode_inventory(beam_${_policy}_inventory NAME ${_policy}
+        MODULES beam_${_policy} INPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/beam/services/ebin"
+        INSTALL_ROOT lib/beam/${_policy} DEPENDS beam_services_modules)
+endforeach()

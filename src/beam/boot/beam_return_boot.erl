@@ -1,21 +1,28 @@
 %% SPDX-License-Identifier: Apache-2.0
 %% Ordinary entry-scoped application policy above activated VM facilities.
 -module(beam_return_boot).
--export([start/4]).
+-export([start/3]).
 
-start(Services, {Module, Function}, Arguments, OriginSeed)
-  when is_list(Services), is_atom(Module), is_atom(Function), is_list(Arguments) ->
+start({Module, Function}, Arguments, OriginSeed)
+  when is_atom(Module), is_atom(Function), is_list(Arguments) ->
     seed_origins(OriginSeed),
     persistent_term:put(beam_returning_boot, true),
-    persistent_term:put(beam_boot_services, Services),
+    case persistent_term:get(beam_boot_services, undefined) of
+        undefined -> persistent_term:put(beam_boot_services, []);
+        _ -> ok
+    end,
     Leader = spawn(fun leader/0),
     erlang:group_leader(Leader, self()),
     apply(Module, Function, Arguments);
-start(Services, Entry, Arguments, OriginSeed) -> erlang:error(badarg, [Services, Entry, Arguments, OriginSeed]).
+start(Entry, Arguments, OriginSeed) -> erlang:error(badarg, [Entry, Arguments, OriginSeed]).
 
 %% Activation already published origins when it ran; preserve its updates.
 seed_origins(undefined) -> ok;
-seed_origins(Origins) when is_list(Origins) -> persistent_term:put(beam_boot_origins, Origins).
+seed_origins(Origins) when is_list(Origins) ->
+    case persistent_term:get(beam_boot_origins, undefined) of
+        undefined -> persistent_term:put(beam_boot_origins, Origins);
+        _ -> ok
+    end.
 
 leader() ->
     receive
@@ -44,15 +51,12 @@ io_requests([Request | Rest]) ->
     end.
 
 write_chars(Characters) ->
-    case persistent_term:get(beam_boot_services, []) of
-        Services ->
-            case member(output, Services) of
-                false -> {error, enodev};
-                true ->
-                    case beam_output:write(standard_output, characters(Characters), infinity) of
-                        ok -> ok;
-                        {error, _} -> {error, terminated}
-                    end
+    case whereis(beam_output_server) of
+        undefined -> {error, enodev};
+        _ ->
+            case beam_output:write(standard_output, characters(Characters), infinity) of
+                ok -> ok;
+                {error, _} -> {error, terminated}
             end
     end.
 
@@ -87,7 +91,3 @@ utf8(Code) ->
       (16#80 bor ((Code bsr 12) band 16#3F)),
       (16#80 bor ((Code bsr 6) band 16#3F)),
       (16#80 bor (Code band 16#3F))>>.
-
-member(_Name, []) -> false;
-member(Name, [Name | _]) -> true;
-member(Name, [_ | Rest]) -> member(Name, Rest).

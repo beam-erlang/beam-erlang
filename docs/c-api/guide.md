@@ -208,16 +208,18 @@ The core VM, ordinary bytecode and native capabilities are separate inputs:
 | Nine core modules | Embedded in the selected runtime. | Runtime mechanisms and required helper processes. |
 | Seven base modules | Verified `base` inventory through ordinary module inputs. | Modern collection, text, formatting and time functions. |
 | Boot modules | Verified `boot` inventory through ordinary module inputs. | The returning application lifecycle. |
-| Service support | Verified `services` inventory through ordinary module inputs. | Support code for selected services; supplying it alone selects none. |
-| File, network or zlib component | An explicit matching shared-library path. | Its Erlang modules and native facility after activation. |
+| Optional support | Select `startup`, `host`, `output` or `code` inventories through ordinary module inputs. | Explicit startup, host callbacks, output or code acquisition respectively. |
+| File, network or zlib library | Explicit shared acquisition or a static descriptor. | Modules and resident native registrations; startup remains explicit. |
 
 The nine core modules are `erlang`, `erts_internal`, `erts_code_purger`,
 `erts_literal_area_collector`, `erts_dirty_process_signal_handler`,
 `erts_trace_cleaner`, `atomics`, `counters` and `persistent_term`.
 The base inventory is `beam`, `beam_list`, `beam_map`, `beam_bytes`, `beam_text`,
-`beam_format` and `beam_time`. Boot contains `beam_return_boot` and `beam_boot`;
-services contains `beam_component_services`, `beam_host`, `beam_output` and
-`beam_code`. These lists describe current composition; the installed manifests
+`beam_format` and `beam_time`. Boot contains `beam_return_boot` and `beam_boot`.
+The single-module support inventories contain `beam_startup`, `beam_host`,
+`beam_output` and `beam_code` respectively. The `services` inventory is a
+convenience selection containing all four; it is not a VM requirement.
+These lists describe current composition; the installed manifests
 and producer-generated expectations bind the exact bytes to your SDK.
 
 The [deployment guide](deployment.md#verify-ordinary-bytecode) explains verification.
@@ -225,17 +227,19 @@ Do not replace missing inputs by searching the source tree or loading an externa
 Erlang installation. A bare application that needs only its own code and core
 operations does not need these ordinary inventories.
 
-For persistent file/socket/zlib/program facilities or explicit NIF bindings,
-prepare a composition, pass it to VM initialization, start, then activate before
-application calls. Verify and supply required ordinary code inventories; select
-native units by exact paths.
-Readiness, failure and teardown belong to the VM; release the host's preparation
-reference after initialization when no longer needed. Unconfigured bare VMs
-still admit no implicit native services. See
-[the composition reference](reference.md#composition).
+For persistent file/socket/zlib facilities, acquire passive libraries and prepare
+generic composition from their inputs, then initialize/start and perform explicit
+Erlang startup calls. Optional `beam_host_prepare`/`beam_host_start` combines those
+steps with an explicit action list. For explicit NIF bindings, call
+`beam_vm_bind_nif` after start. Managed programs select port admission and a helper
+independently. Release caller preparations after VM initialization when no longer
+needed; the VM retains native owners through cleanup. Library readiness and
+monitoring are above the VM. See [the composition reference](reference.md#composition).
 
 For one modern application lifetime, use `beam_return_prepare` followed by
-`beam_return_run`. Supply verified ordinary base, boot and services bytecode plus selected native units,
+`beam_return_run`. Include `<beam/boot.h>` and link the optional `BEAM::Host`
+archive as well as the selected runtime. Supply required ordinary boot/support bytecode and a Host plan selecting libraries
+and explicit startup actions, plus
 entry bytes, ETF arguments and callbacks. The entry's completion ends the boot,
 including its children; C receives a copied outcome after VM cleanup. Release
 it with `beam_outcome_release` even when run reports a cleanup error; follow the

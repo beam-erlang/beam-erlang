@@ -62,7 +62,8 @@ def main():
              f"-DCMAKE_PREFIX_PATH={prefix}", f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}"])
         execute([args.cmake, "--build", str(client)])
         for profile, units in (("file", ("file",)), ("network", ("network",)),
-                               ("combined", ("file", "network"))):
+                               ("combined", ("file", "network")),
+                               ("all", ("file", "network", "zlib"))):
             stage = args.test_dir / "stage"
             (stage / "bin").mkdir(parents=True)
             (stage / "lib").mkdir()
@@ -70,7 +71,7 @@ def main():
             shutil.copy2(client / "components_acceptance", stage / "bin/host")
             shutil.copy2(artifact(prefix,"runtime"), stage / artifact_relative(prefix,"runtime"))
             for unit in units:
-                name = artifact(prefix,"component."+unit).name
+                name = artifact(prefix,"library." + unit + ".shared").name
                 shutil.copy2(prefix / "lib" / name, stage / "lib" / name)
             deployed = args.test_dir / f"relocated {profile} λ"
             stage.rename(deployed)
@@ -90,7 +91,7 @@ def main():
             (deployed / "lib").mkdir()
             copy_bytecode(prefix, deployed, BASE_ASSETS + SERVICES_ASSETS)
             shutil.copy2(client / "facilities_acceptance", deployed / "bin/host")
-            for unit in (artifact(prefix,"runtime").name,) + ((artifact(prefix,"component.zlib").name,) if profile == "zlib" else ()):
+            for unit in (artifact(prefix,"runtime").name,) + ((artifact(prefix,"library.zlib.shared").name,) if profile == "zlib" else ()):
                 shutil.copy2(prefix / "lib" / unit, deployed / "lib" / unit)
             if profile == "program":
                 (deployed / "libexec/beam").mkdir(parents=True)
@@ -104,13 +105,39 @@ def main():
                              env=env, cwd=work)
             print(f"{profile}: {result.stdout.strip()}")
 
+        # The same behavioral fixtures exercise both static-library link modes.
+        # No native shared image is present in these relocated bundles.
+        for runtime in ("Runtime", "RuntimeStatic"):
+            deployed = args.test_dir / f"static libraries {runtime} λ"
+            (deployed / "bin").mkdir(parents=True)
+            (deployed / "lib").mkdir()
+            copy_bytecode(prefix, deployed, BASE_ASSETS + SERVICES_ASSETS)
+            if runtime == "Runtime":
+                shutil.copy2(artifact(prefix, "runtime"), deployed / artifact_relative(prefix, "runtime"))
+            work = args.test_dir / f"unrelated static {runtime}"
+            work.mkdir()
+            env = isolated_environment(work)
+            env["PATH"] = str(work)
+            for fixture in ("components", "facilities"):
+                shutil.copy2(client / f"{fixture}_{runtime}", deployed / "bin" / fixture)
+            for profile in ("file", "network", "combined", "all"):
+                for fault in (0, 1):
+                    result = execute([str(deployed / "bin/components"), str(deployed),
+                        str(bytecode / "component_worker.beam"), str(work / "output λ"), profile, str(fault)],
+                        env=env, cwd=work)
+                    print(f"{runtime} static {profile} fault={fault}: {result.stdout.strip()}")
+            result = execute([str(deployed / "bin/facilities"), str(deployed),
+                str(bytecode / "facility_worker.beam"), str(bytecode / "facility_helper.beam"), "zlib"],
+                env=env, cwd=work)
+            print(f"{runtime} static zlib: {result.stdout.strip()}")
+
         for mode in ("persistent", "faults", "returning", "returning-faults"):
             deployed = args.test_dir / f"relocated contracts {mode} λ"
             (deployed / "bin").mkdir(parents=True)
             (deployed / "lib").mkdir()
             copy_bytecode(prefix, deployed, BASE_ASSETS + SERVICES_ASSETS)
             shutil.copy2(client / "contracts_acceptance", deployed / "bin/host")
-            units = tuple(artifact(prefix,name).name for name in ("runtime","component.file","component.network"))
+            units = tuple(artifact(prefix,name).name for name in ("runtime","library.file.shared","library.network.shared"))
             if mode.startswith("returning"):
                 copy_bytecode(prefix, deployed, BOOT_ASSETS)
             for unit in units:

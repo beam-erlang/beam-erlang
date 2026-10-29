@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Included by prim_file_nif.c: private BEAM facade operations. */
-extern int erts_components_stopping(void);
+#include <beam/native.h>
 
 static int beam_file_marshal_utf8(ErlNifEnv *env, ERL_NIF_TERM term, efile_path_t *path)
 {
@@ -22,7 +22,6 @@ static int beam_file_marshal_utf8(ErlNifEnv *env, ERL_NIF_TERM term, efile_path_
 #endif
 }
 
-extern void erts_components_set_native_cleanup(int native_code, const char *message);
 static void beam_file_cleanup_close(efile_data_t *d)
 {
     int error;
@@ -30,7 +29,7 @@ static void beam_file_cleanup_close(efile_data_t *d)
     if (!beam_efile_close(d, &error)) {
         char message[128];
         snprintf(message, sizeof(message), "file close failed: %s", erl_errno_id(error));
-        erts_components_set_native_cleanup(error, message);
+        beam_native_report_cleanup(error, message);
     }
 }
 
@@ -90,9 +89,9 @@ static void beam_drain_closes(void)
 
 int beam_file_operation_cancelled(beam_file_operation *op)
 {
-    if (op->cancelled || erts_components_stopping() ||
+    if (op->cancelled || beam_native_stop_requested() ||
         !enif_is_current_process_alive(op->env) ||
-        (op->resource && erts_atomic32_read_acqb(&op->resource->state) == EFILE_STATE_CLOSE_PENDING) ||
+        (op->resource && beam_atomic32_read_acqb(&op->resource->state) == EFILE_STATE_CLOSE_PENDING) ||
         (op->finite && enif_monotonic_time(ERL_NIF_NSEC) >= op->deadline)) {
         op->cancelled = 1;
         return 1;
@@ -119,7 +118,7 @@ static ERL_NIF_TERM beam_handle_state_nif(ErlNifEnv *env, int argc, const ERL_NI
     enif_self(env, &owner);
     if (enif_compare_pids(&owner, &d->beam_owner))
         return enif_make_atom(env, "not_owner");
-    return erts_atomic32_read_acqb(&d->state) == EFILE_STATE_IDLE ? am_ok :
+    return beam_atomic32_read_acqb(&d->state) == EFILE_STATE_IDLE ? am_ok :
         enif_make_atom(env, "closed");
 }
 
@@ -154,10 +153,10 @@ static ERL_NIF_TERM beam_operation_nif(ErlNifEnv *env, int argc, const ERL_NIF_T
             return beam_file_error(env, EALREADY);
         if (enif_is_identical(action, am_close)) {
             ERL_NIF_TERM av[] = {args[0]};
-            if (erts_atomic32_read_acqb(&d->state) == EFILE_STATE_CLOSED) return am_ok;
+            if (beam_atomic32_read_acqb(&d->state) == EFILE_STATE_CLOSED) return am_ok;
             return close_nif(env, 1, av);
         }
-        if (erts_atomic32_cmpxchg_acqb(&d->state, EFILE_STATE_BUSY, EFILE_STATE_IDLE) != EFILE_STATE_IDLE)
+        if (beam_atomic32_cmpxchg_acqb(&d->state, EFILE_STATE_BUSY, EFILE_STATE_IDLE) != EFILE_STATE_IDLE)
             return beam_file_error(env, EBADF);
         op.resource = d;
         if (enif_is_identical(action, am_read)) {
@@ -191,8 +190,8 @@ static ERL_NIF_TERM beam_operation_nif(ErlNifEnv *env, int argc, const ERL_NIF_T
                 result = error ? beam_file_progress_error(env, error, op.progress) : am_ok;
             }
         }
-        if (erts_atomic32_cmpxchg_relb(&d->state, EFILE_STATE_IDLE, EFILE_STATE_BUSY) == EFILE_STATE_CLOSE_PENDING) {
-            erts_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
+        if (beam_atomic32_cmpxchg_relb(&d->state, EFILE_STATE_IDLE, EFILE_STATE_BUSY) == EFILE_STATE_CLOSE_PENDING) {
+            beam_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
             beam_file_finish_close(env, d);
         }
         return result;

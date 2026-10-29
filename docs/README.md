@@ -24,14 +24,14 @@ interfaces and documentation may evolve together.
 | [Native extensions](native-extensions/README.md) | NIF and driver C APIs, SDK examples and provisional loading/lifetime behavior. |
 | [Runtime reference](runtime/README.md) | Time, memory, crash dumps and advanced VM formats. |
 | [Modern standard library](stdlib/README.md) | Core and base modules, service facades and their availability. |
-| [File component](components/file/README.md) | `libbeam-file.so`: file capabilities and `beam_file`. |
-| [Network component](components/network/README.md) | `libbeam-network.so`: socket capabilities and `beam_socket`. |
-| [Zlib component](components/zlib/README.md) | `libbeam-zlib.so`: compression capabilities and `zlib`. |
+| [File library](components/file/README.md) | `libbeam-file.so`: file capabilities and `beam_file`. |
+| [Network library](components/network/README.md) | `libbeam-network.so`: socket capabilities and `beam_socket`. |
+| [Zlib library](components/zlib/README.md) | `libbeam-zlib.so`: compression capabilities and `zlib`. |
 | [Command line](cli/README.md) | Shell, evaluation, source execution, compilation and project commands. |
 | [Packages and projects](packaging/README.md) | Build/install/run workflow and the canonical package-format reference. |
 
-The [component overview](components/README.md) explains shared selection and
-activation concepts. Each component has its own manual; consult that manual for
+The [library overview](components/README.md) explains shared/static delivery and
+explicit startup. Each library has its own manual; consult that manual for
 its requirements and API. Component APIs have one documentation home and are
 linked from the standard-library catalog.
 
@@ -39,7 +39,7 @@ linked from the standard-library catalog.
 
 Use the [build and installation instructions](../README.md#building) to obtain
 the current Linux interpreter or JIT distribution. Public interfaces are
-experimental, and native components require a matching build.
+experimental, and native libraries require a matching build.
 
 The selected release model follows the integrated upstream ERTS version plus a
 distribution revision. This does not establish a stable C API or binary ABI;

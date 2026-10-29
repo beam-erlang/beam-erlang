@@ -106,7 +106,7 @@ typedef struct {
 
 /* Initializes an efile_data_t; must be used in efile_open on success. */
 #define EFILE_INIT_RESOURCE(__d, __modes) do { \
-        erts_atomic32_init_acqb(&(__d)->state, EFILE_STATE_IDLE); \
+        beam_atomic32_init_acqb(&(__d)->state, EFILE_STATE_IDLE); \
         (__d)->posix_errno = 0; \
         (__d)->modes = __modes; \
         (__d)->beam_counted = 0; \
@@ -115,7 +115,7 @@ typedef struct {
     } while(0)
 
 typedef struct {
-    erts_atomic32_t state;
+    beam_atomic32_t state;
 
     posix_errno_t posix_errno;
     enum efile_modes_t modes;

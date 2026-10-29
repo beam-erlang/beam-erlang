@@ -12,7 +12,7 @@ def check_installation(prefix, bundled=True):
     required = (
         "bin/beam", "bin/beam-launch", artifact_relative(prefix,"runtime"), artifact_relative(prefix,"runtime.static"), "libexec/beam/erl_child_setup",
         "include/beam/beam.h", "include/beam/runtime.h", "include/beam/boot.h",
-        "include/beam/native.h", "include/beam/sdk/bytecode.h", "include/beam/sdk/inventories.h",
+        "include/beam/native.h", "include/beam/zlib.h", "include/beam/sdk/bytecode.h", "include/beam/sdk/inventories.h",
         "share/beam/sdk/beam_bytecode_verify.c", "lib/cmake/BEAM/BEAMConfig.cmake",
     )
     for relative in required:
@@ -55,7 +55,9 @@ def check_installation(prefix, bundled=True):
     inventories = {
         "library": ["beam", "beam_list", "beam_map", "beam_bytes", "beam_text", "beam_format", "beam_time"],
         "boot": ["beam_return_boot", "beam_boot"],
-        "services": ["beam_component_services", "beam_host", "beam_output", "beam_code"],
+        "services": ["beam_startup", "beam_host", "beam_output", "beam_code"],
+        "startup": ["beam_startup"], "host": ["beam_host"],
+        "output": ["beam_output"], "code": ["beam_code"],
     }
     for name, modules in inventories.items():
         inventory = prefix / "lib/beam" / name
@@ -93,7 +95,8 @@ def check_installation(prefix, bundled=True):
     artifacts = json.loads((prefix / "lib/beam/runtime-artifacts.json").read_text())["artifacts"]
     inspection_sources = {entry["path"] for entry in artifacts.values() if entry["kind"] == "core-source"}
     for path in prefix.rglob("*"):
-        check(path == prefix / "lib/libbeam.a" or path.suffix not in {".o", ".obj", ".a"},
+        check(path in {prefix / artifact_relative(prefix, name) for name in ("runtime.static", "host.static", "library.file.static", "library.network.static", "library.zlib.static")}
+              or path.suffix not in {".o", ".obj", ".a"},
               f"installation contains development native objects: {path}")
         relative = path.relative_to(prefix)
         check(path.suffix not in {".c", ".cc", ".cpp", ".erl"} or
@@ -122,17 +125,25 @@ def check_runtime_artifacts(prefix):
           "runtime artifact inventory is not bound to the installed SDK metadata")
     configurations = list((prefix / "lib/cmake/BEAM").glob("BEAMStaticTargets-*.cmake"))
     check(len(configurations) == 1, "expected one installed static linkage configuration")
+    host_configurations = list((prefix / "lib/cmake/BEAM").glob("BEAMHostTargets-*.cmake"))
+    check(len(host_configurations) == 1, "expected one installed Host linkage configuration")
     expected = {
         "sdk.pkgconfig": ("consumer-metadata", "lib/pkgconfig/beam.pc", []),
-        "api.beam": ("embedding-header", "include/beam/beam.h", ["api.runtime", "api.boot"]),
+        "api.beam": ("embedding-header", "include/beam/beam.h", ["api.runtime"]),
+        "api.zlib": ("embedding-header", "include/beam/zlib.h", []),
         "api.runtime": ("embedding-header", "include/beam/runtime.h", []),
-        "api.boot": ("embedding-header", "include/beam/boot.h", ["api.runtime"]),
+        "api.boot": ("embedding-header", "include/beam/boot.h", ["api.host"]),
+        "api.host": ("embedding-header", "include/beam/host.h", ["api.library", "api.native_image"]),
+        "api.library": ("embedding-header", "include/beam/library.h", ["api.runtime"]),
+        "api.native_image": ("embedding-header", "include/beam/native_image.h", ["api.runtime"]),
         "api.bytecode": ("embedding-header", "include/beam/sdk/bytecode.h", ["api.runtime"]),
         "api.inventories": ("embedding-header", "include/beam/sdk/inventories.h", ["api.bytecode"]),
         "sdk.inventories": ("embedding-source", "share/beam/sdk/inventories.c", ["api.inventories"]),
         "sdk.bytecode.private": ("embedding-source", "share/beam/sdk/beam_bytecode_internal.h", ["api.bytecode"]),
         "api.verifier": ("embedding-source", "share/beam/sdk/beam_bytecode_verify.c", ["api.bytecode", "sdk.bytecode.private"]),
         "sdk.native": ("consumer-metadata", "lib/cmake/BEAM/support/BEAMNif.cmake", []),
+        "sdk.library": ("consumer-metadata", "lib/cmake/BEAM/support/BEAMLibrary.cmake", []),
+        "sdk.library.author": ("consumer-tool", "share/beam/tools/beam-library.py", []),
         "sdk.target.check": ("consumer-metadata", "lib/cmake/BEAM/support/BEAMTarget.cmake", []),
         "sdk.application": ("consumer-metadata", "lib/cmake/BEAM/support/BEAMiOS.cmake", []),
         "sdk.android": ("consumer-metadata", "lib/cmake/BEAM/support/BEAMAndroid.cmake", []),
@@ -148,6 +159,10 @@ def check_runtime_artifacts(prefix):
         "link.static": ("link-support", "lib/cmake/BEAM/BEAMStaticTargets.cmake", []),
         "link.static.configuration": ("link-support", configurations[0].relative_to(prefix).as_posix(), []),
         "link.static.exports": ("link-support", artifact_relative(prefix,"link.static.exports"), []),
+        "host.static": ("host-static", "lib/libbeam-host.a",
+                        ["api.boot", "api.host", "api.library", "api.native_image", "link.host", "link.host.configuration"]),
+        "link.host": ("link-support", "lib/cmake/BEAM/BEAMHostTargets.cmake", []),
+        "link.host.configuration": ("link-support", host_configurations[0].relative_to(prefix).as_posix(), []),
         "helper.child_setup": ("executable-helper", "libexec/beam/erl_child_setup", []),
     }
     core = {"erts_code_purger", "erlang", "erts_internal", "erts_literal_area_collector",
@@ -168,9 +183,18 @@ def check_runtime_artifacts(prefix):
         expected[f"header.{name}"] = ("native-header", f"include/beam/nif/{name}.h", dependencies)
     expected["header.beam_native"] = ("native-header", "include/beam/native.h", [])
     for name in ("file", "network", "zlib"):
-        expected[f"component.{name}"] = ("native-component", artifact_relative(prefix,f"component.{name}"), ["runtime"])
+        expected[f"library.{name}.shared"] = ("native-library", artifact_relative(prefix,f"library.{name}.shared"), ["runtime"])
+        expected[f"library.{name}.static"] = ("native-library-static", f"lib/libbeam-{name}.a",
+            [f"library.{name}.header", f"link.library.{name}.static", f"link.library.{name}.static.configuration"])
+        expected[f"library.{name}.header"] = ("embedding-header", f"include/beam/libraries/{name}.h", ["api.library"])
+        for form in ("shared", "static"):
+            stem = f"BEAM{name}{form.title()}Targets"
+            configs = list((prefix / "lib/cmake/BEAM").glob(stem + "-*.cmake"))
+            check(len(configs) == 1, f"expected one {name} {form} configuration")
+            expected[f"link.library.{name}.{form}"] = ("link-support", f"lib/cmake/BEAM/{stem}.cmake", [])
+            expected[f"link.library.{name}.{form}.configuration"] = ("link-support", configs[0].relative_to(prefix).as_posix(), [])
     licenses = {"license.BEAM": "LICENSE.txt", "license.authors": "AUTHORS", "license.zlib": "zlib/LICENSE.txt"}
-    for name in ("asmjit/LICENSE.md", "ryu/LICENSE-Apache2", "ryu/LICENSE-Boost", "ryu/xcharconv_ryu.h.sha.license", "pcre/LICENCE", "zstd/LICENSE", "zstd/COPYING"):
+    for name in ("asmjit/LICENSE.md", "ryu/LICENSE-Apache2", "ryu/LICENSE-Boost", "ryu/xcharconv_ryu.h.sha.license", "pcre/LICENCE"):
         licenses["license."+name] = name
     root_notices = ['BSD-2-Clause.txt', 'BSD-3-Clause.txt', 'LicenseRef-IETF-MIB.txt', 'LicenseRef-RSA-PKCS3.txt', 'LicenseRef-RSA-PKCS5v2-0.txt', 'LicenseRef-scancode-ietf-trust.txt', 'LicenseRef-scancode-ietf.txt', 'LicenseRef-scancode-w3c-docs-19990405.txt', 'LicenseRef-scancode-wxwindows-free-doc-3.txt', 'MIT.txt', 'SGI-B-2.0.txt', 'W3C-19980720.txt']
     for name in root_notices:

@@ -29,7 +29,6 @@
 #define SOCKET_INT_H__
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
 #endif
 
 #ifdef __WIN32__
@@ -39,6 +38,7 @@
 #define INCL_WINSOCK_API_TYPEDEFS 1
 #endif
 #ifndef WINDOWS_H_INCLUDES_WINSOCK2_H
+#include "beam_library_platform.h"
 #include <winsock2.h>
 #endif
 #include <windows.h>

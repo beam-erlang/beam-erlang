@@ -100,13 +100,16 @@ there is no forced interruption or general hard callback deadline. See the
 [C API reference](../c-api/reference.md) for registration, terminal replies and
 ownership rules.
 
-## Supply the complete inventories
+## Supply explicit support
 
-`beam_host`, `beam_output` and `beam_code` are supplied with the internal
-`beam_component_services` module from `lib/beam/services`. Composition requests
-for services or deferred activation require this complete support inventory.
-The output/code facades also use the base library's `beam_time` for deadlines.
-Supplying these modules alone starts no selected facility.
+Select the independent `host`, `output`, `code` and `startup` inventories as
+needed. Each contains its corresponding `beam_` module; `services` remains an
+aggregate convenience inventory. Output/code use `beam_host` and the ordinary
+base library's `beam_time`. Explicitly invoke `beam_output:start/0` or
+`beam_code:start/0` before using the selected facility. The optional Host
+controller uses `beam_startup` to execute requested actions and reviewed deferred
+module initialization. Generic VM composition requires none of these modules.
+Supplying code alone starts nothing.
 
 The implementation sources are [beam_boot](../../src/beam/boot/beam_boot.erl)
 and the [services directory](../../src/beam/services/).

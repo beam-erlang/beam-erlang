@@ -1,3 +1,5 @@
+#include <beam/host.h>
+#include "native_counts.h"
 // SPDX-License-Identifier: Apache-2.0
 // Product-owned Android fixture; all VM activity stays on the Java owner thread.
 #include <jni.h>
@@ -152,20 +154,39 @@ void prepare(Owner &o) {
         require(o,beam_bytecode_verify(inventory,modules.data()+first,inventory->count,&o.error),"verify bytecode");
     }
     o.verified=true;
-    std::vector<beam_component_spec> components;
-    const beam_component_kind kinds[]={BEAM_COMPONENT_FILE,BEAM_COMPONENT_NETWORK,BEAM_COMPONENT_ZLIB};
-    size_t image=1;
-    for(unsigned i=0;i<3;i++) if(BEAM_FIXTURE_COMPONENTS & (1<<i))
-        components.push_back({sizeof(beam_component_spec),kinds[i],o.images.at(image++).c_str()});
-    std::vector<beam_nif_spec> shared;
-    for(size_t i=0;i<beam_package_shared_nif_count;i++)
-        shared.push_back({sizeof(beam_nif_spec),beam_package_shared_nif_modules[i],o.images.at(image++).c_str()});
-    std::vector<beam_linked_nif_spec> nifs(beam_package_linked_nifs(nullptr,0));beam_package_linked_nifs(nifs.data(),nifs.size());
-    beam_composition_options spec{};spec.struct_size=sizeof spec;spec.modules=modules.data();spec.module_count=modules.size();spec.components=components.data();spec.component_count=components.size();spec.nifs=shared.data();spec.nif_count=shared.size();spec.linked_nifs=nifs.data();spec.linked_nif_count=nifs.size();
-    beam_composition *composition=nullptr;require(o,beam_composition_prepare(&spec,&composition,&o.error),"prepare composition");
-    beam_vm_options options;beam_vm_options_init(&options);options.composition=composition;options.schedulers=2;options.dirty_cpu_schedulers=1;options.dirty_io_schedulers=1;
-    auto status=beam_vm_init(o.system,&options,&o.vm,&o.error);beam_composition_release(&composition);require(o,status,"initialize VM");
-    require(o,beam_vm_set_host_handler(o.vm,callback,&o),"host handler");require(o,beam_vm_start(o.vm,&o.error),"start VM");require(o,beam_vm_activate(o.vm,&o.error),"activate NIFs");
+    struct Inputs {
+        std::vector<beam_library*> libraries;
+        std::vector<beam_native_image*> images;
+        beam_host *host=nullptr;
+        ~Inputs(){beam_host_release(&host);for(auto p:libraries)beam_library_release(&p);for(auto p:images)beam_native_image_release(&p);}
+    } inputs;
+    std::vector<beam_startup_action> actions;
+    const char *names[]={"beam_file","beam_socket","zlib"};size_t image=1;
+    for(unsigned i=0;i<3;++i)if(BEAM_FIXTURE_COMPONENTS&(1<<i)){
+        inputs.libraries.push_back(nullptr);
+        require(o,beam_library_open(o.images.at(image++).c_str(),&inputs.libraries.back(),&o.error),"open library");
+        actions.push_back({names[i],i==2?"on_load":"start",{}});
+    }
+    std::vector<beam_nif_binding> nifs(beam_package_linked_nifs(nullptr,0));
+    beam_package_linked_nifs(nifs.data(),nifs.size());
+    std::vector<beam_native_owner> owners;
+    for(size_t i=0;i<beam_package_shared_nif_count;++i){
+        beam_nif_binding binding{};binding.struct_size=sizeof(binding);
+        beam_native_owner owner{};owner.struct_size=sizeof(owner);inputs.images.push_back(nullptr);
+        require(o,beam_host_open_nif(o.images.at(image++).c_str(),beam_package_shared_nif_modules[i],
+            &inputs.images.back(),&binding,&owner,&o.error),"open NIF");
+        nifs.push_back(binding);owners.push_back(owner);
+    }
+    beam_composition_options spec{};spec.struct_size=sizeof(spec);spec.modules=modules.data();spec.module_count=modules.size();
+    spec.bindings=nifs.data();spec.binding_count=nifs.size();spec.native_owners=owners.data();spec.native_owner_count=owners.size();
+    beam_host_options plan{};plan.struct_size=sizeof(plan);plan.composition=&spec;
+    plan.library_count=inputs.libraries.size();plan.libraries=inputs.libraries.data();plan.startup_count=actions.size();plan.startup=actions.data();
+    require(o,beam_host_prepare(&plan,&inputs.host,&o.error),"prepare host");
+    beam_vm_options options;beam_vm_options_init(&options);options.composition=beam_host_composition(inputs.host);
+    options.schedulers=2;options.dirty_cpu_schedulers=1;options.dirty_io_schedulers=1;
+    require(o,beam_vm_init(o.system,&options,&o.vm,&o.error),"initialize VM");
+    require(o,beam_vm_set_host_handler(o.vm,callback,&o),"host handler");require(o,beam_vm_start(o.vm,&o.error),"start VM");
+    require(o,beam_host_start(inputs.host,o.vm,&o.error),"initialize libraries and NIFs");
     {std::lock_guard<std::mutex> lock(admission);wake_vm=o.vm;}
     o.host_context.verify();
     ++o.generation;

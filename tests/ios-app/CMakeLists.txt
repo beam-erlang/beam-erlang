@@ -3,7 +3,7 @@ project(BEAMiOSAcceptance LANGUAGES C OBJC)
 find_package(BEAM CONFIG REQUIRED COMPONENTS Runtime)
 include("${BEAM_PACKAGE_EXPORT}/BEAMPackageExport.cmake")
 add_executable(BEAMAcceptance main.m)
-target_link_libraries(BEAMAcceptance PRIVATE BEAMPackageInputs "-framework UIKit" "-framework Foundation")
+target_link_libraries(BEAMAcceptance PRIVATE BEAM::Host BEAMPackageInputs "-framework UIKit" "-framework Foundation")
 set_target_properties(BEAMAcceptance PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
     XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES

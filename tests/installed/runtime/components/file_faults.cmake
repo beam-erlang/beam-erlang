@@ -18,7 +18,7 @@ beam_add_erlang_component(beam_file_fault_modules SOURCES "${_fault}/prim_file.e
     OUTPUT_DIRECTORY "${_fault}/ebin")
 set_source_files_properties("${_file}/prim_buffer_nif.c" PROPERTIES COMPILE_DEFINITIONS "STATIC_ERLANG_NIF_LIBNAME=beam_prim_buffer")
 set_source_files_properties("${_file}/prim_file_nif.c" PROPERTIES COMPILE_DEFINITIONS "STATIC_ERLANG_NIF_LIBNAME=beam_prim_file")
-beam_add_component(beam_file_fault_component NAME file-contract-test KIND BEAM_COMPONENT_FILE
+beam_add_library(beam_file_fault_component NAME file-contract-test TEST_ONLY
     MODULES beam_file prim_buffer prim_file
     BEAM_FILES "${CMAKE_BINARY_DIR}/components/file/ebin/beam_file.beam"
         "${CMAKE_BINARY_DIR}/components/file/ebin/prim_buffer.beam" "${_fault}/ebin/prim_file.beam"

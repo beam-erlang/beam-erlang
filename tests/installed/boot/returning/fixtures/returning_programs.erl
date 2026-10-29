@@ -61,7 +61,7 @@ halt(_) ->
     erlang:halt(9).
 
 kill_output(_) ->
-    case whereis(beam_service_output) of
+    case whereis(beam_output_server) of
         Pid when is_pid(Pid) -> exit(Pid, kill);
         _ -> ok
     end,
@@ -69,7 +69,7 @@ kill_output(_) ->
     beam_output:write(standard_output, <<"late">>, infinity).
 
 cleanup(_) ->
-    persistent_term:put(beam_cleanup_fault, <<"cleanup-fault">>),
+    beam_host:request({output, cleanup_test, <<>>}),
     ok.
 
 greeting(Name) ->
@@ -257,7 +257,7 @@ zlib_persist(_) ->
     held.
 
 zlib_owner(_) ->
-    exit(whereis(beam_service_zlib), kill),
+    erts_internal:request_failure(zlib, injected_failure),
     receive after 200 -> ok end,
     zlib:open().
 
@@ -552,4 +552,4 @@ arm_late_halt(N) ->
     arm_late_halt(N - 1).
 
 finish_then_halt(_) -> arm_late_halt(16), beam_boot:finish(6).
-service_then_halt(_) -> arm_late_halt(16), exit(whereis(beam_service_output), kill), receive after 5000 -> error(component_did_not_stop) end.
+service_then_halt(_) -> arm_late_halt(16), exit(whereis(beam_output_server), kill), receive after 5000 -> error(component_did_not_stop) end.

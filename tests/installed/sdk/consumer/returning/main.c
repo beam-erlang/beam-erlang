@@ -82,7 +82,7 @@ int main(int argc, char **argv)
     module->origin = NULL;
     CHECK(beam_return_prepare(&options, &boot, &error) == BEAM_OK);
     arguments[7] = 44;
-    module->service = 1;
+    module->deferred = 1;
     CHECK(beam_return_prepare(&options, &activated_boot, &error) == BEAM_OK);
     bytecode_input_release(&base);
     memset(bytes, 0, (size_t)size);

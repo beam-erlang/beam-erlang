@@ -29,7 +29,7 @@ def sdk(prefix, variant, cmake):
         raise ValueError('Expected an arm64 iOS interpreter ' + variant + ' SDK')
     inventory = json.loads((prefix / 'lib/beam/runtime-artifacts.json').read_text())
     frameworks = {}
-    for name in ('runtime', 'component.file', 'component.network', 'component.zlib'):
+    for name in ('runtime', 'library.file.shared', 'library.network.shared', 'library.zlib.shared'):
         record = inventory['artifacts'][name]
         path = prefix / record['path']
         if not path.resolve().is_relative_to(prefix) or digest(path) != record['sha256']:

@@ -23,6 +23,7 @@ int erts_vm_filename_utf8(void);
 size_t erts_vm_preloads(const beam_module_spec **modules);
 size_t erts_vm_builtin_nifs(const beam_builtin_nif **entries);
 size_t erts_vm_builtin_drivers(const beam_builtin_driver **entries);
+size_t erts_vm_embedded_dependencies(const beam_embedded_dependency **entries);
 void erts_vm_native_init_failed(const char *kind, const char *name);
 void erts_sys_process_start(void);
 void erts_sys_process_ready(void);
@@ -85,19 +86,11 @@ void erts_bare_process_deleted(struct process *p);
 void erts_bare_halt(int status);
 int erts_bare_host_replies_pending(void);
 
-/* Selected native admission. Configuration is retained across initialization;
- * explicit start creates the program helper before workers. Counters are
- * intentionally excluded from begin/end. */
-void erts_components_begin(unsigned services, const char *program_path);
-const char *erts_components_program_path(void);
-void erts_components_end(void);
-int erts_components_active(void);
-int erts_components_program_enabled(void);
-int erts_components_has_service(unsigned service);
-void erts_components_set_cleanup(const char *bytes, size_t size);
-void erts_components_zlib_adjust(int delta);
-void erts_components_file_adjust(int delta);
-void erts_components_socket_adjust(int delta);
+/* The selected helper path is retained until native teardown completes. */
+void erts_vm_native_begin(const char *program_path);
+const char *erts_vm_program_path(void);
+void erts_vm_native_end(void);
+
 
 #ifdef __cplusplus
 }

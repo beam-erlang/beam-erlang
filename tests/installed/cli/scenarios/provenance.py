@@ -66,13 +66,13 @@ def beam_provenance_expression(prefix):
     }
     ordinary = {
         "boot": ["beam_return_boot", "beam_boot"],
-        "services": ["beam_component_services", "beam_host", "beam_output", "beam_code"],
+        "services": ["beam_startup", "beam_host", "beam_output", "beam_code"],
     }
     for inventory, names in ordinary.items():
         expected.update({name: f"{prefix}/lib/beam/{inventory}/ebin/{name}.beam" for name in names})
     for unit, modules in units.items():
-        expected.update({module: f"{artifact(prefix,'component.'+unit)}#{module}" for module in modules})
-    expected["zlib"] = f"{artifact(prefix,'component.zlib')}#zlib"
+        expected.update({module: f"{artifact(prefix,"library." + unit + ".shared")}#{module}" for module in modules})
+    expected["zlib"] = f"{artifact(prefix,'library.zlib.shared')}#zlib"
 
     def binary(text):
         escaped = text.replace("\\", "\\\\").replace('"', '\\"')

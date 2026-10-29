@@ -3,6 +3,9 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <beam/beam.h>
 #include <beam/native.h>
+#include <beam/zlib.h>
+extern int beam_test_codec(void);
+extern int beam_test_codec_cpp(void);
 #include <pcre2.h>
 #include <zlib.h>
 #include <dlfcn.h>
@@ -48,7 +51,7 @@ static beam_native_trace_backend selected_backend;
 
 static int native_check(void)
 {
-    return regex_check() || compression_check() ||
+    return regex_check() || compression_check() || beam_test_codec() || beam_test_codec_cpp() ||
         beam_native_trace_backend_get() != selected_backend;
 }
 
@@ -60,6 +63,19 @@ int main(void)
     beam_vm_options options;
     Dl_info provider;
     int failed = 1;
+    const unsigned char retained_input[] = "C stream survives VM cleanup";
+    unsigned char packed[256], recovered[sizeof(retained_input)];
+    beam_zlib_stream retained = {0};
+    if (beam_zlib_deflate_init(&retained, BEAM_ZLIB_DEFAULT_COMPRESSION) != BEAM_ZLIB_OK)
+        return 1;
+    retained.next_in = (unsigned char *)retained_input;
+    retained.avail_in = 5;
+    retained.next_out = packed;
+    retained.avail_out = sizeof(packed);
+    if (beam_zlib_deflate(&retained, BEAM_ZLIB_NO_FLUSH) != BEAM_ZLIB_OK) {
+        beam_zlib_deflate_end(&retained);
+        return 1;
+    }
     selected_backend = beam_native_trace_backend_get();
     if (selected_backend < BEAM_NATIVE_TRACE_NONE ||
         selected_backend > BEAM_NATIVE_TRACE_LTTNG)
@@ -68,12 +84,12 @@ int main(void)
     if (!dladdr(dlsym(RTLD_DEFAULT, "pcre2_match_8"), &provider) ||
         !provider.dli_fname || !strstr(provider.dli_fname, "libpcre2-8.")) {
         fputs("Host PCRE resolved outside the system PCRE library\n", stderr);
-        return 1;
+        goto cleanup;
     }
     if (!dladdr(dlsym(RTLD_DEFAULT, "inflate"), &provider) ||
         !provider.dli_fname || !strstr(provider.dli_fname, "libz.")) {
         fputs("Host compression resolved outside the system zlib library\n", stderr);
-        return 1;
+        goto cleanup;
     }
     if (native_check() || beam_init(&system, &error) != BEAM_OK)
         goto cleanup;
@@ -90,6 +106,14 @@ cleanup:
     if (beam_vm_terminate(&vm, NULL) != BEAM_OK ||
         beam_terminate(&system) != BEAM_OK || native_check())
         failed = 1;
+    retained.next_in = (unsigned char *)retained_input + 5;
+    retained.avail_in = sizeof(retained_input) - 5;
+    size_t recovered_size = sizeof(recovered);
+    if (beam_zlib_deflate(&retained, BEAM_ZLIB_FINISH) != BEAM_ZLIB_STREAM_END ||
+        beam_zlib_uncompress_z(recovered, &recovered_size, packed, retained.total_out) != BEAM_ZLIB_OK ||
+        recovered_size != sizeof(retained_input) || memcmp(recovered, retained_input, sizeof(retained_input)))
+        failed = 1;
+    if (beam_zlib_deflate_end(&retained) != BEAM_ZLIB_OK) failed = 1;
     if (failed)
         fputs("Native coexistence or VM lifecycle failed\n", stderr);
     else

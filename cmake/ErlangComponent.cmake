@@ -37,7 +37,7 @@ endfunction()
 function(beam_add_bytecode_inventory target)
     cmake_parse_arguments(PARSE_ARGV 1 INV "" "NAME;INPUT_DIRECTORY;INSTALL_ROOT" "MODULES;DEPENDS")
     if(INV_UNPARSED_ARGUMENTS OR INV_KEYWORDS_MISSING_VALUES OR
-       NOT INV_NAME MATCHES "^(base|boot|services)$" OR NOT INV_MODULES OR
+       NOT INV_NAME MATCHES "^(base|boot|services|startup|host|output|code)$" OR NOT INV_MODULES OR
        NOT INV_INPUT_DIRECTORY OR NOT INV_INSTALL_ROOT)
         message(FATAL_ERROR "${target}: provide inventory NAME, MODULES, INPUT_DIRECTORY and INSTALL_ROOT")
     endif()

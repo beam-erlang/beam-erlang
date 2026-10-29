@@ -22,9 +22,8 @@
  */
 
 
+#include "beam_library_platform.h"
 #include "erl_nif.h"
-#include "config.h"
-#include "sys.h"
 
 #ifdef VALGRIND
 #  include <valgrind/memcheck.h>
@@ -35,6 +34,12 @@
 #include "prim_file_nif_dyncall.h"
 
 /* NIF interface declarations */
+static uint32_t beam_read_u32(const unsigned char *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
 static int load(ErlNifEnv *env, void** priv_data, ERL_NIF_TERM load_info);
 static int upgrade(ErlNifEnv *env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info);
 static void unload(ErlNifEnv *env, void* priv_data);
@@ -348,13 +353,13 @@ static ERL_NIF_TERM file_handle_wrapper(file_op_impl_t operation, ErlNifEnv *env
         return enif_make_badarg(env);
     }
 
-    previous_state = erts_atomic32_cmpxchg_acqb(&d->state,
+    previous_state = beam_atomic32_cmpxchg_acqb(&d->state,
         EFILE_STATE_BUSY, EFILE_STATE_IDLE);
 
     if(previous_state == EFILE_STATE_IDLE) {
         result = operation(d, env, argc - 1, &argv[1]);
 
-        previous_state = erts_atomic32_cmpxchg_relb(&d->state,
+        previous_state = beam_atomic32_cmpxchg_relb(&d->state,
             EFILE_STATE_IDLE, EFILE_STATE_BUSY);
 
         ASSERT(previous_state != EFILE_STATE_IDLE);
@@ -364,7 +369,7 @@ static ERL_NIF_TERM file_handle_wrapper(file_op_impl_t operation, ErlNifEnv *env
              * where a change from CLOSE_PENDING is possible,
              * and we're running synchronously, so we can't race with
              * anything else here. */
-            erts_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
+            beam_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
             beam_file_finish_close(env, d);
         }
     } else {
@@ -389,7 +394,7 @@ static ERL_NIF_TERM delayed_close_nif(ErlNifEnv *env, int argc, const ERL_NIF_TE
         return enif_make_badarg(env);
     }
 
-    ASSERT(erts_atomic32_read_acqb(&d->state) == EFILE_STATE_CLOSED);
+    ASSERT(beam_atomic32_read_acqb(&d->state) == EFILE_STATE_CLOSED);
     if (!d->beam_pending || beam_take_close(d)) {
         beam_file_cleanup_close(d);
     }
@@ -397,14 +402,16 @@ static ERL_NIF_TERM delayed_close_nif(ErlNifEnv *env, int argc, const ERL_NIF_TE
     return am_ok;
 }
 
-extern int erts_components_has_service(unsigned service);
-extern void erts_components_file_adjust(int delta);
+#include <stdatomic.h>
+static atomic_int native_count;
+int beam_file_descriptor_count(void) { return atomic_load_explicit(&native_count, memory_order_relaxed); }
+static void native_adjust(int delta) { atomic_fetch_add_explicit(&native_count, delta, memory_order_relaxed); }
 
 static void beam_file_unaccount(efile_data_t *d)
 {
     if (d->beam_counted) {
         d->beam_counted = 0;
-        erts_components_file_adjust(-1);
+        native_adjust(-1);
     }
 }
 
@@ -418,36 +425,18 @@ static void owner_death_callback(ErlNifEnv* env, void* obj, ErlNifPid* pid, ErlN
     for(;;) {
         enum efile_state_t previous_state;
 
-        previous_state = erts_atomic32_cmpxchg_acqb(&d->state,
+        previous_state = beam_atomic32_cmpxchg_acqb(&d->state,
             EFILE_STATE_CLOSED, EFILE_STATE_IDLE);
 
         switch(previous_state) {
         case EFILE_STATE_IDLE:
-            if (erts_components_has_service(1u << 3)) {
+            {
                 ERL_NIF_TERM ref, message;
                 beam_queue_close(d);
                 ref = enif_make_resource(env, d);
                 message = enif_make_tuple2(env, am_close, ref);
                 /* The native queue also survives janitor death at shutdown. */
                 (void)enif_send(env, &erts_prim_file_pid, NULL, message);
-                return;
-            }
-            {
-                /* We cannot close the file here as that could block a normal
-                 * scheduler, so we tell erts_prim_file to do it for us.
-                 *
-                 * This can in turn become a bottleneck (especially in cases
-                 * like NFS failure), but it's less problematic than blocking
-                 * thread progress. */
-                ERL_NIF_TERM message, file_ref;
-
-                file_ref = enif_make_resource(env, d);
-                message = enif_make_tuple2(env, am_close, file_ref);
-
-                if(!enif_send(env, &erts_prim_file_pid, NULL, message)) {
-                    ERTS_INTERNAL_ERROR("Failed to defer prim_file close.");
-                }
-
                 return;
             }
         case EFILE_STATE_CLOSE_PENDING:
@@ -459,7 +448,7 @@ static void owner_death_callback(ErlNifEnv* env, void* obj, ErlNifPid* pid, ErlN
             /* Schedule ourselves to be closed once the current operation
              * finishes, retrying the [IDLE -> CLOSED] transition in case we
              * narrowly passed the [BUSY -> IDLE] one. */
-            erts_atomic32_cmpxchg_nob(&d->state,
+            beam_atomic32_cmpxchg_nob(&d->state,
                 EFILE_STATE_CLOSE_PENDING, EFILE_STATE_BUSY);
             break;
         }
@@ -470,7 +459,7 @@ static void dyncall_dup(ErlNifEnv* env, efile_data_t* d, struct prim_file_nif_dy
 
     enum efile_state_t previous_state;
 
-    previous_state = erts_atomic32_cmpxchg_acqb(&d->state,
+    previous_state = beam_atomic32_cmpxchg_acqb(&d->state,
         EFILE_STATE_BUSY, EFILE_STATE_IDLE);
 
     if(previous_state == EFILE_STATE_IDLE) {
@@ -478,7 +467,7 @@ static void dyncall_dup(ErlNifEnv* env, efile_data_t* d, struct prim_file_nif_dy
         dc_dup->result = (int)
             beam_efile_dup_handle(env, d, &dc_dup->handle);
 
-        previous_state = erts_atomic32_cmpxchg_relb(&d->state,
+        previous_state = beam_atomic32_cmpxchg_relb(&d->state,
             EFILE_STATE_IDLE, EFILE_STATE_BUSY);
 
         ASSERT(previous_state != EFILE_STATE_IDLE);
@@ -488,7 +477,7 @@ static void dyncall_dup(ErlNifEnv* env, efile_data_t* d, struct prim_file_nif_dy
              * where a change from CLOSE_PENDING is possible,
              * and we're running synchronously, so we can't race with
              * anything else here. */
-            erts_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
+            beam_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
             beam_file_finish_close(env, d);
         }
     } else {
@@ -591,15 +580,15 @@ static ERL_NIF_TERM create_ref_or_error_tuple(ErlNifEnv *env, efile_data_t *d) {
          * destructor. */
         posix_errno_t ignored;
 
-        erts_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
+        beam_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
         beam_efile_close(d, &ignored);
 
         return posix_error_to_tuple(env, EINVAL);
     }
 
-    if (erts_components_has_service(1u << 3)) {
+    {
         d->beam_counted = 1;
-        erts_components_file_adjust(1);
+        native_adjust(1);
     }
 
     /* Note that we do not call enif_release_resource at this point. While it's
@@ -671,7 +660,7 @@ static ERL_NIF_TERM close_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
         return enif_make_badarg(env);
     }
 
-    previous_state = erts_atomic32_cmpxchg_acqb(&d->state,
+    previous_state = beam_atomic32_cmpxchg_acqb(&d->state,
         EFILE_STATE_CLOSED, EFILE_STATE_IDLE);
 
     if(previous_state == EFILE_STATE_IDLE) {
@@ -993,8 +982,8 @@ static ERL_NIF_TERM ipread_s32bu_p32bu_nif_impl(efile_data_t *d, ErlNifEnv *env,
             return am_eof;
         }
 
-        payload_size = (Uint32)get_int32(&pointer_block[0]);
-        payload_offset = (Uint32)get_int32(&pointer_block[4]);
+        payload_size = (Uint32)beam_read_u32(&pointer_block[0]);
+        payload_offset = (Uint32)beam_read_u32(&pointer_block[4]);
 
         if(payload_size > max_payload_size) {
             return am_eof;
@@ -1424,7 +1413,7 @@ static ERL_NIF_TERM read_file_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
     }
     posix_errno = read_file(d, info.size, &result);
 
-    erts_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
+    beam_atomic32_set_acqb(&d->state, EFILE_STATE_CLOSED);
     beam_efile_close(d, &ignored);
 
     if(posix_errno) {

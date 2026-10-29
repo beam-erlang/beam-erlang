@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(beam_native_coexistence LANGUAGES C)
+project(beam_native_coexistence LANGUAGES C CXX)
 find_package(BEAM CONFIG REQUIRED)
 if(NOT EXPECTED_VERSION)
     message(FATAL_ERROR "EXPECTED_VERSION is required")
@@ -10,7 +10,11 @@ find_path(PCRE2_INCLUDE_DIR pcre2.h REQUIRED)
 find_package(ZLIB REQUIRED)
 
 # Put libbeam first to expose accidental interposition of its private libraries.
-add_executable(native_coexistence main.c)
+add_executable(native_coexistence main.c codec.c headers.cpp)
 target_link_libraries(native_coexistence PRIVATE BEAM::Runtime BEAM::NIF "${PCRE2_LIBRARY}" ZLIB::ZLIB ${CMAKE_DL_LIBS})
 
 target_include_directories(native_coexistence PRIVATE "${PCRE2_INCLUDE_DIR}")
+
+add_executable(native_coexistence_static main.c codec.c headers.cpp)
+target_include_directories(native_coexistence_static PRIVATE "${PCRE2_INCLUDE_DIR}")
+target_link_libraries(native_coexistence_static PRIVATE BEAM::RuntimeStatic BEAM::NIF "${PCRE2_LIBRARY}" ZLIB::ZLIB ${CMAKE_DL_LIBS})

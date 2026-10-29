@@ -76,11 +76,10 @@ pid() ->
     {os_pid, Pid} = erlang:port_info(Sleep, os_pid),
     Pid.
 
-fail(output) -> exit(whereis(beam_service_output), kill), await_failure();
-fail(zlib) -> exit(whereis(beam_service_zlib), kill), await_failure();
-fail(program) -> exit(whereis(beam_service_program), kill), await_failure().
-await_failure() -> receive after 5000 -> error(component_did_not_stop) end.
+%% Failure injection targets the generic terminal mechanism, not synthetic owners.
+fail(Origin) -> erts_internal:request_failure(Origin, injected_failure), await_failure().
+await_failure() -> receive after 5000 -> error(failure_did_not_stop) end.
 
-cleanup() -> persistent_term:put(beam_cleanup_fault, <<"facility-cleanup">>), 42.
+cleanup() -> {ok, ok} = beam_host:request(cleanup), 42.
 
 complete() -> beam_host:request(complete), error(completion_returned).

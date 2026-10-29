@@ -140,8 +140,8 @@ graph cannot select both linkage forms. Native extensions continue to resolve
 against their host; they must not link another runtime copy.
 
 The static SDK supports generic embedding and the public NIF/driver interfaces.
-Modern commands and components use shared linkage; static hosts reject modern
-component acquisition. `beam_library_path()` returns the absolute path of the
+The modern CLI uses shared linkage. Optional libraries have shared and static
+forms; static VM hosts select static libraries. `beam_library_path()` returns the absolute path of the
 containing runtime image, which is the executable for static hosts.
 `beam_build_id()` identifies the source build for either linkage form. SDK
 artifact metadata records separate shared/archive hashes and the hashed static

@@ -1594,14 +1594,11 @@ static void bare_collect_persistent_table(HashTable *table,
 
 void erts_bare_release_persistent_nif_resources(void)
 {
-    extern int erts_components_active(void);
     extern int erts_nif_resource_binary(Binary *bin);
     ErtsLiteralArea **areas = NULL;
     Uint count = 0, capacity = 0, index;
     DeleteOp *op;
     HashTable *table;
-    if (!erts_components_active())
-        return;
     table = (HashTable *)erts_atomic_read_nob(&the_hash_table);
     if (table)
         bare_collect_persistent_table(table, &areas, &count, &capacity);
@@ -1634,28 +1631,6 @@ void erts_bare_release_persistent_nif_resources(void)
     }
     if (areas)
         erts_free(ERTS_ALC_T_TMP, areas);
-}
-
-void erts_components_capture_cleanup(void)
-{
-    extern int erts_components_active(void);
-    extern void erts_components_set_cleanup(const char *bytes, size_t size);
-    Eterm key, value;
-    Uint size = 0;
-    const byte *allocated = NULL;
-    const byte *bytes;
-    if (!erts_components_active())
-        return;
-    key = erts_atom_put((byte *)"beam_cleanup_fault", 18, ERTS_ATOM_ENC_LATIN1, 1);
-    value = erts_persistent_term_get(key);
-    if (is_non_value(value))
-        return;
-    bytes = erts_get_aligned_binary_bytes(value, &size, &allocated);
-    if (!bytes)
-        return;
-    erts_components_set_cleanup((const char *)bytes, size);
-    if (allocated)
-        erts_free_aligned_binary_bytes(allocated);
 }
 
 void erts_bare_destroy_persistent_terms(void)

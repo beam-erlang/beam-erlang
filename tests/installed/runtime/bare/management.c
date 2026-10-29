@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define _GNU_SOURCE
 #include <beam/beam.h>
+#include <beam/zlib.h>
 #include <dirent.h>
 #include <fenv.h>
 #include <sched.h>
 #include <stdint.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -240,6 +242,80 @@ static int binary_call(beam_vm *vm, const char *function,
     return failed;
 }
 
+static size_t gzip_bytes(unsigned char *output, size_t capacity,
+                         const unsigned char *input, size_t size)
+{
+    beam_zlib_stream stream = {0};
+    if (size > UINT_MAX || capacity > UINT_MAX ||
+        beam_zlib_deflate_init2(&stream, 6, BEAM_ZLIB_DEFLATED, 31, 8,
+                               BEAM_ZLIB_DEFAULT_STRATEGY) != BEAM_ZLIB_OK)
+        return 0;
+    stream.next_in = (unsigned char *)input;
+    stream.avail_in = (unsigned)size;
+    stream.next_out = output;
+    stream.avail_out = (unsigned)capacity;
+    int result = beam_zlib_deflate(&stream, BEAM_ZLIB_FINISH);
+    size_t written = stream.total_out;
+    if (beam_zlib_deflate_end(&stream) != BEAM_ZLIB_OK || result != BEAM_ZLIB_STREAM_END)
+        return 0;
+    return written;
+}
+
+static int gzip_checks(beam_vm *vm, int stress)
+{
+    size_t raw = sizeof(bare_gzip), capacity = beam_zlib_compress_bound(raw) + 64;
+    unsigned char *packet = malloc(8 + raw + capacity * 3);
+    CHECK(packet);
+    memcpy(packet + 8, bare_gzip, raw);
+    size_t gzip = gzip_bytes(packet + 8 + raw, capacity, bare_gzip, raw);
+    CHECK(gzip);
+    size_t first = gzip_bytes(packet + 8 + raw + gzip, capacity, bare_gzip, raw/2);
+    size_t second = gzip_bytes(packet + 8 + raw + gzip + first, capacity, bare_gzip + raw/2, raw - raw/2);
+    CHECK(first && second);
+    for (unsigned i=0; i<4; ++i) {
+        packet[i] = (unsigned char)(raw >> (24-8*i));
+        packet[4+i] = (unsigned char)(gzip >> (24-8*i));
+    }
+    int failed = binary_call(vm,"gzip_checks",packet,8+raw+gzip+first+second);
+    free(packet);
+    CHECK(!failed);
+    packet = malloc(capacity);
+    CHECK(packet);
+    const unsigned char invalid[] = "gzip containing invalid BEAM";
+    gzip = gzip_bytes(packet, capacity, invalid, sizeof(invalid));
+    failed = !gzip || binary_call(vm,"gzip_invalid",packet,gzip);
+    CHECK(!failed);
+    gzip = capacity;
+    CHECK(beam_zlib_compress_z(packet, &gzip, bare_gzip, raw) == BEAM_ZLIB_OK);
+    failed = binary_call(vm,"gzip_invalid",packet,gzip);
+    free(packet);
+    CHECK(!failed);
+    for (size_t size=16384; size<=32768; size*=2) {
+        unsigned char *zeros = calloc(1,size);
+        capacity = beam_zlib_compress_bound(size)+64;
+        packet = malloc(capacity+4);
+        CHECK(zeros && packet);
+        gzip = gzip_bytes(packet+4,capacity,zeros,size);
+        for (unsigned i=0; i<4; ++i) packet[i]=(unsigned char)(size>>(24-8*i));
+        failed = !gzip || binary_call(vm,"gzip_size",packet,gzip+4);
+        free(zeros); free(packet);
+        CHECK(!failed);
+    }
+    if (stress) {
+        size_t size=64*1024*1024;
+        unsigned char *zeros=calloc(1,size);
+        capacity=beam_zlib_compress_bound(size)+64;
+        packet=malloc(capacity);
+        CHECK(zeros && packet);
+        gzip=gzip_bytes(packet,capacity,zeros,size);
+        free(zeros);
+        failed = !gzip || binary_call(vm,"gzip_interrupt",packet,gzip);
+        free(packet);
+        CHECK(!failed);
+    }
+    return 0;
+}
+
 static int resources_clean(void)
 {
     size_t a,b,c,d, vk,sk,vc,sc,blocks,slots,vl,sl;
@@ -338,6 +414,7 @@ int main(void)
         CHECK(!verify_counts(vm,&options,options.schedulers,1,1));
         CHECK(!call_number(vm,"bare_managed","generation",&value) && value == 1);
         if (!cycle) OK(beam_vm_call(vm,"bare_managed","literal",empty,&saved_result));
+        CHECK(!gzip_checks(vm, !cycle));
 
         unsigned before,after;
         CHECK(!call_number(vm,"bare_management","atom_count",&before));

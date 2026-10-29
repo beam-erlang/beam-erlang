@@ -25,9 +25,7 @@
  *
  */
 
-#ifdef HAVE_CONFIG_H
-#    include "config.h"
-#endif
+#include "beam_library_platform.h"
 
 #ifdef ESOCK_ENABLE
 
