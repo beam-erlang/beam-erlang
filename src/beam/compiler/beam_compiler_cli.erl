@@ -16,7 +16,7 @@ bootstrap(Context) when is_map(Context) ->
 run(Context) when is_map(Context) ->
     initialize(Context),
     Source = unicode:characters_to_list(maps:get(source, Context)),
-    Result = beam_compiler_engine:source(Source, [], engine_context()),
+    Result = beam_compiler_engine:source(Source, [beam_modern_map_comprehensions|target_options(modern)], engine_context()),
     case Result of
         {ok, #{module:=Module,bytecode:=Bytes,warnings:=Warnings}} ->
             diagnostics(standard_io, Warnings, "warning: "), {ok, Module, Bytes};
@@ -43,7 +43,9 @@ command(Arguments, Build) ->
         Settings = parse(Arguments, #{sources => [], includes => [], macros => [],
                                       outdir => undefined, depfile => undefined,
                                       deterministic => false, no_transforms => false, werror => false,
-                                      build => Build, debug_info => false}),
+                                      build => Build, debug_info => false, private_native => false,
+                                      assembly_backed => false,
+                                      native_target => case Build of true -> canonical; false -> modern end}),
         Jobs = prepare(Settings),
         lists:foreach(fun(Job) -> compile_one(Job, Settings) end, Jobs),
         0
@@ -82,6 +84,16 @@ parse(["--no-transforms" | Rest], Settings) ->
     parse(Rest, Settings#{no_transforms := true});
 parse(["--deterministic" | Rest], Settings) ->
     parse(Rest, Settings#{deterministic := true});
+parse(["--native-bindings=modern" | Rest], Settings) ->
+    parse(Rest, Settings#{native_target := modern});
+parse(["--native-bindings=canonical" | Rest], Settings) ->
+    parse(Rest, Settings#{native_target := canonical});
+parse(["--modern-target" | Rest], #{build := true} = Settings) ->
+    parse(Rest, Settings#{native_target := modern});
+parse(["--private-native" | Rest], #{build := true} = Settings) ->
+    parse(Rest, Settings#{private_native := true});
+parse(["--assembly-backed" | Rest], #{build := true} = Settings) ->
+    parse(Rest, Settings#{assembly_backed := true});
 parse(["--debug-info" | Rest], #{build := true} = Settings) ->
     parse(Rest, Settings#{debug_info := true});
 parse([Option], _Settings)
@@ -204,7 +216,7 @@ compile_one({Source, Stem, Output}, Settings) ->
     Options = compiler_options(Settings),
     Context = persistent_term:get(beam_compiler_context),
     persistent_term:put(beam_compiler_context,Context#{source=>unicode:characters_to_binary(Source)}),
-    {Binary, Dependencies} = case beam_compiler_engine:source(Source,Options,engine_context()) of
+    {SourceBinary, SourceDependencies} = case beam_compiler_engine:source(Source,Options,engine_context()) of
         {ok, #{module:=Module,bytecode:=Bytes,warnings:=Warnings,dependencies:=Inputs}} ->
             diagnostics(Warnings, "warning: "),
             check_module(Module,Stem,Source),
@@ -212,6 +224,12 @@ compile_one({Source, Stem, Output}, Settings) ->
         {error,Errors,Warnings} ->
             diagnostics(Errors,""), diagnostics(Warnings,"warning: "),
             throw(compilation_failed)
+    end,
+    {Binary,Dependencies} = case maps:get(assembly_backed,Settings) of
+        false -> {SourceBinary,SourceDependencies};
+        true ->
+            Assembly = filename:rootname(Source,".erl") ++ ".S",
+            {assembly_backed(SourceBinary,Assembly,Options),[Assembly|SourceDependencies]}
     end,
     Depfile = maps:get(depfile, Settings),
     DepBytes = case Depfile of
@@ -222,6 +240,30 @@ compile_one({Source, Stem, Output}, Settings) ->
                end,
     publish(Output, Binary, Depfile, DepBytes).
 
+%% Private artifact production: executable assembly and Erlang debug/type
+%% metadata have separate source owners. Public compilation remains source-only.
+assembly_backed(SourceBinary,Assembly,Options) ->
+    {ok,Module,Chunks} = beam_lib:all_chunks(SourceBinary),
+    {ok,[{module,Module},{exports,Exports},{attributes,Attrs},{labels,Labels}|Terms]} =
+        file:consult(Assembly),
+    Code = {Module,Exports,Attrs,#{},assembly_functions(Terms),Labels},
+    case beam_validator:validate(Code,strong) of
+        ok -> ok;
+        {error,Errors} -> fail("invalid assembly ~ts: ~tp",[Assembly,Errors])
+    end,
+    Extra = [{list_to_binary(Tag),Bytes} || {Tag,Bytes} <- Chunks,
+                                           Tag =:= "Docs" orelse Tag =:= "Dbgi"],
+    {"CInf",Info} = lists:keyfind("CInf",1,Chunks),
+    {ok,Binary} = beam_asm:module(Code,Extra,binary_to_term(Info),Options),
+    Binary.
+
+assembly_functions([{function,N,A,Entry}|Terms]) ->
+    {Instructions,Rest} = lists:splitwith(fun({function,_,_,_}) -> false;
+                                           (_) -> true
+                                        end,Terms),
+    [{function,N,A,Entry,Instructions}|assembly_functions(Rest)];
+assembly_functions([]) -> [].
+
 check_module(Module, Stem, Source) ->
     case atom_to_list(Module) of
         Stem -> ok;
@@ -230,6 +272,9 @@ check_module(Module, Stem, Source) ->
 
 compiler_options(Settings) ->
     [binary, return_errors, return_warnings] ++
+        target_options(maps:get(native_target,Settings)) ++
+        [beam_private_native_calls || maps:get(private_native,Settings)] ++
+        [beam_modern_map_comprehensions || not maps:get(build, Settings)] ++
         [{i, Directory} || Directory <- maps:get(includes, Settings)] ++
         [{d, Name, Value} || {Name, Value} <- maps:get(macros, Settings)] ++
         [deterministic || maps:get(deterministic, Settings)] ++
@@ -369,3 +414,16 @@ file_error(Operation, Path, Reason) ->
 
 fail(Format, Arguments) ->
     throw({compile_error, io_lib:format(Format, Arguments)}).
+
+%% Target choices are supplied by the host independently of the compiler VM.
+target_options(Target) ->
+    Context = persistent_term:get(beam_compiler_context),
+    case Target of
+        canonical -> [{beam_native_bindings,maps:get(native_bindings,Context)}];
+        modern ->
+            [{beam_native_bindings,maps:get(modern_native_bindings,Context)},
+             {beam_auto_imports,[{{spawn,1},beam,spawn},
+                                 {{spawn_monitor,1},beam,spawn_monitor},
+                                 {{monitor,1},beam,monitor},
+                                 {{convert_time_unit,3},beam_time,convert_time_unit}]}]
+    end.

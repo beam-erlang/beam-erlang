@@ -30,6 +30,7 @@
 #include "error.h"
 #include "bif.h"
 #include "erl_binary.h"
+#include "erl_map.h"
 #include "big.h"
 
 #include "erl_unicode.h"
@@ -73,8 +74,9 @@ static Export characters_to_list_trap_2_exp;
 static Export characters_to_list_trap_3_exp;
 static Export characters_to_list_trap_4_exp;
 
-static Export *c_to_b_int_trap_exportp = NULL;
-static Export *c_to_l_int_trap_exportp = NULL;
+static Export unicode_native_continue_export;
+static BIF_RETTYPE unicode_native_continue(BIF_ALIST_1);
+static Eterm unicode_native_start(Process *, Eterm, Eterm, int);
 
 void erts_init_unicode(void)
 {
@@ -100,8 +102,9 @@ void erts_init_unicode(void)
 			  am_erlang, ERTS_MAKE_AM("characters_to_list_trap_4"), 1,
 			  &characters_to_list_trap_4);
 
-    c_to_b_int_trap_exportp =  erts_export_put(am_unicode,am_characters_to_binary_int,2);
-    c_to_l_int_trap_exportp =  erts_export_put(am_unicode,am_characters_to_list_int,2);
+    erts_init_trap_export(&unicode_native_continue_export, am_erlang,
+                         ERTS_MAKE_AM("unicode_decode_continue"), 1,
+                         &unicode_native_continue);
 
 
 }
@@ -505,6 +508,22 @@ L_Again:   /* Restart with sublist, old listend was pushed on stack */
 }
 
 
+/* Shared scalar emission for the native Unicode calling contracts. */
+static ERTS_INLINE Uint unicode_encode_scalar(byte *out, Uint cp)
+{
+    if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return 0;
+    if (cp < 0x80) { out[0] = cp; return 1; }
+    if (cp < 0x800) {
+        out[0] = 0xc0 | (cp >> 6); out[1] = 0x80 | (cp & 63); return 2;
+    }
+    if (cp < 0x10000) {
+        out[0] = 0xe0 | (cp >> 12); out[1] = 0x80 | ((cp >> 6) & 63);
+        out[2] = 0x80 | (cp & 63); return 3;
+    }
+    out[0] = 0xf0 | (cp >> 18); out[1] = 0x80 | ((cp >> 12) & 63);
+    out[2] = 0x80 | ((cp >> 6) & 63); out[3] = 0x80 | (cp & 63); return 4;
+}
+
 static Eterm do_build_utf8(Process *p, Eterm ioterm, Sint *left, int latin1,
 			   byte *target, Uint *pos, Uint *characters, int *err,
 			   byte *leftover, int *num_leftovers)
@@ -626,39 +645,11 @@ L_Again:   /* Restart with sublist, old listend was pushed on stack */
 			    *err = 1;
 			    goto done;
 			}
-			if (x < 0x80) {
-			    target[(*pos)++] = (byte) x;
-			}
-			else if (x < 0x800) {
-			    target[(*pos)++] = (((byte) (x >> 6)) | 
-						 ((byte) 0xC0));
-			    target[(*pos)++] = (((byte) (x & 0x3F)) | 
-						((byte) 0x80));
-			} else if (x < 0x10000) {
-			    if (x >= 0xD800 && x <= 0xDFFF) {
-				/* Invalid unicode range */
-				*err = 1;
-				goto done;
-			    }
-			    target[(*pos)++] = (((byte) (x >> 12)) | 
-						((byte) 0xE0));
-			    target[(*pos)++] = ((((byte) (x >> 6)) & 0x3F)  | 
-						((byte) 0x80));
-			    target[(*pos)++] = (((byte) (x & 0x3F)) | 
-						((byte) 0x80));
-			} else if (x < 0x110000) { /* Standard imposed max */
-			    target[(*pos)++] = (((byte) (x >> 18)) | 
-						((byte) 0xF0));
-			    target[(*pos)++] = ((((byte) (x >> 12)) & 0x3F)  | 
-						((byte) 0x80));
-			    target[(*pos)++] = ((((byte) (x >> 6)) & 0x3F)  | 
-						((byte) 0x80));
-			    target[(*pos)++] = (((byte) (x & 0x3F)) | 
-						((byte) 0x80));
-			} else {
-				*err = 1;
-				goto done;
-			}
+            {
+                Uint emitted = unicode_encode_scalar(target + *pos, x);
+                if (!emitted) { *err = 1; goto done; }
+                *pos += emitted;
+            }
 			++(*characters);
 			--(*left);
 			ioterm = CDR(objp);
@@ -950,7 +941,7 @@ BIF_RETTYPE unicode_characters_to_binary_2(BIF_ALIST_2)
     } else if (BIF_ARG_2 == am_unicode || BIF_ARG_2 == am_utf8) {
 	latin1 = 0;
     } else {
-	BIF_TRAP2(c_to_b_int_trap_exportp, BIF_P, BIF_ARG_1, BIF_ARG_2);
+	return unicode_native_start(BIF_P, BIF_ARG_1, BIF_ARG_2, 0);
     }	
     if (is_list(BIF_ARG_1) && is_bitstring(CAR(list_val(BIF_ARG_1))) && 
 	is_nil(CDR(list_val(BIF_ARG_1)))) {
@@ -1139,7 +1130,7 @@ BIF_RETTYPE unicode_characters_to_list_2(BIF_ALIST_2)
     } else if (BIF_ARG_2 == am_unicode || BIF_ARG_2 == am_utf8) {
 	latin1 = 0;
     } else {
-	BIF_TRAP2(c_to_l_int_trap_exportp, BIF_P, BIF_ARG_1, BIF_ARG_2);
+	return unicode_native_start(BIF_P, BIF_ARG_1, BIF_ARG_2, 1);
     }	
     if (is_bitstring(BIF_ARG_1) && !latin1) { /* Optimized behaviour for this case */
 	    return utf8_to_list(BIF_P,BIF_ARG_1);
@@ -2948,3 +2939,5 @@ BIF_RETTYPE io_printable_range_0(BIF_ALIST_0)
 	BIF_RET(am_latin1);
     }
 }
+
+#include "erl_unicode_native.h"

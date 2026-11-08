@@ -94,19 +94,24 @@ target_link_libraries(beam_emulator PRIVATE beam-erlang::erts_headers)
 erts_add_emulator_sources(beam_emulator)
 target_sources(beam_emulator PRIVATE
     ${CMAKE_SOURCE_DIR}/src/beam.c
+    ${CMAKE_SOURCE_DIR}/src/beam_enif.c
     ${CMAKE_SOURCE_DIR}/src/beam_memory.c
     ${CMAKE_SOURCE_DIR}/src/beam_native.c
     ${CMAKE_SOURCE_DIR}/src/beam_zlib.c
     ${CMAKE_SOURCE_DIR}/src/beam_packet.c
     ${CMAKE_SOURCE_DIR}/src/beam_runtime_state.c
     ${CMAKE_SOURCE_DIR}/src/beam_composition.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/beam/beam_module_inspection.c
 )
 if(MSVC)
     set_source_files_properties(
         "${CMAKE_SOURCE_DIR}/src/beam.c" "${CMAKE_SOURCE_DIR}/src/beam_runtime_state.c"
         PROPERTIES COMPILE_OPTIONS /experimental:c11atomics)
 endif()
-target_include_directories(beam_emulator PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
+# Resolve the relative native header include in the public term API during the build.
+set(_public_sdk_beam_include "${CMAKE_BINARY_DIR}/public-sdk/include/beam")
+target_include_directories(beam_emulator PRIVATE
+    "${CMAKE_SOURCE_DIR}/src" "${CMAKE_SOURCE_DIR}/include" "${_public_sdk_beam_include}")
 erts_add_emulator_third_party_libraries()
 erts_add_ethread_library()
 
@@ -115,8 +120,8 @@ target_include_directories(beam_emulator PRIVATE "${CMAKE_BINARY_DIR}/components
 # Object targets are direct dependencies so every native entry is retained.
 function(beam_link_runtime TARGET)
     target_link_libraries(${TARGET} PRIVATE
-        beam_emulator beam_core_preload beam_core_shared_data_native
-        ryu pcre zlib ethread ${BEAM_SYSTEM_LIBRARIES})
+        beam_emulator beam_core_preload beam_core_shared_data_native beam_etf_objects
+        ryu zlib ethread ${BEAM_SYSTEM_LIBRARIES})
     if(ERTS_TERMCAP_LIB)
         target_link_libraries(${TARGET} PRIVATE ${ERTS_TERMCAP_LIB})
     endif()
@@ -133,6 +138,7 @@ add_library(BEAM::Runtime ALIAS libbeam)
 beam_link_runtime(libbeam)
 target_include_directories(libbeam INTERFACE
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    "$<BUILD_INTERFACE:${_public_sdk_beam_include}>"
     $<INSTALL_INTERFACE:include>
 )
 set_target_properties(libbeam PROPERTIES
@@ -156,8 +162,8 @@ add_library(libbeam_static STATIC
     ${CMAKE_SOURCE_DIR}/src/beam_runtime_image.c
     ${CMAKE_SOURCE_DIR}/src/beam_elf_image.c)
 target_compile_definitions(libbeam_static PRIVATE BEAM_STATIC_RUNTIME=1)
-foreach(_objects IN ITEMS beam_emulator beam_core_preload beam_core_shared_data_native
-        ryu pcre zlib ethread)
+foreach(_objects IN ITEMS beam_emulator beam_core_preload beam_core_shared_data_native beam_etf_objects
+        ryu zlib ethread)
     target_sources(libbeam_static PRIVATE $<TARGET_OBJECTS:${_objects}>)
 endforeach()
 set(_static_name beam)
@@ -170,7 +176,9 @@ add_library(beam_runtime_static INTERFACE)
 add_library(BEAM::RuntimeStatic ALIAS beam_runtime_static)
 set_target_properties(beam_runtime_static PROPERTIES EXPORT_NAME RuntimeStatic)
 target_include_directories(beam_runtime_static INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    "$<BUILD_INTERFACE:${_public_sdk_beam_include}>"
+    $<INSTALL_INTERFACE:include>)
 target_link_libraries(beam_runtime_static INTERFACE
     "$<BUILD_INTERFACE:$<LINK_LIBRARY:WHOLE_ARCHIVE,libbeam_static>>"
     "$<INSTALL_INTERFACE:$<LINK_LIBRARY:WHOLE_ARCHIVE,BEAM::RuntimeStaticArchive>>"
@@ -270,6 +278,7 @@ add_custom_command(OUTPUT "${_core_check_stamp}"
         ${BEAM_CORE_SOURCES} ${BEAM_CORE_BEAM_FILES}
         "${CMAKE_SOURCE_DIR}/cmake/RuntimeCoreModules.cmake"
         "${CMAKE_SOURCE_DIR}/cmake/RefreshCoreArtifacts.cmake"
+        "${CMAKE_SOURCE_DIR}/src/beam/support/include/beam_time_conversion.hrl"
     COMMENT "Verifying embedded core bytecode and inspection metadata" VERBATIM)
 add_custom_target(beam_verify_core_artifacts ALL DEPENDS "${_core_check_stamp}")
 add_dependencies(beam_run beam_verify_core_artifacts)

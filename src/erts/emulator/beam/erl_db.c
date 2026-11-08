@@ -41,6 +41,7 @@
 #include "error.h"
 #define ERTS_WANT_DB_INTERNAL__
 #include "erl_db.h"
+#include "erl_map.h"
 #include "bif.h"
 #include "big.h"
 #include "erl_binary.h"
@@ -470,8 +471,8 @@ static BIF_RETTYPE ets_delete_trap(BIF_ALIST_1);
 static Eterm table_info(ErtsHeapFactory* hf, DbTable* tb, Eterm What);
 
 static BIF_RETTYPE ets_select1(Process* p, int bif_ix, Eterm arg1);
-static BIF_RETTYPE ets_select2(Process* p, DbTable*, Eterm tid, Eterm ms);
-static BIF_RETTYPE ets_select3(Process* p, DbTable*, Eterm tid, Eterm ms, Sint chunk_size);
+static BIF_RETTYPE ets_select2(Process* p, DbTable*, Eterm tid, Eterm ms, int bif_ix, const Eterm *args);
+static BIF_RETTYPE ets_select3(Process* p, DbTable*, Eterm tid, Eterm ms, Sint chunk_size, int bif_ix, const Eterm *args);
 
 static BIF_RETTYPE ets_insert_2_list_continuation(Process* p,
                                                   struct ets_insert_2_list_info* ctx);
@@ -488,7 +489,117 @@ Export ets_select_continue_exp;
  */
 static Export ets_delete_continue_exp;
 
-static Export *ets_info_binary_trap = NULL;
+/* Resolved once per VM; unbound public select/1 never becomes a dependency. */
+Export *erts_ets_select_resume_export;
+static int ets_select_public_resume;
+static Export ets_select_origin_exp;
+static BIF_RETTYPE ets_select_origin_continue(BIF_ALIST_1);
+static Export ets_info_binary_continue_exp;
+static Export ets_info_binary_legacy_exp;
+static BIF_RETTYPE ets_info_binary_continue(BIF_ALIST_1);
+static Eterm ets_info_binary(Process *p, Eterm table, Export *entry);
+
+
+typedef struct {
+    Export *entry;
+    Uint arity;
+    Eterm args[3];
+} DbSelectOrigin;
+
+typedef struct {
+    DbSelectOrigin origin;
+    Export *pending;
+    Eterm args[3];
+} DbSelectResume;
+
+static int db_select_resume_dtor(Binary *bin)
+{
+    return 1;
+}
+
+static void db_select_origin_init(DbSelectOrigin *origin, int slot,
+                                  const Eterm *args)
+{
+    if (!ets_select_public_resume) {
+        origin->entry = BIF_TRAP_EXPORT(slot);
+        origin->arity = origin->entry->info.mfa.arity;
+        ASSERT(origin->arity <= 3);
+        sys_memcpy(origin->args, args, sizeof(Eterm) * origin->arity);
+    }
+}
+
+static void db_select_save_pending(Process *p, DbSelectResume *ctx)
+{
+    const ErtsCodeMFA *mfa;
+    Eterm *args = erts_proc_sched_data(p)->registers->x_reg_array.d;
+#ifdef BEAMASM
+    mfa = p->current;
+#else
+    mfa = erts_code_to_codemfa(p->i);
+#endif
+    ctx->pending = ErtsContainerStruct(mfa, Export, info.mfa);
+    ASSERT(ctx->pending->info.mfa.arity <= 3);
+    sys_memcpy(ctx->args, args, sizeof(Eterm) * ctx->pending->info.mfa.arity);
+}
+
+/* Selection kernels only schedule native ETS resumes. Keep their raw public
+ * continuation unchanged, with invocation ownership in a private envelope. */
+static Eterm db_select_origin_finish(Process *p, const DbSelectOrigin *origin,
+                                     Eterm result)
+{
+    if (!ets_select_public_resume && !is_value(result) && p->freason == TRAP) {
+        Binary *bin = erts_create_magic_binary(sizeof(DbSelectResume),
+                                               db_select_resume_dtor);
+        DbSelectResume *ctx = ERTS_MAGIC_BIN_DATA(bin);
+        Eterm *hp, ref;
+        ctx->origin = *origin;
+        db_select_save_pending(p, ctx);
+        hp = HAlloc(p, ERTS_MAGIC_REF_THING_SIZE);
+        ref = erts_mk_magic_ref(&hp, &MSO(p), bin);
+        erts_set_gc_state(p, 0);
+        BIF_TRAP1(&ets_select_origin_exp, p, ref);
+    }
+    return result;
+}
+
+static BIF_RETTYPE ets_select_origin_continue(BIF_ALIST_1)
+{
+    Eterm ref = BIF_ARG_1, result;
+    Binary *bin;
+    DbSelectResume *ctx;
+    ErtsBifFunc function;
+    if (!is_internal_magic_ref(ref))
+        BIF_ERROR(BIF_P, BADARG);
+    bin = erts_magic_ref2bin(ref);
+    ASSERT(ERTS_MAGIC_BIN_DESTRUCTOR(bin) == db_select_resume_dtor);
+    ASSERT(BIF_P->flags & F_DISABLE_GC);
+    ctx = ERTS_MAGIC_BIN_DATA(bin);
+    sys_memcpy(BIF__ARGS, ctx->args, sizeof(Eterm) * ctx->pending->info.mfa.arity);
+    BIF_P->current = &ctx->pending->info.mfa;
+    function = (ErtsBifFunc)ctx->pending->trampoline.bif.address;
+    result = function(BIF_CALL_ARGS);
+    if (!is_value(result) && BIF_P->freason == TRAP) {
+        db_select_save_pending(BIF_P, ctx);
+        BIF_TRAP1(&ets_select_origin_exp, BIF_P, ref);
+    }
+    erts_set_gc_state(BIF_P, 1);
+    if (!is_value(result)) {
+        Uint reason = BIF_P->freason;
+        switch (ctx->origin.arity) {
+        case 1:
+            ERTS_BIF_ERROR_TRAPPED1(BIF_P, reason, ctx->origin.entry,
+                                    ctx->origin.args[0]);
+        case 2:
+            ERTS_BIF_ERROR_TRAPPED2(BIF_P, reason, ctx->origin.entry,
+                                    ctx->origin.args[0], ctx->origin.args[1]);
+        default:
+            ERTS_BIF_ERROR_TRAPPED3(BIF_P, reason, ctx->origin.entry,
+                                    ctx->origin.args[0], ctx->origin.args[1],
+                                    ctx->origin.args[2]);
+        }
+    }
+    BIF_RET(result);
+}
 
 static void
 free_dbtable(void *vtb)
@@ -3784,7 +3895,7 @@ BIF_RETTYPE ets_match_2(BIF_ALIST_2)
     ms = TUPLE3(hp, BIF_ARG_2, NIL, ms); 
     hp += 4;
     ms = CONS(hp, ms, NIL);
-    res = ets_select2(BIF_P, tb, BIF_ARG_1, ms);
+    res = ets_select2(BIF_P, tb, BIF_ARG_1, ms, BIF_ets_match_2, BIF__ARGS);
     UnUseTmpHeap(8,BIF_P);
     return res;
 }
@@ -3812,7 +3923,7 @@ BIF_RETTYPE ets_match_3(BIF_ALIST_3)
     ms = TUPLE3(hp, BIF_ARG_2, NIL, ms); 
     hp += 4;
     ms = CONS(hp, ms, NIL);
-    res = ets_select3(BIF_P, tb, BIF_ARG_1, ms, chunk_size);
+    res = ets_select3(BIF_P, tb, BIF_ARG_1, ms, chunk_size, BIF_ets_match_3, BIF__ARGS);
     UnUseTmpHeap(8,BIF_P);
     return res;
 }
@@ -3831,12 +3942,15 @@ BIF_RETTYPE ets_select_3(BIF_ALIST_3)
         BIF_ERROR(BIF_P, BADARG);
     }
 
-    return ets_select3(BIF_P, tb, BIF_ARG_1, BIF_ARG_2, chunk_size);
+    return ets_select3(BIF_P, tb, BIF_ARG_1, BIF_ARG_2, chunk_size, BIF_ets_select_3, BIF__ARGS);
 }
 
 static BIF_RETTYPE
-ets_select3(Process* p, DbTable* tb, Eterm tid, Eterm ms, Sint chunk_size)
+ets_select3(Process* p, DbTable* tb, Eterm tid, Eterm ms, Sint chunk_size, int bif_ix, const Eterm *args)
 {
+    DbSelectOrigin origin;
+    db_select_origin_init(&origin, bif_ix, args);
+
     BIF_RETTYPE result;
     int cret;
     Eterm ret;
@@ -3874,7 +3988,7 @@ ets_select3(Process* p, DbTable* tb, Eterm tid, Eterm ms, Sint chunk_size)
 
     erts_match_set_release_result(p);
 
-    return result;
+    return db_select_origin_finish(p, &origin, result);
 }
 
 
@@ -3939,6 +4053,10 @@ BIF_RETTYPE ets_select_1(BIF_ALIST_1)
  */
 static BIF_RETTYPE ets_select1(Process *p, int bif_ix, Eterm arg1)
 {
+    DbSelectOrigin origin;
+    Eterm args[] = {arg1};
+    db_select_origin_init(&origin, bif_ix, args);
+
     BIF_RETTYPE result;
     DbTable* tb;
     int cret;
@@ -3994,20 +4112,23 @@ static BIF_RETTYPE ets_select1(Process *p, int bif_ix, Eterm arg1)
 
     erts_match_set_release_result(p);
 
-    return result;
+    return db_select_origin_finish(p, &origin, result);
 }
 
 BIF_RETTYPE ets_select_2(BIF_ALIST_2)
 {
     DbTable* tb;
     DB_BIF_GET_TABLE(tb, DB_READ, LCK_READ, BIF_ets_select_2);
-    return ets_select2(BIF_P, tb, BIF_ARG_1, BIF_ARG_2);
+    return ets_select2(BIF_P, tb, BIF_ARG_1, BIF_ARG_2, BIF_ets_select_2, BIF__ARGS);
     /* TRAP: ets_select_trap_1 */
 }
 
 static BIF_RETTYPE
-ets_select2(Process* p, DbTable* tb, Eterm tid, Eterm ms)
+ets_select2(Process* p, DbTable* tb, Eterm tid, Eterm ms, int bif_ix, const Eterm *args)
 {
+    DbSelectOrigin origin;
+    db_select_origin_init(&origin, bif_ix, args);
+
     BIF_RETTYPE result;
     int cret;
     enum DbIterSafety safety;
@@ -4044,7 +4165,7 @@ ets_select2(Process* p, DbTable* tb, Eterm tid, Eterm ms)
 
     erts_match_set_release_result(p);
 
-    return result;
+    return db_select_origin_finish(p, &origin, result);
 }
 
 /* We get here instead of in the real BIF when trapping */
@@ -4237,6 +4358,9 @@ BIF_RETTYPE ets_select_replace_2(BIF_ALIST_2)
 
 BIF_RETTYPE ets_select_reverse_3(BIF_ALIST_3)
 {
+    DbSelectOrigin origin;
+    db_select_origin_init(&origin, BIF_ets_select_reverse_3, BIF__ARGS);
+
     BIF_RETTYPE result;
     DbTable* tb;
     int cret;
@@ -4279,7 +4403,7 @@ BIF_RETTYPE ets_select_reverse_3(BIF_ALIST_3)
 	break;
     }
     erts_match_set_release_result(BIF_P);
-    return result;
+    return db_select_origin_finish(BIF_P, &origin, result);
 }
 
 BIF_RETTYPE ets_select_reverse_1(BIF_ALIST_1)
@@ -4289,6 +4413,9 @@ BIF_RETTYPE ets_select_reverse_1(BIF_ALIST_1)
 
 BIF_RETTYPE ets_select_reverse_2(BIF_ALIST_2)
 {
+    DbSelectOrigin origin;
+    db_select_origin_init(&origin, BIF_ets_select_reverse_2, BIF__ARGS);
+
     BIF_RETTYPE result;
     DbTable* tb;
     int cret;
@@ -4325,7 +4452,7 @@ BIF_RETTYPE ets_select_reverse_2(BIF_ALIST_2)
 	break;
     }
     erts_match_set_release_result(BIF_P);
-    return result;
+    return db_select_origin_finish(BIF_P, &origin, result);
 }
 
 
@@ -4356,7 +4483,7 @@ BIF_RETTYPE ets_match_object_2(BIF_ALIST_2)
     ms = TUPLE3(hp, BIF_ARG_2, NIL, ms); 
     hp += 4;
     ms = CONS(hp, ms, NIL);
-    res = ets_select2(BIF_P, tb, BIF_ARG_1, ms);
+    res = ets_select2(BIF_P, tb, BIF_ARG_1, ms, BIF_ets_match_object_2, BIF__ARGS);
     UnUseTmpHeap(8,BIF_P);
     return res;
 }
@@ -4387,7 +4514,7 @@ BIF_RETTYPE ets_match_object_3(BIF_ALIST_3)
     ms = TUPLE3(hp, BIF_ARG_2, NIL, ms); 
     hp += 4;
     ms = CONS(hp, ms, NIL);
-    res = ets_select3(BIF_P, tb, BIF_ARG_1, ms, chunk_size);
+    res = ets_select3(BIF_P, tb, BIF_ARG_1, ms, chunk_size, BIF_ets_match_object_3, BIF__ARGS);
     UnUseTmpHeap(8,BIF_P);
     return res;
 }
@@ -4539,7 +4666,7 @@ BIF_RETTYPE ets_info_2(BIF_ALIST_2)
     }
 
     if (BIF_ARG_2 == am_binary)
-        BIF_TRAP1(ets_info_binary_trap, BIF_P, BIF_ARG_1);
+        return ets_info_binary(BIF_P, BIF_ARG_1, BIF_TRAP_EXPORT(BIF_ets_info_2));
 
     if ((tb = db_get_table(BIF_P, BIF_ARG_1, DB_INFO, LCK_READ, &freason)) == NULL) {
         if (BIF_P->fvalue == EXI_ID) {
@@ -4643,6 +4770,190 @@ BIF_RETTYPE ets_match_spec_run_r_3(BIF_ALIST_3)
 	goto error;
     }
     BIF_RET2(ret,i);
+}
+
+/* A process fixation owns the table independently of this private context.
+ * Existing process-exit and table-deletion paths reclaim it on cancellation. */
+typedef struct {
+    Export *entry;
+    Eterm original, table, key, result, items, scan;
+    Eterm *last;
+    int fixed, started, need_next;
+} DbBinaryInfo;
+
+static int db_binary_info_dtor(Binary *bin)
+{
+    return 1;
+}
+
+static Eterm db_binary_info_error(Process *p, DbBinaryInfo *ctx,
+                                  Eterm reason, int lookup_error)
+{
+    ErtsHeapFactory factory;
+    Eterm tail, frame, args, info = NIL, map, property;
+    Eterm *hp;
+    Export *entry = ctx->entry;
+    int legacy_unfix = lookup_error &&
+        is_atom(bif_table[BIF_ets_safe_fixtable_2].module);
+    Eterm cause = p->fvalue;
+    if (legacy_unfix)
+        entry = BIF_TRAP_EXPORT(BIF_ets_safe_fixtable_2);
+    erts_factory_proc_init(&factory, p);
+    tail = erts_build_stacktrace(&factory, p, 0,
+                                MAX(0, erts_backtrace_depth - (legacy_unfix ? 2 : 1)), 0);
+    erts_factory_close(&factory);
+    if (lookup_error) {
+        hp = HAlloc(p, (entry->info.mfa.module == am_ets ? MAP2_SZ : MAP1_SZ) + 5);
+        if (entry->info.mfa.module == am_ets) {
+            map = MAP2(hp, am_cause, cause, am_module, am_erl_stdlib_errors);
+            hp += MAP2_SZ;
+        } else {
+            map = MAP1(hp, am_cause, cause);
+            hp += MAP1_SZ;
+        }
+        property = TUPLE2(hp, am_error_info, map); hp += 3;
+        info = CONS(hp, property, NIL);
+    }
+    hp = HAlloc(p, legacy_unfix ? 18 : 11);
+    args = CONS(hp, legacy_unfix ? am_false : am_binary, NIL); hp += 2;
+    args = CONS(hp, ctx->original, args); hp += 2;
+    if (legacy_unfix) {
+        frame = TUPLE4(hp, am_erts_internal, am_ets_info_binary, make_small(1), NIL);
+        hp += 5;
+        tail = CONS(hp, frame, tail); hp += 2;
+    }
+    frame = TUPLE4(hp, entry->info.mfa.module, entry->info.mfa.function, args, info);
+    hp += 5;
+    tail = CONS(hp, frame, tail);
+    {
+        Eterm raised[] = {am_error, reason, tail};
+        return raise_3(p, raised, NULL);
+    }
+}
+
+/* Traverse at most a reduction budget of keys/list cells. Per-key extraction
+ * keeps the existing backend's binary-accounting and allocation semantics. */
+static int db_binary_info_step(Process *p, DbBinaryInfo *ctx)
+{
+    DbTable *tb;
+    db_lock_kind_t kind = LCK_READ;
+    Uint freason;
+    Sint budget = MIN(ERTS_BIF_REDS_LEFT(p), 1000);
+    Sint work = 0;
+    int status = DB_ERROR_NONE;
+    p->flags |= F_ETS_SUPER_USER;
+    tb = db_get_table(p, ctx->table, DB_READ, kind, &freason);
+    if (!tb) {
+        p->flags &= ~F_ETS_SUPER_USER;
+        if (freason == TRAP)
+            return 0;
+        /* Deletion owns removal of any outstanding fixation record. */
+        ctx->fixed = 0;
+        return -1;
+    }
+    if (!ctx->fixed) {
+        fix_table_locked(p, tb);
+        ctx->fixed = 1;
+        ctx->table = make_tid(p, tb);
+    }
+    if (!ctx->started) {
+        status = tb->common.meth->db_raw_first(p, tb, &ctx->key);
+        ctx->started = 1;
+        ++work;
+    }
+    while (status == DB_ERROR_NONE && work < budget) {
+        if (is_list(ctx->scan)) {
+            ctx->last = list_val(ctx->scan) + 1;
+            ctx->scan = *ctx->last;
+            ++work;
+            continue;
+        }
+        if (is_list(ctx->items)) {
+            /* The backend returns a fresh spine; append without copying or
+             * reversing its per-key order. GC stays disabled across yields. */
+            ASSERT(is_nil(ctx->scan) && ctx->last);
+            *ctx->last = ctx->result;
+            ctx->result = ctx->items;
+            ctx->items = NIL;
+            ctx->last = NULL;
+        }
+        if (ctx->need_next) {
+            status = tb->common.meth->db_raw_next(p, tb, ctx->key, &ctx->key);
+            ctx->need_next = 0;
+            ++work;
+            if (status != DB_ERROR_NONE || work >= budget)
+                break;
+        }
+        if (ctx->key == am_EOT)
+            break;
+        status = tb->common.meth->db_get_binary_info(p, tb, ctx->key, &ctx->items);
+        ctx->scan = ctx->items;
+        ctx->need_next = 1;
+        ++work;
+    }
+    p->flags &= ~F_ETS_SUPER_USER;
+    BUMP_REDS(p, work);
+    if (status != DB_ERROR_NONE ||
+        (ctx->key == am_EOT && is_nil(ctx->items))) {
+        unfix_table_locked(p, tb, &kind);
+        ctx->fixed = 0;
+        db_unlock(tb, kind);
+        return status == DB_ERROR_NONE ? 1 :
+            status == DB_ERROR_SYSRES ? -2 : -3;
+    }
+    db_unlock(tb, kind);
+    return 0;
+}
+
+static Eterm ets_info_binary(Process *p, Eterm table, Export *entry)
+{
+    DbBinaryInfo local, *ctx = &local;
+    Eterm ref = THE_NON_VALUE;
+    int resumed = entry == NULL;
+    int status;
+    if (resumed) {
+        Binary *bin;
+        ref = table;
+        ASSERT(is_internal_magic_ref(ref));
+        bin = erts_magic_ref2bin(ref);
+        ASSERT(ERTS_MAGIC_BIN_DESTRUCTOR(bin) == db_binary_info_dtor);
+        ASSERT(p->flags & F_DISABLE_GC);
+        ctx = ERTS_MAGIC_BIN_DATA(bin);
+    } else {
+        sys_memset(ctx, 0, sizeof(*ctx));
+        ctx->entry = entry;
+        ctx->original = ctx->table = table;
+        ctx->key = ctx->result = ctx->items = ctx->scan = NIL;
+    }
+    status = db_binary_info_step(p, ctx);
+    if (!status) {
+        if (!resumed) {
+            Binary *bin = erts_create_magic_binary(sizeof(*ctx), db_binary_info_dtor);
+            Eterm *hp;
+            *(DbBinaryInfo *)ERTS_MAGIC_BIN_DATA(bin) = *ctx;
+            hp = HAlloc(p, ERTS_MAGIC_REF_THING_SIZE);
+            ref = erts_mk_magic_ref(&hp, &MSO(p), bin);
+            erts_set_gc_state(p, 0);
+        }
+        BUMP_ALL_REDS(p);
+        BIF_TRAP1(&ets_info_binary_continue_exp, p, ref);
+    }
+    if (resumed)
+        erts_set_gc_state(p, 1);
+    if (status < 0)
+        return db_binary_info_error(p, ctx,
+            status == -2 ? am_system_limit : am_badarg, status == -1);
+    BIF_RET(ctx->result);
+}
+
+static BIF_RETTYPE ets_info_binary_continue(BIF_ALIST_1)
+{
+    return ets_info_binary(BIF_P, BIF_ARG_1, NULL);
+}
+
+BIF_RETTYPE erts_internal_ets_info_binary_1(BIF_ALIST_1)
+{
+    return ets_info_binary(BIF_P, BIF_ARG_1, &ets_info_binary_legacy_exp);
 }
 
 BIF_RETTYPE erts_internal_ets_lookup_binary_info_2(BIF_ALIST_2)
@@ -4838,11 +5149,18 @@ void init_db(ErtsDbSpinCount db_spin_count)
 			  am_ets, ERTS_MAKE_AM("delete_trap"), 1,
 			  &ets_delete_trap);
 
-    /* ets:info(Tab, binary) trap... */
+    erts_init_trap_export(&ets_info_binary_continue_exp, am_erts_internal,
+                         ERTS_MAKE_AM("term_table_binary_info_continue"), 1,
+                         ets_info_binary_continue);
+    erts_init_trap_export(&ets_info_binary_legacy_exp, am_ets, am_info, 2,
+                         ets_info_2);
+    ets_select_public_resume = is_atom(bif_table[BIF_ets_select_1].module);
+    erts_ets_select_resume_export = ets_select_public_resume
+        ? BIF_TRAP_EXPORT(BIF_ets_select_1) : &ets_select_continue_exp;
+    erts_init_trap_export(&ets_select_origin_exp, am_erts_internal,
+                         ERTS_MAKE_AM("term_table_select_continue"), 1,
+                         ets_select_origin_continue);
 
-    ets_info_binary_trap = erts_export_put(am_erts_internal,
-                                           am_ets_info_binary,
-                                           1);
 }
 
 void
@@ -5862,4 +6180,27 @@ int erts_ets_debug_random_split_join(Eterm tid, int on)
         db_catree_debug_random_split_join(&tb->catree, on);
     db_unlock(tb, LCK_WRITE);
     return 1;
+}
+
+void erts_db_reset_bif_state(void)
+{
+    erts_ets_select_resume_export = NULL;
+    ets_select_public_resume = 0;
+    sys_memset(&ets_select_origin_exp, 0, sizeof(ets_select_origin_exp));
+    sys_memset(&ets_info_binary_continue_exp, 0, sizeof(ets_info_binary_continue_exp));
+    sys_memset(&ets_info_binary_legacy_exp, 0, sizeof(ets_info_binary_legacy_exp));
+}
+
+int erts_db_is_bif(const void *function)
+{
+    return erts_bif_is_ets(function)
+        || function == (const void *)ets_select_delete_trap_1
+        || function == (const void *)ets_select_count_1
+        || function == (const void *)ets_select_replace_1
+        || function == (const void *)ets_select_trap_1
+        || function == (const void *)ets_delete_trap
+        || function == (const void *)ets_select_origin_continue
+        || function == (const void *)ets_info_binary_continue
+        || function == (const void *)erts_internal_ets_info_binary_1
+        || erts_db_tree_is_bif(function);
 }

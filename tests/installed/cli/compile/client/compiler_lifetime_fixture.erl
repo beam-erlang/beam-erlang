@@ -4,9 +4,9 @@
 -export([value/0]).
 
 value() ->
-    absent = persistent_term:get({compiler_lifetime_transform,state}, absent),
+    absent = beam_persistent_term:get({compiler_lifetime_transform,state}, absent),
     undefined = whereis(compiler_lifetime_worker),
-    undefined = ets:whereis(compiler_lifetime_table),
-    false = erlang:module_loaded(compiler_lifetime_transform),
+    undefined = beam_ets:whereis(compiler_lifetime_table),
+    false = beam:module_loaded(compiler_lifetime_transform),
     42.
 

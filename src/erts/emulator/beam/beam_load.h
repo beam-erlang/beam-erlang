@@ -32,6 +32,7 @@
 #include "bif.h"
 
 #include "erl_bif_table.h"
+#include "beam_builtin_catalog.h"
 #include "beam_code.h"
 
 Eterm beam_make_current_old(Process *c_p, ErtsProcLocks c_p_locks,
@@ -48,6 +49,11 @@ typedef struct gen_op_entry {
 extern const GenOpEntry gen_opc[];
 
 typedef struct LoaderState_ LoaderState;
+typedef struct {
+    int binding; /* -1: ordinary import, 0: missing, 1: selected, 2: resolved. */
+    unsigned failure;
+    unsigned selection; /* Load-time Boolean, with no operation to execute. */
+} BeamNativeGuardImport;
 
 #ifdef BEAMASM
 #include "jit/load.h"
@@ -61,6 +67,12 @@ void beam_load_prepared_free(Binary *magic);
 int beam_load_prepare_emit(LoaderState *stp);
 int beam_load_emit_op(LoaderState *stp, BeamOp *op);
 int beam_load_finish_emit(LoaderState *stp);
+/* Compiler guard requirements are consumed during loading, never dispatched. */
+int beam_load_is_native_guard(LoaderState *stp, unsigned index);
+int beam_load_native_guard_binding(LoaderState *stp, unsigned index);
+int beam_load_native_guard_pending(LoaderState *stp, unsigned index);
+int beam_load_private_native(LoaderState *stp, unsigned index);
+int beam_load_native_selection(LoaderState *stp, unsigned index);
 
 struct erl_module_instance;
 void beam_load_finalize_code(LoaderState *stp,

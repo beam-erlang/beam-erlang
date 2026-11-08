@@ -295,7 +295,7 @@ int main(int argc,char **argv)
     beam_return_module modules[2]={{0},{0}};
     char retained[8192],expression[16384],script[16384],rejected_path[4096];
     unsigned all=BEAM_CLI_OUTPUT|BEAM_CLI_CODE|BEAM_CLI_FILE|BEAM_CLI_SOCKET|BEAM_CLI_ZLIB|BEAM_CLI_PROGRAM;
-    const char *endings[]={"",", erlang:halt(7)",", erlang:error(interactive_failure)",
+    const char *endings[]={"",", beam:halt(7)",", beam:error(interactive_failure)",
         ", exit(group_leader(),kill), receive after 3000 -> error(owner_alive) end"};
     check(argc==4,"usage: host PREFIX FIXTURE_BEAM WORK_FILE_OR_minimal");
     {
@@ -313,7 +313,7 @@ int main(int argc,char **argv)
     copied_result(&saved); quiescent(&host,NULL,0); observe(&steady);
     {
         const char *scripts[]={"interactive_probe:clean().\nq().\n", "interactive_probe:clean().\n",
-            "erlang:error(recoverable).\ninteractive_probe:clean().\nq().\n"};
+            "beam:error(recoverable).\ninteractive_probe:clean().\nq().\n"};
         for (unsigned i=0;i<3;++i) {
             o.out.size=o.err.size=0;
             result=run(system,argv[1],NULL,scripts[i],modules,1,BEAM_CLI_OUTPUT,&o,0);

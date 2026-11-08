@@ -602,3 +602,46 @@ gen.bs_match(Fail, Ctx, N, List) {
 
     return op;
 }
+
+// Replace selected native placeholders with their instruction bodies, including
+// local calls and local fun entries. Publication remains a separate decision.
+gen.native_instruction_body(M, F, A) {
+    int slot = beam_builtin_selected_instruction(M.val,F.val,A.val);
+    BeamOp *op;
+    ASSERT(slot >= 0);
+    $NewBeamOp(S,op);
+    switch (slot) {
+    case BEAM_INSTRUCTION_vm_apply_2:
+        $BeamOpNameArity(op,i_apply_fun_only,0);
+        op->next = NULL;
+        break;
+    case BEAM_INSTRUCTION_vm_apply_3:
+        $BeamOpNameArity(op,i_apply_only,0);
+        op->next = NULL;
+        break;
+    case BEAM_INSTRUCTION_vm_yield_0:
+        $BeamOpNameArity(op,i_yield,0);
+        op->next = NULL;
+        {
+            BeamOp *return_op;
+            $NewBeamOp(S,return_op);
+            $BeamOpNameArity(return_op,return,0);
+            return_op->next = NULL;
+            op->next = return_op;
+        }
+        break;
+    case BEAM_INSTRUCTION_vm_hibernate_0:
+        $BeamOpNameArity(op,i_hibernate,0);
+        op->next = NULL;
+        {
+            BeamOp *return_op;
+            $NewBeamOp(S,return_op);
+            $BeamOpNameArity(return_op,return,0);
+            return_op->next = NULL;
+            op->next = return_op;
+        }
+        break;
+    default: ERTS_INTERNAL_ERROR("unknown native instruction");
+    }
+    return op;
+}

@@ -222,7 +222,7 @@ typedef struct {
     struct {
         const byte *data;
         Sint32 size;
-    } attributes, compile_info, strings;
+    } attributes, compile_info, strings, native_metadata;
 } BeamFile;
 
 enum beamfile_read_result {

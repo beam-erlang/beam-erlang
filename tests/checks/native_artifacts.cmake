@@ -1,5 +1,5 @@
 include("${SOURCE_DIR}/cmake/RefreshNativeArtifacts.cmake")
-set(_pairs tracing:erl_tracer zlib:zlib)
+set(_pairs tracing:beam_trace tracing:beam_runtime_trace_errors zlib:zlib)
 foreach(_pair IN LISTS _pairs)
     string(REPLACE ":" ";" _parts "${_pair}")
     list(GET _parts 0 _component)

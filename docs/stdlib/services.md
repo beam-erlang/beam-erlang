@@ -113,3 +113,8 @@ Supplying code alone starts nothing.
 
 The implementation sources are [beam_boot](../../src/beam/boot/beam_boot.erl)
 and the [services directory](../../src/beam/services/).
+
+Embedding hosts using `beam_code` explicitly select
+`persistent_value_get_2` and `persistent_value_put_2` as
+`beam_persistent_term:get/2` and `put/2`. Startup alone needs `put/2`; supplying
+ordinary support bytecode does not install these native bindings.

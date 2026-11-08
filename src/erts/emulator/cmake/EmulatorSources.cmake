@@ -42,6 +42,7 @@ function(erts_add_emulator_sources target)
         beam/atom.c
         beam/binary.c
         beam/bif.c
+        beam/beam_builtin_catalog.c
         beam/big.c
         beam/copy.c
         beam/dist.c
@@ -369,7 +370,7 @@ function(erts_add_emulator_sources target)
         #   includes erl_bif_ddll.o erl_bif_guard.o erl_bif_info.o erl_bif_op.o
         #   erl_bif_os.o erl_bif_lists.o erl_bif_persistent.o erl_bif_atomics.o
         #   erl_bif_counters.o erl_bif_trace.o erl_bif_unique.o erl_guard_bifs.o
-        #   erl_bif_port.o erl_bif_chksum.o erl_bif_re.o erl_bif_binary.o
+        #   erl_bif_port.o erl_bif_chksum.o erl_bif_binary.o
         #   ... erl_math.o external.o ... bif.o)
         # - golden references/erlang-otp-29-artifacts/linux-amd64-emu/logs/make.log:473
         #   (erl_bif_table.c compile), :485 (erl_guard_bifs.c), :474-490 and :526-544
@@ -395,7 +396,6 @@ function(erts_add_emulator_sources target)
         beam/erl_bif_ddll.c
         beam/erl_bif_lists.c
         beam/erl_bif_os.c
-        beam/erl_bif_re.c
         beam/erl_math.c
         beam/external.c
         beam/erl_process_dict.c
@@ -507,7 +507,6 @@ function(erts_add_emulator_sources target)
         ${CMAKE_CURRENT_SOURCE_DIR}/sys
         ${CMAKE_CURRENT_SOURCE_DIR}/../lib_src
         ${CMAKE_CURRENT_SOURCE_DIR}/ryu
-        ${CMAKE_CURRENT_SOURCE_DIR}/pcre
     )
     target_include_directories(${target} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/sys/${BEAM_SYS_DIRECTORY}

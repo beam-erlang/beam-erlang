@@ -12,6 +12,7 @@ import tomllib
 
 from installed.sdk.layout import check_installation
 from installed.sdk.consumer.bytecode import check_bytecode
+from installed.sdk.consumer.etf import check_etf
 from installed.sdk.consumer.pkgconfig import check_pkgconfig
 from installed.sdk.consumer.documentation import check_documentation
 from support.bytecode import TEST_SUPPORT_DIR
@@ -105,6 +106,7 @@ def main():
                                 prefix=prefix, source=source / 'runtime_only/main.c',
                                 root=root / (phase + '-pkgconfig'), environment=env)
             check_runtime_only(execute, args.cmake, source, prefix, root, phase)
+            check_etf(execute, args.cmake, source, prefix, root, phase)
             coexistence = root / f'{phase}-native-coexistence'
             execute([args.cmake, '-S', source / 'native_coexistence', '-B', coexistence,
                      f'-DCMAKE_PREFIX_PATH={prefix}', f'-DEXPECTED_VERSION={expected_version()}'])

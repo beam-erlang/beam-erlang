@@ -6,7 +6,7 @@ foreach(_module IN LISTS BEAM_BOOT_MODULES)
     list(APPEND BEAM_BOOT_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/${_module}.erl")
     list(APPEND BEAM_BOOT_BEAM_FILES "${CMAKE_BINARY_DIR}/lib/beam/boot/ebin/${_module}.beam")
 endforeach()
-beam_add_erlang_component(beam_boot_modules
+beam_add_runtime_component(beam_boot_modules
     SOURCES ${BEAM_BOOT_SOURCES}
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/beam/boot/ebin")
 foreach(_value IN ITEMS MODULES SOURCES BEAM_FILES)

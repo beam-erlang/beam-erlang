@@ -21,6 +21,7 @@
  */
 
 #include "beam_asm.hpp"
+#include "beam_builtin_catalog.h"
 
 /* Calls to functions that are being purged (but haven't finished) land here.
  *
@@ -302,7 +303,8 @@ void BeamGlobalAssembler::emit_apply_fun_shared() {
 
         a.bind(raise_error);
         {
-            static const ErtsCodeMFA apply_mfa = {am_erlang, am_apply, 2};
+            const auto apply_mfa = static_cast<const ErtsCodeMFA *>(
+                beam_builtin_instruction_mfa(BEAM_INSTRUCTION_vm_apply_2));
 
             emit_leave_runtime<Update::eXRegs>(0);
 
@@ -310,7 +312,7 @@ void BeamGlobalAssembler::emit_apply_fun_shared() {
             a.mov(XREG1, ARG5);
 
             a.str(TMP1, a64::Mem(c_p, offsetof(Process, freason)));
-            mov_imm(ARG4, &apply_mfa);
+            mov_imm(ARG4, apply_mfa);
             a.b(labels[raise_exception]);
         }
     }

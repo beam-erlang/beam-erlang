@@ -6,7 +6,7 @@ foreach(_module IN LISTS BEAM_SERVICES_MODULES)
     list(APPEND BEAM_SERVICES_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/${_module}.erl")
     list(APPEND BEAM_SERVICES_BEAM_FILES "${CMAKE_BINARY_DIR}/lib/beam/services/ebin/${_module}.beam")
 endforeach()
-beam_add_erlang_component(beam_services_modules SOURCES ${BEAM_SERVICES_SOURCES}
+beam_add_runtime_component(beam_services_modules SOURCES ${BEAM_SERVICES_SOURCES}
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/beam/services/ebin")
 foreach(_value IN ITEMS MODULES SOURCES BEAM_FILES)
     set(BEAM_SERVICES_${_value} "${BEAM_SERVICES_${_value}}" PARENT_SCOPE)

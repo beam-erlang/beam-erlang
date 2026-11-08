@@ -62,7 +62,7 @@ class Compiler:
             '-module(epp_assertion_transform).\n-export([parse_transform/2]).\n'
             + 'parse_transform(InputForms, _) -> ' + expression.rstrip().rstrip('.')
             + ', InputForms.\n')
-        self.compile("--deterministic", transform)
+        self.compile("--native-bindings=canonical", "--deterministic", transform)
         consumer = module(self.work / "epp_assertion_consumer.erl", "ok",
                           '-compile({parse_transform,epp_assertion_transform}).\n')
         self.compile("--deterministic", consumer)

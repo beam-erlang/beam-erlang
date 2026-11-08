@@ -3,4 +3,4 @@
 
 main(_Args) ->
     io:format("Hello, World!~n"),
-    erlang:halt(0).
+    beam:halt(0).

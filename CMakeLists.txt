@@ -38,10 +38,14 @@ set(BEAM_CORE_MODULE_INITIALIZERS "")
 foreach(_module IN LISTS BEAM_CORE_MODULES)
     string(APPEND BEAM_CORE_MODULE_INITIALIZERS "    \"${_module}\",\n")
 endforeach()
+set(BEAM_PRIVATE_CORE_MODULE_INITIALIZERS "")
+foreach(_module IN LISTS BEAM_PRIVATE_CORE_MODULES)
+    string(APPEND BEAM_PRIVATE_CORE_MODULE_INITIALIZERS "    \"${_module}\",\n")
+endforeach()
 configure_file("${CMAKE_SOURCE_DIR}/cmake/beam_core_modules.h.in"
     "${CMAKE_BINARY_DIR}/erts/beam_core_modules.h" @ONLY)
 include(cmake/ComponentBuildId.cmake)
-set(BEAM_PUBLIC_HEADERS beam.h runtime.h boot.h native.h zlib.h native_image.h library.h host.h sdk/bytecode.h sdk/inventories.h)
+set(BEAM_PUBLIC_HEADERS beam.h runtime.h process.h beam_enif.h beam_etf.h sdk/etf.h boot.h native.h zlib.h native_image.h library.h host.h sdk/bytecode.h sdk/inventories.h)
 
 # Keep generated headers and object outputs at their established build paths.
 add_library(beam_erts_headers INTERFACE)
@@ -52,6 +56,7 @@ target_include_directories(beam_erts_headers INTERFACE
     ${CMAKE_BINARY_DIR}/erts/include
     ${CMAKE_BINARY_DIR}/erts/include/internal
 )
+include(cmake/ETF.cmake)
 add_subdirectory(src/beam)
 add_subdirectory(src/erts/emulator erts/emulator)
 add_dependencies(beam_run beam_verify_core_artifacts)

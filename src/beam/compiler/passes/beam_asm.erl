@@ -80,7 +80,13 @@
           {'ok',binary()}.
 
 module(Code0, ExtraChunks, CompileInfo, CompilerOpts) ->
-    {Mod,Exp0,Attr0,Anno,Asm0,NumLabels} = Code0,
+    {Mod,Exp0,Attr00,Anno,Asm00,NumLabels} = Code0,
+    Aliases = proplists:get_value(beam_native_calls, Attr00),
+    Attr0 = proplists:delete(beam_native_calls, Attr00),
+    Asm0 = case Aliases of
+               undefined -> Asm00;
+               _ -> [{function,N,A,L,native_restore(Is,Aliases)} || {function,N,A,L,Is} <- Asm00]
+           end,
     {1,Dict0} = beam_dict:atom(Mod, beam_dict:new()),
     {0,Dict1} = beam_dict:fname(atom_to_list(Mod) ++ ".erl", Dict0),
     {0,Dict2} = beam_dict:type(any, Dict1),
@@ -213,9 +219,15 @@ build_file(Code, Attr, Anno, Dict0, NumLabels, NumFuncs, ExtraChunks0,
 
     %% Create the meta chunk
     Meta = proplists:get_value(<<"Meta">>, ExtraChunks0, empty),
-    MetaChunk = case Meta of
-                    empty -> [];
-                    Meta -> chunk(<<"Meta">>, Meta)
+    NativeAttributes = native_guard_attributes(Attr,Dict0),
+    NativeMetadata = [T || T={Key,_} <- NativeAttributes,native_metadata_key(Key)],
+    MetaChunk = case {Meta,NativeMetadata} of
+                    {empty,[]} -> [];
+                    {_,[]} -> chunk(<<"Meta">>,Meta);
+                    _ ->
+                        Existing = case Meta of empty -> []; _ -> binary_to_term(Meta) end,
+                        Data = [{beam_native_version,1}|NativeMetadata++Existing],
+                        chunk(<<"Meta">>,term_to_binary(Data))
                 end,
 
     %% Remove Meta chunk from ExtraChunks since it is essential
@@ -229,7 +241,7 @@ build_file(Code, Attr, Anno, Dict0, NumLabels, NumFuncs, ExtraChunks0,
     Essentials1 = [iolist_to_binary(C) || C <- Essentials0],
     MD5 = module_md5(Essentials1),
     Essentials = finalize_fun_table(Essentials1, MD5),
-    {Attributes,Compile} = build_attributes(Attr, CompileInfo, MD5),
+    {Attributes,Compile} = build_attributes([T || T={Key,_} <- Attr,not native_execution_key(Key)], CompileInfo, MD5),
     AttrChunk = chunk(<<"Attr">>, Attributes),
     CompileChunk = chunk(<<"CInf">>, Compile),
 
@@ -662,9 +674,29 @@ make_op({debug_line=Op,Kind,Location,Index,Live,DebugInfo}, Dict0) ->
     {LocationIndex,Dict1} = beam_dict:line(Location, Dict0, Op),
     Dict = beam_dict:debug_info(Index, DebugInfo, Dict1),
     encode_op(debug_line, [Kind,LocationIndex,Index,Live], Dict);
+make_op({native_selection,{M,F,A},ID,Dst},Dict) ->
+    encode_op(bif0,[{native_selection_mfa,M,F,A,ID},Dst],Dict);
+make_op({private_guard,{M,F,A},ID,Fail,Live,Args,Dest},Dict) ->
+    Import = {private_mfa,M,F,A,ID},
+    case Args of
+        [] -> encode_op(bif0,[Import,Dest],Dict);
+        _ ->
+            Op = case length(Args) of 1 -> gc_bif1; 2 -> gc_bif2; 3 -> gc_bif3 end,
+            encode_op(Op,[Fail,Live,Import|Args++[Dest]],Dict)
+    end;
+make_op({native_guard,MFA,ID,Fail,Live,Args,Dest}, Dict) ->
+    {M,F,A} = MFA,
+    {f,Label} = Fail,
+    Import = {native_guard_mfa,M,F,A,ID,Label},
+    case Args of
+        [] -> encode_op(bif0,[Import,Dest],Dict);
+        _ ->
+            Op = case length(Args) of 1 -> gc_bif1; 2 -> gc_bif2; 3 -> gc_bif3 end,
+            encode_op(Op,[Fail,Live,Import|Args++[Dest]],Dict)
+    end;
 make_op({bif, Bif, {f,_}, [], Dest}, Dict) ->
     %% BIFs without arguments cannot fail.
-    encode_op(bif0, [{extfunc, erlang, Bif, 0}, Dest], Dict);
+    encode_op(bif0, [native_language_mfa(Bif,0), Dest], Dict);
 make_op({bif, raise, _Fail, [_A1,_A2] = Args, _Dest}, Dict) ->
     encode_op(raise, Args, Dict);
 make_op({bif,Bif,Fail,Args,Dest}, Dict) ->
@@ -673,7 +705,7 @@ make_op({bif,Bif,Fail,Args,Dest}, Dict) ->
 	{op,Op} ->
 	    make_op(list_to_tuple([Op,Fail|Args++[Dest]]), Dict);
 	BifOp when is_atom(BifOp) ->
-	    encode_op(BifOp, [Fail,{extfunc,erlang,Bif,Arity}|Args++[Dest]],
+	    encode_op(BifOp, [Fail,native_language_mfa(Bif,Arity)|Args++[Dest]],
 		      Dict)
     end;
 make_op({gc_bif,Bif,Fail,Live,Args,Dest}, Dict) ->
@@ -683,7 +715,7 @@ make_op({gc_bif,Bif,Fail,Live,Args,Dest}, Dict) ->
 		2 -> gc_bif2;
 		3 -> gc_bif3
 	    end,
-    encode_op(BifOp, [Fail,Live,{extfunc,erlang,Bif,Arity}|Args++[Dest]],Dict);
+    encode_op(BifOp, [Fail,Live,native_language_mfa(Bif,Arity)|Args++[Dest]],Dict);
 make_op({test,Cond,Fail,Src,{list,_}=Ops}, Dict) ->
     encode_op(Cond, [Fail,Src,Ops], Dict);
 make_op({test,Cond,Fail,Ops}, Dict) when is_list(Ops) ->
@@ -769,6 +801,18 @@ encode_arg({f, W}, Dict) ->
 encode_arg({string, BinString}, Dict0) when is_binary(BinString) ->
     {Offset, Dict} = beam_dict:string(BinString, Dict0),
     {encode(?tag_u, Offset), Dict};
+encode_arg({native_selection_mfa,M,F,A,ID},Dict0) ->
+    {Index,Dict} = beam_dict:selection_import(M,F,A,ID,Dict0),
+    {encode(?tag_u,Index),Dict};
+encode_arg({native_guard_mfa,M,F,A,ID,Fail}, Dict0) ->
+    {Index,Dict} = beam_dict:guard_import(M,F,A,ID,Fail,Dict0),
+    {encode(?tag_u,Index),Dict};
+encode_arg({public_mfa,M,F,A},Dict0) ->
+    {Index,Dict} = beam_dict:import(M,F,A,Dict0),
+    {encode(?tag_u,Index),Dict};
+encode_arg({private_mfa,M,F,A,ID},Dict0) ->
+    {Index,Dict} = beam_dict:private_import(M,F,A,ID,Dict0),
+    {encode(?tag_u,Index),Dict};
 encode_arg({extfunc, M, F, A}, Dict0) ->
     {Index, Dict} = beam_dict:import(M, F, A, Dict0),
     {encode(?tag_u, Index), Dict};
@@ -874,3 +918,89 @@ negative_to_bytes(N) ->
 	<<0:1,_/bits>> -> [16#ff,Bin];
 	<<1:1,_/bits>> -> Bin
     end.
+
+native_restore([{call_ext,0,{extfunc,'$beam_public',Alias,0}}=I|Is],Aliases) ->
+    native_restore_selection(I,Alias,[],Is,Aliases);
+native_restore([{call_ext_only,0,{extfunc,'$beam_public',Alias,0}}=I|Is],Aliases) ->
+    native_restore_selection(I,Alias,[return],Is,Aliases);
+native_restore([{call_ext_last,0,{extfunc,'$beam_public',Alias,0},Deallocate}=I|Is],Aliases) ->
+    native_restore_selection(I,Alias,[{deallocate,Deallocate},return],Is,Aliases);
+native_restore([{gc_bif,Bif,Fail,Live,Args,Dst}=I|Is], Aliases) ->
+    case lists:keyfind(Bif,1,Aliases) of
+        {Bif,{guard,M,F,A,ID}} ->
+            [{native_guard,{M,F,A},ID,Fail,Live,Args,Dst}|native_restore(Is,Aliases)];
+        {Bif,{private_guard,M,F,A,ID}} ->
+            [{private_guard,{M,F,A},ID,Fail,Live,Args,Dst}|native_restore(Is,Aliases)];
+        _ -> [native_restore_arg(I,Aliases)|native_restore(Is,Aliases)]
+    end;
+native_restore([{bif,Bif,Fail,Args,Dst}=I|Is], Aliases) ->
+    case lists:keyfind(Bif,1,Aliases) of
+        {Bif,{guard,M,F,A,ID}} ->
+            [{native_guard,{M,F,A},ID,Fail,0,Args,Dst}|native_restore(Is,Aliases)];
+        {Bif,{private_guard,M,F,A,ID}} ->
+            [{private_guard,{M,F,A},ID,Fail,0,Args,Dst}|native_restore(Is,Aliases)];
+        _ -> [native_restore_arg(I,Aliases)|native_restore(Is,Aliases)]
+    end;
+native_restore([{call_ext,1,{extfunc,'$beam_public',identity,1}}|Is], Aliases) ->
+    native_restore(Is, Aliases);
+native_restore([I|Is], Aliases) ->
+    [native_restore_arg(I,Aliases)|native_restore(Is,Aliases)];
+native_restore([], _) -> [].
+
+%% Generic language operations carry their contract explicitly. The loader's
+%% canonical-name primitive fallback is only for older bytecode.
+native_language_mfa(F,A) ->
+    case native_canonical_id(erlang,F,A) of
+        undefined -> {extfunc,erlang,F,A};
+        ID -> {private_mfa,erlang,F,A,ID}
+    end.
+
+native_restore_selection(I,Alias,Tail,Is,Aliases) ->
+    case lists:keyfind(Alias,1,Aliases) of
+        {Alias,{selection,M,F,A,ID}} ->
+            [{native_selection,{M,F,A},ID,{x,0}}|Tail++native_restore(Is,Aliases)];
+        _ -> [native_restore_arg(I,Aliases)|native_restore(Is,Aliases)]
+    end.
+
+native_restore_arg({extfunc,'$beam_public',F,A}, Aliases) ->
+    case lists:keyfind(F,1,Aliases) of
+        {F,{public,M,N,A,undefined}} -> {public_mfa,M,N,A};
+        {F,{private,M,N,A,ID}} -> {private_mfa,M,N,A,ID}
+    end;
+native_restore_arg({extfunc,M,F,A}=Call,_) ->
+    case native_canonical_id(M,F,A) of
+        undefined -> Call;
+        ID -> {private_mfa,M,F,A,ID}
+    end;
+native_restore_arg({literal,_}=T,_) -> T;
+native_restore_arg(T,Aliases) when is_tuple(T) ->
+    list_to_tuple([native_restore_arg(E,Aliases) || E <- tuple_to_list(T)]);
+native_restore_arg(L,Aliases) when is_list(L) ->
+    [native_restore_arg(E,Aliases) || E <- L];
+native_restore_arg(T,_) -> T.
+
+native_guard_attributes(Attr,Dict) ->
+    Attr1 = case beam_dict:native_guards(Dict) of
+                [] -> Attr;
+                Guards -> [{beam_native_guards,Guards}|Attr]
+            end,
+    Attr2 = case beam_dict:private_natives(Dict) of
+                [] -> Attr1;
+                Private -> [{beam_private_natives,Private}|Attr1]
+            end,
+    case beam_dict:native_selections(Dict) of
+        [] -> Attr2;
+        Selections -> [{beam_native_selections,Selections}|Attr2]
+    end.
+
+-define(BEAM_NATIVE_ASSEMBLY,true).
+-include("beam_native_contracts.hrl").
+
+%% Native requirements affect executable code and belong in checksum-covered
+%% metadata. Provider declarations remain visible in ordinary attributes too.
+native_metadata_key(beam_native_slots) -> true;
+native_metadata_key(Key) -> native_execution_key(Key).
+native_execution_key(beam_native_guards) -> true;
+native_execution_key(beam_private_natives) -> true;
+native_execution_key(beam_native_selections) -> true;
+native_execution_key(_) -> false.

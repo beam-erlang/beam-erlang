@@ -126,6 +126,7 @@ int main(int argc, char **argv)
 {
     beam_system *system = NULL;
     beam_vm *vm = NULL;
+    beam_composition *composition = NULL;
     beam_vm_options options;
     beam_error error = {0};
     beam_result result = {0};
@@ -156,10 +157,21 @@ int main(int argc, char **argv)
             beam_compiled_source_release(&current);
         }
     }
+    const beam_builtin_binding bindings[] = {
+        {sizeof(beam_builtin_binding), "vm_whereis_1", "beam", "whereis", 1},
+        {sizeof(beam_builtin_binding), "vm_module_loaded_1", "beam", "module_loaded", 1},
+        {sizeof(beam_builtin_binding), "persistent_value_get_2", "beam_persistent_term", "get", 2},
+        {sizeof(beam_builtin_binding), "term_table_whereis_1", "beam_ets", "whereis", 1}};
+    const beam_composition_options selection = {.struct_size=sizeof selection,
+        .builtin_binding_count=sizeof bindings/sizeof *bindings,.builtin_bindings=bindings};
+
+    CALL(beam_composition_prepare(&selection,&composition,&error));
     beam_vm_options_init(&options);
+    options.composition=composition;
 
     CALL(beam_vm_init(system, &options, &vm, &error));
-    CALL(beam_vm_load(vm, (beam_bytes){saved.bytes.data, saved.bytes.size}));
+    beam_composition_release(&composition);
+    CALL(beam_module_load(vm, (beam_bytes){saved.bytes.data, saved.bytes.size}));
     /* Initialization may acquire VM-owned descriptors, but creates no workers. */
     REQUIRE(entries("/proc/self/task") == threads);
     CALL(beam_vm_start(vm, &error));
@@ -178,6 +190,7 @@ int main(int argc, char **argv)
     outcome = 0;
 
 cleanup:
+    beam_composition_release(&composition);
     if (vm)
         (void)beam_vm_terminate(&vm, &halt_status);
     if (system)

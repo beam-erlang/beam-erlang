@@ -317,6 +317,11 @@ done:
     return status;
 }
 
+static const beam_builtin_binding modern_builtin_bindings[] = {
+#include "beam/modern_native_bindings.def"
+
+};
+
 beam_status
 beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
                                 beam_return_boot **out, beam_error *error)
@@ -326,11 +331,11 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
     beam_return_options prepared = {0};
     beam_status status;
     size_t count = 0, capacity = 0, index;
-    beam_library *libraries[3] = {0};
+    beam_library *libraries[4] = {0};
     size_t library_count = 0;
     const char *library_names[] = {"file", "network", "zlib"};
     const unsigned library_facilities[] = {BEAM_CLI_FILE, BEAM_CLI_SOCKET, BEAM_CLI_ZLIB};
-    beam_startup_action startup[7] = {0};
+    beam_startup_action startup[8] = {0};
     size_t startup_count = 0;
     unsigned char selection[256] = {131,108,0,0,0,1,108,0,0,0,0};
     size_t selection_size = 11;
@@ -367,8 +372,9 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
     }
 #endif
     const beam_sdk_inventory_kind selections[] = {
-        BEAM_SDK_INVENTORY_BASE, BEAM_SDK_INVENTORY_BOOT, BEAM_SDK_INVENTORY_SERVICES};
-    const char *labels[] = {"base", "boot", "services"};
+        BEAM_SDK_INVENTORY_BASE, BEAM_SDK_INVENTORY_STDLIB,
+        BEAM_SDK_INVENTORY_BOOT, BEAM_SDK_INVENTORY_SERVICES};
+    const char *labels[] = {"base", "stdlib", "boot", "services"};
     for (size_t i = 0; i < sizeof(selections) / sizeof(selections[0]); ++i) {
         const beam_sdk_inventory *selected = beam_sdk_inventory_get(selections[i]);
         status = append_inventory(&modules, &count, &capacity, root, labels[i], selected->bytecode,
@@ -376,6 +382,19 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
         if (status != BEAM_OK) break;
     }
     if (status != BEAM_OK) goto done;
+    /* NETWORK supplies the same verified collection artifacts. The base
+     * inventory was verified in full above; only final composition is partitioned. */
+    if (options->services & BEAM_CLI_SOCKET) {
+        size_t kept = 0;
+        for (size_t i = 0; i < count; ++i) {
+            if (!strcmp(modules[i].name, "beam_lists") || !strcmp(modules[i].name, "beam_maps")) {
+                free((void *)modules[i].name);
+                free((void *)modules[i].bytes.data);
+                free((void *)modules[i].origin);
+            } else modules[kept++] = modules[i];
+        }
+        count = kept;
+    }
     for (index = 0; index < 3; ++index) {
         if (!(options->services & library_facilities[index])) continue;
         if (snprintf(path, sizeof(path),
@@ -386,6 +405,18 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
         status = beam_library_open(path, &libraries[library_count], error);
         if (status != BEAM_OK) goto done;
         ++library_count;
+    }
+    const int tracing = options->tracing;
+    if (tracing) {
+        if (snprintf(path, sizeof(path),
+                     "%s/" BEAM_CLI_COMPONENT_DIRECTORY "/" BEAM_CLI_LIBRARY_PREFIX "beam-tracing" BEAM_CLI_LIBRARY_SUFFIX,
+                     root) >= sizeof(path)) {
+            status = failure(error, BEAM_INVALID_ARGUMENT, 0, "tracing library path is too long"); goto done;
+        }
+        status = beam_library_open(path, &libraries[library_count], error);
+        if (status != BEAM_OK) goto done;
+        ++library_count;
+        startup[startup_count++] = (beam_startup_action){"beam_trace", "load_nif", {0}};
     }
     /* Explicit command policy; neither acquisition nor a descriptor selects startup. */
     const char *names[] = {"code","file","output","program","socket","zlib"};
@@ -475,7 +506,10 @@ beam_cli_recipe_return_prepare(const beam_cli_recipe_return_options *options,
     prepared.modules = modules;
     beam_composition_options generic = {.struct_size=sizeof(generic),
         .binding_count=options->nif_count,.bindings=bindings,
-        .native_owner_count=options->nif_count,.native_owners=owners};
+        .native_owner_count=options->nif_count,.native_owners=owners,
+        .builtin_binding_count=sizeof modern_builtin_bindings / sizeof *modern_builtin_bindings,
+        .builtin_bindings=modern_builtin_bindings};
+    generic.default_tracer_module = tracing ? "beam_trace" : NULL;
     char helper[PATH_MAX];
     if(options->services & BEAM_CLI_PROGRAM){
         generic.native_admission=BEAM_NATIVE_MANAGED_PORTS;

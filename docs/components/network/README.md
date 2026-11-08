@@ -115,3 +115,11 @@ in a minimal modern composition.
 The current implementation is defined by
 [beam_socket.erl](../../../src/beam/network/beam_socket.erl) and the
 [network library recipe](../../../src/beam/network/CMakeLists.txt).
+
+Embedding hosts explicitly bind the five list and twelve map contracts to their
+public `beam_lists`/`beam_maps` names, plus `chardata_to_utf8_2` to
+`beam_unicode:characters_to_binary/2` for Unicode local socket paths. This native
+conversion does not require ordinary `unicode` code. Also select
+`persistent_value_get_1` and `persistent_value_put_2` as
+`beam_persistent_term:get/1` and `put/2` for native socket support. The passive library does
+not install these twenty bindings; the modern CLI networking recipe does.

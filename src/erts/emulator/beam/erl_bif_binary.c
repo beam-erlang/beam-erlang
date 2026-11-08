@@ -21,7 +21,8 @@
  */
 
 /*
- * NOTE: This file contains the BIF's for the *module* binary in stdlib.
+ * NOTE: This file contains shared byte kernels and the BIF entry points for
+ * the binary module and internal byte operations.
  * other BIF's concerning binaries are in binary.c.
  */
 
@@ -40,6 +41,8 @@
 #include "erl_binary.h"
 #include "erl_bits.h"
 #include "erl_bif_unique.h"
+#include "erl_map.h"
+#include "erl_utils.h"
 
 
 /*
@@ -1537,26 +1540,19 @@ badarg:
     return BF_BADARG;
 }
 
+/* Bounds and result policy are fixed before a context can be exported. */
 static BIF_RETTYPE
-binary_match(Process *p, Eterm arg1, Eterm arg2, Eterm arg3, Uint flags)
+binary_match_range(Process *p, Eterm arg1, Eterm arg2, BinaryFindContext *ctx,
+                   BinaryFindResult not_found, BinaryFindResult single)
 {
-    BinaryFindContext c_buff;
-    BinaryFindContext *ctx = &c_buff;
     Binary *pat_bin;
     int runres;
     Eterm result;
 
-    if (is_not_bitstring(arg1)) {
-	goto badarg;
-    }
-    ctx->flags = flags;
-    if (parse_match_opts_list(arg3, arg1, &(ctx->hsstart), &(ctx->hsend))) {
-	goto badarg;
-    }
     if (maybe_binary_match_compile(ctx, arg2, &pat_bin) != BF_OK) {
 	goto badarg;
     }
-    bf_context_init(ctx, do_match_not_found_result, do_match_single_result,
+    bf_context_init(ctx, not_found, single,
 		    do_match_global_result, pat_bin);
     runres = do_binary_find(p, arg1, &ctx, pat_bin, NULL, &result);
     if (runres == BF_OK && ctx->pat_term == THE_NON_VALUE) {
@@ -1574,6 +1570,19 @@ binary_match(Process *p, Eterm arg1, Eterm arg2, Eterm arg3, Uint flags)
     }
 badarg:
     BIF_ERROR(p, BADARG);
+}
+
+static BIF_RETTYPE
+binary_match(Process *p, Eterm arg1, Eterm arg2, Eterm arg3, Uint flags)
+{
+    BinaryFindContext ctx;
+    if (is_not_bitstring(arg1) ||
+        parse_match_opts_list(arg3, arg1, &ctx.hsstart, &ctx.hsend)) {
+        BIF_ERROR(p, BADARG);
+    }
+    ctx.flags = flags;
+    return binary_match_range(p, arg1, arg2, &ctx,
+                              do_match_not_found_result, do_match_single_result);
 }
 
 BIF_RETTYPE binary_match_2(BIF_ALIST_2)
@@ -2833,6 +2842,212 @@ BIF_RETTYPE binary_decode_unsigned_1(BIF_ALIST_1)
 BIF_RETTYPE binary_decode_unsigned_2(BIF_ALIST_2)
 {
     return do_decode_unsigned(BIF_P,BIF_ARG_1,BIF_ARG_2);
+}
+
+/* Internal entry points share kernels without selecting an Erlang library. */
+static int binary_byte_size(Eterm bin, Uint *size)
+{
+    Uint bits;
+    if (is_not_bitstring(bin))
+        return 0;
+    bits = bitstring_size(bin);
+    if (TAIL_BITS(bits) != 0)
+        return 0;
+    *size = BYTE_SIZE(bits);
+    return 1;
+}
+
+/* Translate the modern map contract, then call the shared split kernel.
+ * The option list is consumed before that kernel allocates, and badarg keeps
+ * the public arguments in the BIF registers. */
+static BIF_RETTYPE beam_bytes_split(Process *p, Eterm *args, int has_options)
+{
+    Eterm bytes = args[0], pattern = args[1], options = has_options ? args[2] : NIL;
+    Uint size, offset = 0, count = 0, words = 0;
+    int with_scope = 0, with_global = 0, trim = 0, items = 0;
+    Eterm list = NIL, *hp;
+
+    if (!binary_byte_size(bytes, &size))
+        BIF_ERROR(p, BADARG);
+    if (!has_options)
+        return binary_split(p, bytes, pattern, NIL);
+    if (erts_map_size(options) < 0)
+        BIF_ERROR(p, BADARG);
+    {
+        const Eterm *scope_value = erts_maps_get(am_scope, options);
+        const Eterm *global_value = erts_maps_get(am_global, options);
+        const Eterm *trim_value = erts_maps_get(am_trim, options);
+        Sint known = (scope_value != NULL) + (global_value != NULL) + (trim_value != NULL);
+        if (known != erts_map_size(options))
+            BIF_ERROR(p, BADARG);
+        if (scope_value) {
+            Eterm *tuple;
+            if (!is_tuple_arity(*scope_value, 2))
+                BIF_ERROR(p, BADARG);
+            tuple = tuple_val(*scope_value);
+            if (!term_to_Uint(tuple[1], &offset) || !term_to_Uint(tuple[2], &count) ||
+                offset > size || count > size - offset)
+                BIF_ERROR(p, BADARG);
+            with_scope = 1;
+            items++;
+        }
+        if (global_value) {
+            if (*global_value == am_true) {
+                with_global = 1;
+                items++;
+            } else if (*global_value != am_false) {
+                BIF_ERROR(p, BADARG);
+            }
+        }
+        if (trim_value) {
+            if (*trim_value == am_trailing) {
+                trim = 1;
+                items++;
+            } else if (*trim_value == am_all) {
+                trim = 2;
+                items++;
+            } else if (*trim_value != am_none) {
+                BIF_ERROR(p, BADARG);
+            }
+        }
+    }
+    if (with_scope) {
+        (void)erts_bld_uint(NULL, &words, offset);
+        (void)erts_bld_uint(NULL, &words, count);
+        words += 6;
+    }
+    words += (Uint)items * 2;
+    if (words) {
+        hp = HAlloc(p, words);
+        if (trim == 2) {
+            list = CONS(hp, am_trim_all, list);
+            hp += 2;
+        } else if (trim == 1) {
+            list = CONS(hp, am_trim, list);
+            hp += 2;
+        }
+        if (with_global) {
+            list = CONS(hp, am_global, list);
+            hp += 2;
+        }
+        if (with_scope) {
+            Eterm off = erts_bld_uint(&hp, NULL, offset);
+            Eterm cnt = erts_bld_uint(&hp, NULL, count);
+            Eterm inner, outer;
+            hp[0] = make_arityval(2);
+            hp[1] = off;
+            hp[2] = cnt;
+            inner = make_tuple(hp);
+            hp += 3;
+            hp[0] = make_arityval(2);
+            hp[1] = am_scope;
+            hp[2] = inner;
+            outer = make_tuple(hp);
+            hp += 3;
+            list = CONS(hp, outer, list);
+        }
+        bytes = args[0];
+        pattern = args[1];
+    }
+    return binary_split(p, bytes, pattern, list);
+}
+
+BIF_RETTYPE beam_bytes_split_3(BIF_ALIST_3)
+{
+    return beam_bytes_split(BIF_P, BIF__ARGS, 1);
+}
+
+/* Contracts with distinct argument or result semantics share the byte kernels. */
+BIF_RETTYPE bytes_repeat_modern_2(BIF_ALIST_2)
+{
+    Uint size, count;
+    Eterm n = BIF_ARG_2;
+    if (!binary_byte_size(BIF_ARG_1, &size) ||
+        !((is_small(n) && signed_val(n) >= 0) || (is_big(n) && !big_sign(n)))) {
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    if (size == 0 || n == make_small(0)) {
+        BIF_RET(erts_new_bitstring_from_data(BIF_P, 0, (byte *)""));
+    }
+    if (!term_to_Uint(n, &count)) {
+        BIF_ERROR(BIF_P, SYSTEM_LIMIT);
+    }
+    return do_binary_copy(BIF_P, BIF_ARG_1, n);
+}
+
+BIF_RETTYPE bytes_referenced_size_modern_1(BIF_ALIST_1)
+{
+    Uint size;
+    if (!binary_byte_size(BIF_ARG_1, &size)) {
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    return binary_referenced_byte_size_1(BIF_CALL_ARGS);
+}
+
+static Eterm do_find_not_found_result(Process *p, Eterm subject, BinaryFindContext **ctxp)
+{
+    return am_not_found;
+}
+
+static Eterm do_find_single_result(Process *p, Eterm subject, BinaryFindContext **ctxp)
+{
+    BinaryFindFirstContext *ff = &(*ctxp)->u.ff;
+    Eterm pos = erts_make_integer(ff->pos, p);
+    Eterm len = erts_make_integer(ff->len, p);
+    Eterm *hp = HAlloc(p, 6);
+    Eterm range = TUPLE2(hp, pos, len);
+    return TUPLE2(hp + 3, am_ok, range);
+}
+
+static BIF_RETTYPE bytes_find_modern(Process *p, Eterm *args, int options, Uint flags)
+{
+    BinaryFindContext ctx;
+    Uint size;
+    if (!binary_byte_size(args[0], &size)) {
+        BIF_ERROR(p, BADARG);
+    }
+    ctx.hsstart = 0;
+    ctx.hsend = size;
+    ctx.flags = flags;
+    if (options) {
+        Sint count = erts_map_size(args[2]);
+        if (count < 0 || count > 1) {
+            BIF_ERROR(p, BADARG);
+        }
+        if (count == 1) {
+            const Eterm *scope = erts_maps_get(am_scope, args[2]);
+            Eterm *tuple;
+            Uint offset, length;
+            if (!scope || !is_tuple_arity(*scope, 2)) {
+                BIF_ERROR(p, BADARG);
+            }
+            tuple = tuple_val(*scope);
+            if (!term_to_Uint(tuple[1], &offset) || !term_to_Uint(tuple[2], &length) ||
+                offset > size || length > size - offset) {
+                BIF_ERROR(p, BADARG);
+            }
+            ctx.hsstart = offset;
+            ctx.hsend = offset + length;
+        }
+    }
+    return binary_match_range(p, args[0], args[1], &ctx,
+        flags & BF_FLAG_GLOBAL ? do_match_not_found_result : do_find_not_found_result,
+        do_find_single_result);
+}
+
+BIF_RETTYPE bytes_find_modern_2(BIF_ALIST_2)
+{
+    return bytes_find_modern(BIF_P, BIF__ARGS, 0, 0);
+}
+
+BIF_RETTYPE bytes_find_modern_3(BIF_ALIST_3)
+{
+    return bytes_find_modern(BIF_P, BIF__ARGS, 1, 0);
+}
+
+BIF_RETTYPE bytes_find_all_modern_3(BIF_ALIST_3)
+{
+    return bytes_find_modern(BIF_P, BIF__ARGS, 1, BF_FLAG_GLOBAL);
 }
 
 /*

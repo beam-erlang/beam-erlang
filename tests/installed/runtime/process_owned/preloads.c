@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <beam/beam.h>
+#include "builtin_bindings.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +27,9 @@ int main(int argc, char **argv)
     beam_buffer bytes = read_bytes(argv[1]), on_load = read_bytes(argv[2]);
     beam_module_spec probe = {"preload_probe", {bytes.data, bytes.size}, "copied:probe"};
     beam_module_spec hook = {"preload_on_load", {on_load.data, on_load.size}, NULL};
-    beam_composition_options spec = {.struct_size = sizeof(spec), .preload_count = 1};
+    beam_composition_options spec = {.struct_size = sizeof(spec), .preload_count = 1,
+        .builtin_bindings = beam_test_process_bindings,
+        .builtin_binding_count = BEAM_TEST_PROCESS_BINDING_COUNT};
     beam_composition *composition = NULL;
     beam_vm *vm = NULL;
     beam_system *system = NULL;
@@ -70,17 +73,23 @@ int main(int argc, char **argv)
                   count == 1 && !strcmp(inventory[0].name, "preload_probe") &&
                   !strcmp(inventory[0].origin, "copied:probe"));
             options.composition = composition;
+        } else {
+            beam_composition_options bindings = {.struct_size = sizeof(bindings),
+                .builtin_bindings = beam_test_process_bindings,
+                .builtin_binding_count = BEAM_TEST_PROCESS_BINDING_COUNT};
+            CHECK(beam_composition_prepare(&bindings, &composition, &error) == BEAM_OK);
+            options.composition = composition;
         }
         CHECK(beam_vm_init(system, &options, &vm, &error) == BEAM_OK);
         beam_composition_release(&composition);
-        CHECK(beam_vm_load(vm, probe.bytes) == (selected ? BEAM_ALREADY_LOADED : BEAM_OK));
+        CHECK(beam_module_load(vm, probe.bytes) == (selected ? BEAM_ALREADY_LOADED : BEAM_OK));
         CHECK(beam_vm_start(vm, &error) == BEAM_OK);
         const unsigned char nil[] = {131, 106};
         beam_result result = {0};
         CHECK(beam_vm_call(vm, "preload_probe", "probe", (beam_bytes){nil, sizeof(nil)}, &result) == BEAM_OK);
         CHECK(result.kind == BEAM_RETURN && result.value.size == 3 &&
               result.value.data[0] == 131 && result.value.data[1] == 97 &&
-              result.value.data[2] == (selected ? 10 : 9));
+              result.value.data[2] == (selected ? 6 : 5));
         beam_result_release(&result);
         CHECK(beam_vm_terminate(&vm, NULL) == BEAM_OK);
     }

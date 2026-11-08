@@ -97,7 +97,7 @@ typedef enum beam_native_admission {
 } beam_native_admission;
 
 /* Borrow immutable embedded-core names. Pure inspection; no VM initialization. */
-beam_status beam_core_modules(const char *const **names, size_t *count);
+beam_status beam_module_core_names(const char *const **names, size_t *count);
 /* Process start admission is permanent after successful system initialization. */
 int beam_system_is_initialized(void);
 
@@ -169,17 +169,69 @@ typedef struct beam_scheduler_info {
 
 /* Observe native selections in any valid VM state without starting, joining,
  * or executing Erlang. Set struct_size exactly; output is unchanged on error. */
-beam_status beam_vm_get_schedulers(beam_vm *vm, beam_scheduler_info *out);
+beam_status beam_scheduler_get_info(beam_vm *vm, beam_scheduler_info *out);
 
 /* Change both online selections together in a running VM. Counts must be
  * positive, fit their totals, and dirty CPU online must fit normal online.
  * No scaling or clamping occurs. Success waits for both groups to acknowledge;
  * later Erlang operations may change them again. Existing transitions return
- * BEAM_BUSY without changes. This blocking operation invokes no host callbacks. */
-beam_status beam_vm_set_schedulers_online(beam_vm *vm,
-                                         unsigned schedulers_online,
-                                         unsigned dirty_cpu_schedulers_online,
-                                         beam_error *error);
+ * BEAM_BUSY without changes, as does an occupied asynchronous application entry.
+ * Halt may return BEAM_STOPPED after publication, without rollback. This blocking
+ * operation invokes no host callbacks and promises no bounded latency. */
+beam_status beam_scheduler_set_online(beam_vm *vm,
+                                      unsigned schedulers_online,
+                                      unsigned dirty_cpu_schedulers_online,
+                                      beam_error *error);
+
+typedef enum beam_scheduler_kind {
+    BEAM_SCHEDULER_NORMAL = 1,
+    BEAM_SCHEDULER_DIRTY_CPU = 2,
+    BEAM_SCHEDULER_DIRTY_IO = 3
+} beam_scheduler_kind;
+
+typedef struct beam_scheduler_id {
+    beam_scheduler_kind kind;
+    unsigned index;                  /* One-based, local to this VM lifetime. */
+} beam_scheduler_id;
+
+typedef struct beam_scheduler_queue_id {
+    beam_scheduler_kind kind;
+    unsigned index;                  /* Normal: scheduler index; dirty: 1. */
+} beam_scheduler_queue_id;
+
+typedef struct beam_scheduler_record {
+    beam_scheduler_id id;
+    int selected_online;             /* Selected policy, not execution state. */
+    beam_scheduler_queue_id queue;
+} beam_scheduler_record;
+
+typedef struct beam_scheduler_queue_record {
+    beam_scheduler_queue_id id;
+    size_t queued_tasks;             /* Queued work, excluding executing work. */
+} beam_scheduler_queue_record;
+
+typedef struct beam_scheduler_snapshot {
+    beam_scheduler_info info;
+    size_t count;
+    const beam_scheduler_record *items;
+    size_t queue_count;
+    const beam_scheduler_queue_record *queues;
+} beam_scheduler_snapshot;
+
+/* Copy every initialized scheduler and its distinct run queues in kind/index
+ * order. Normal schedulers have individual queues; each dirty class shares one.
+ * Requires a running host-controlled VM. An occupied application entry does not
+ * prevent inspection. No callbacks, joining, instrumentation or VM pause occur.
+ * Policy fields are consistent; queue lengths are individual observations over
+ * an interval and do not describe utilization or assigned process counts.
+ * Zero-initialize the output and release an earlier result before reuse. On
+ * failure it is unchanged. Copied results survive VM/system termination. */
+beam_status beam_scheduler_inspect_all(beam_vm *vm,
+                                       beam_scheduler_snapshot *out);
+
+/* Free copied arrays and clear the record. NULL and empty records are harmless.
+ * libbeam must remain loaded until all copied results have been released. */
+void beam_scheduler_snapshot_release(beam_scheduler_snapshot *snapshot);
 
 /* Query a host snapshot without initializing the library or a VM. Counts
  * describe availability, not reserved capacity; zero denotes unknown. */
@@ -375,7 +427,7 @@ beam_status beam_host_reply_complete(beam_host_reply *reply, beam_bytes value,
 /* Load a complete BEAM module from copied memory before or after start.
  * Loading never executes Erlang. Replacement and on_load are unsupported.
  * A rejected module leaves existing code callable. */
-beam_status beam_vm_load(beam_vm *vm, beam_bytes module);
+beam_status beam_module_load(beam_vm *vm, beam_bytes module);
 typedef enum beam_module_flags {
     BEAM_MODULE_CURRENT = 1u << 0,
     BEAM_MODULE_OLD = 1u << 1,
@@ -393,18 +445,115 @@ typedef struct beam_module_list {
     const char *const *names;
 } beam_module_list;
 
+/* UTF-8 bytes, including empty or embedded-NUL atom names. Size is
+ * authoritative and excludes any convenience terminator. Data must be non-NULL
+ * even for an empty name: {"", 0} is valid, {NULL, 0} is invalid. */
+typedef struct beam_module_name {
+    const char *data;
+    size_t size;
+} beam_module_name;
+
+typedef enum beam_module_scope {
+    BEAM_MODULE_SCOPE_LOADED = 1u << 0,
+    BEAM_MODULE_SCOPE_CALLABLE = 1u << 1
+} beam_module_scope;
+
+typedef enum beam_module_fields {
+    BEAM_MODULE_FIELD_EXPORTS = 1u << 0,
+    BEAM_MODULE_FIELD_FUNCTIONS = 1u << 1,
+    BEAM_MODULE_FIELD_NIFS = 1u << 2,
+    BEAM_MODULE_FIELD_ATTRIBUTES = 1u << 3,
+    BEAM_MODULE_FIELD_COMPILE = 1u << 4
+} beam_module_fields;
+
+typedef struct beam_module_query {
+    /* Initialize with beam_module_query_init; the layout must match exactly. */
+    size_t struct_size;
+    unsigned scopes;
+    unsigned fields;
+} beam_module_query;
+
+typedef struct beam_module_function {
+    beam_module_name name;
+    unsigned arity;
+} beam_module_function;
+
+typedef struct beam_module_functions {
+    size_t count;
+    const beam_module_function *items;
+} beam_module_functions;
+
+typedef struct beam_module_code_info {
+    /* Runtime loaded-code accounting, excluding separately allocated literals. */
+    size_t loaded_code_bytes;
+    size_t function_table_count;
+    int has_nif;
+    int has_line_table;
+    /* Stored selected-chunk checksum, not whole-file identity or provenance. */
+    unsigned char md5[16];
+    beam_module_functions functions;
+    beam_module_functions nifs;
+    beam_bytes attributes_etf;
+    beam_bytes compile_info_etf;
+} beam_module_code_info;
+
+typedef struct beam_module_record {
+    beam_module_name name;
+    unsigned flags;
+    /* Selected detail groups; unrequested groups and absent slots are zero. */
+    unsigned fields;
+    beam_module_code_info current;
+    beam_module_code_info old;
+    beam_module_code_info pending;
+    /* Effective external namespace dispatch, independent of code-instance role. */
+    beam_module_functions exports;
+} beam_module_record;
+
+typedef struct beam_module_snapshot {
+    size_t count;
+    const beam_module_record *items;
+} beam_module_snapshot;
+
+/* Default: loaded-code membership, summaries only. NULL is harmless. */
+void beam_module_query_init(beam_module_query *query);
+
+/* Blocking owner-thread inspection outside callbacks. Initialized VMs use
+ * staged code without starting workers; running observations can coexist with
+ * an outstanding asynchronous entry. Permission conflicts return BEAM_BUSY.
+ * No Erlang or host callback executes on behalf of these queries. Queries do
+ * not join workers after halt; new work is rejected after terminal admission.
+ *
+ * Scope bits select their union. Names are looked up without creating atoms.
+ * A missing scoped name returns BEAM_NOT_FOUND; an empty inventory succeeds.
+ * Membership, code summaries and requested details share one protected
+ * observation. Records are sorted by UTF-8 bytes and authoritative lengths.
+ * Errors leave out unchanged. Release a prior snapshot before reusing out. */
+beam_status beam_module_inspect(beam_vm *vm, beam_module_name name,
+                               const beam_module_query *query,
+                               beam_module_snapshot *out);
+beam_status beam_module_inspect_all(beam_vm *vm,
+                                   const beam_module_query *query,
+                                   beam_module_snapshot *out);
+
+/* Every nested pointer belongs to this copied snapshot. It remains readable
+ * after code changes and VM/system termination while libbeam stays loaded.
+ * No executable code is retained. Free all storage and clear the record;
+ * NULL and empty snapshots are harmless. */
+void beam_module_snapshot_release(beam_module_snapshot *snapshot);
+
 /* Module operations accept initialized or running VMs and never execute an
  * application entry process or host callback. Names are nonempty UTF-8 atom
  * names. Looking up an unknown name does not create an atom. Set struct_size
  * exactly; an absent module succeeds with zero flags. Output is unchanged on
- * error. Flags describe native code, including Erlang-side loader changes. */
-beam_status beam_vm_get_module(beam_vm *vm, const char *name,
+ * error. Flags reflect the VM code tables, including Erlang-side loader
+ * changes. */
+beam_status beam_module_get_info(beam_vm *vm, const char *name,
                                beam_module_info *out);
 
 /* Copy a sorted snapshot of names with current, old, or pending code. Release
  * an earlier list before reusing its record. Copied lists outlive the VM and
  * system while libbeam remains loaded. Output is unchanged on error. */
-beam_status beam_vm_list_modules(beam_vm *vm, beam_module_list *out);
+beam_status beam_module_list_names(beam_vm *vm, beam_module_list *out);
 void beam_module_list_release(beam_module_list *list);
 
 /* Remove all current/old code without terminating processes. BEAM_BUSY leaves
@@ -414,7 +563,27 @@ void beam_module_list_release(beam_module_list *list);
  * pin code and may become uncallable. Ordinary data survives; literal storage
  * may be reclaimed asynchronously. Atom names can remain until VM termination.
  * Diagnostics are optional and never printed. */
-beam_status beam_vm_unload(beam_vm *vm, const char *name, beam_error *error);
+beam_status beam_module_unload(beam_vm *vm, const char *name, beam_error *error);
+
+/* Hot-code management requires a running host-controlled VM. These blocking
+ * calls never migrate process state, kill processes, or invoke host callbacks.
+ * Protection, pending on_load and native ownership restrictions apply. */
+/* Publish copied complete BEAM bytes without implicit purge. An occupied
+ * current+old pair returns BEAM_BUSY; empty and old-only namespaces may accept
+ * a new current instance. Success includes code-publication completion. */
+beam_status beam_module_replace(beam_vm *vm, beam_bytes module,
+                               beam_error *error);
+/* Remove old code only if the existing purger's process-code checks permit it.
+ * No old code succeeds as a no-op. Refusal returns BEAM_BUSY and preserves code
+ * and processes. An admitted check can wait on runtime/native work; no latency
+ * bound is promised. */
+beam_status beam_module_soft_purge(beam_vm *vm, beam_module_name name,
+                                  beam_error *error);
+/* Withdraw ordinary current dispatch and move current to old. An occupied old
+ * slot is BEAM_BUSY; no current code is BEAM_NOT_FOUND. This is retirement,
+ * not reclamation, and selected native exports may remain callable. */
+beam_status beam_module_delete(beam_vm *vm, beam_module_name name,
+                              beam_error *error);
 
 /* Arguments are one uncompressed ETF proper list, including the version byte.
  * Results contain ETF for a return value or {Class, Reason, Stacktrace}.
@@ -518,6 +687,39 @@ typedef struct beam_embedded_dependency {
     beam_embedded_dependency_state state;
 } beam_embedded_dependency;
 
+/* Experimental implementation contracts, independent of internal BIF indices.
+ * The host supplies public names, never executable code. */
+#define BEAM_BUILTIN_BINDING_API_VERSION 1u
+typedef struct beam_builtin_binding {
+    size_t struct_size;
+    const char *implementation;
+    const char *module;
+    const char *function;
+    unsigned arity;
+} beam_builtin_binding;
+
+/* Experimental selection of declared ordinary exports in embedded core code.
+ * This grants neither module replacement nor arbitrary core namespace access. */
+typedef struct beam_core_export {
+    size_t struct_size;
+    const char *module;
+    const char *function;
+    unsigned arity;
+} beam_core_export;
+
+/* A finite VM-owned worker role. Selection changes only its startup entry;
+ * creation, scheduling, critical-process policy and lifetime remain VM-owned. */
+typedef enum beam_system_worker {
+    BEAM_SYSTEM_WORKER_TRACE_CLEANER = 1
+} beam_system_worker;
+
+typedef struct beam_system_worker_entry {
+    size_t struct_size;
+    beam_system_worker worker;
+    const char *module;
+    const char *function;
+} beam_system_worker_entry;
+
 /* Immutable VM inputs. Preparation copies module bytes, names and origins,
  * validates conflicts, and retains native owners before storing pointers.
  * No library acquisition or Erlang/native load initialization takes place. */
@@ -555,13 +757,35 @@ typedef struct beam_composition_options {
      * and remain fixed until the VM releases its retained preparation. */
     size_t embedded_dependency_count;
     const beam_embedded_dependency *embedded_dependencies;
+    /* At most 1024 optional implementation-to-MFA bindings. Zero installs no
+     * optional BIFs. Each implementation and destination MFA must be unique;
+     * arity must match the compiled contract. Core module names are reserved
+     * except for declared native slots with their matching implementation.
+     * Preparation copies UTF-8 atom names (1..255 characters), without creating
+     * atoms. Bindings are fixed across code reload and framework restart. */
+    size_t builtin_binding_count;
+    const beam_builtin_binding *builtin_bindings;
+    /* Explicit ordinary core exports. Only declared slots are accepted;
+     * duplicate selections are rejected. Names are copied before atoms exist.
+     * Zero selects none. Selection survives restart until VM termination. */
+    size_t core_export_count;
+    const beam_core_export *core_exports;
+    /* Optional default native tracer identity for plain PID/port recipients.
+     * NULL selects none. This neither loads nor activates a delivery backend.
+     * Copied UTF-8 atom name (1..255 characters), fixed for this VM lifetime. */
+    const char *default_tracer_module;
+    /* At most one entry per supported worker role. Overrides must name an
+     * exported zero-argument function in an explicitly supplied preload.
+     * Zero uses the mandatory core entry. Preparation executes nothing. */
+    size_t system_worker_entry_count;
+    const beam_system_worker_entry *system_worker_entries;
 } beam_composition_options;
 
 beam_status beam_composition_prepare(const beam_composition_options *options,
                                      beam_composition **out, beam_error *error);
 void beam_composition_release(beam_composition **composition);
 /* Borrow the immutable initial code inventory. Valid until this preparation is released. This is not a live
- * VM code snapshot and excludes the nine mandatory core modules. */
+ * VM code snapshot and excludes the six mandatory core modules. */
 beam_status beam_composition_get_modules(const beam_composition *composition,
                                          const beam_module_spec **modules, size_t *count);
 /* Bind one predeclared explicit native implementation. Success is idempotent

@@ -1,28 +1,35 @@
 -module(probe).
--export([embedded_dependencies/1, hold/0, fatal/1, main/1, retain/0, implicit/1, foreign_runtime/1, packet/6, packet_invalid/0, packets/0]).
--nifs([hold/0, fatal/1, packet/6, packet_invalid/0]).
-hold() -> erlang:nif_error(unloaded).
-fatal(_) -> erlang:nif_error(unloaded).
-packet(_,_,_,_,_,_) -> erlang:nif_error(unloaded).
-packet_invalid() -> erlang:nif_error(unloaded).
-retain() -> persistent_term:put(native_probe, hold()), ok.
-implicit(Path) -> erlang:load_nif(Path, undefined).
+-export([embedded_dependencies/1, hold/0, fatal/1, main/1, retain/0, retire/0, implicit/1, foreign_runtime/1, packet/6, packet_invalid/0, packets/0, stack_check/0, stack_check_dirty/0, 'café'/0]).
+-nifs([hold/0, fatal/1, packet/6, packet_invalid/0, stack_check/0, stack_check_dirty/0, 'café'/0]).
+hold() -> beam:nif_error(unloaded).
+fatal(_) -> beam:nif_error(unloaded).
+packet(_,_,_,_,_,_) -> beam:nif_error(unloaded).
+packet_invalid() -> beam:nif_error(unloaded).
+stack_check() -> beam:nif_error(unloaded).
+stack_check_dirty() -> beam:nif_error(unloaded).
+'café'() -> beam:nif_error(unloaded).
+retain() -> beam_persistent_term:put(native_probe, hold()), ok.
+retire() -> true = beam_persistent_term:erase(native_probe), ok.
+implicit(Path) -> beam:load_nif(Path, undefined).
 foreign_runtime(Path) ->
     Expected = "Failed to load NIF library " ++ binary_to_list(Path) ++
         ": 'native library depends on another BEAM runtime image'",
     {error, {load_failed, Expected}} =
-        erlang:load_nif(Path, undefined),
+        beam:load_nif(Path, undefined),
     {ok, ok} = erts_internal:host_request(check_runtime_mapping),
-    erlang:halt(0).
-main(["halt"]) -> erlang:halt(7);
-main(["exception"]) -> erlang:error(native_project_exception);
+    beam:halt(0, []).
+main(["halt"]) -> beam:halt(7, []);
+main(["exception"]) -> beam:error(native_project_exception);
 main(["input"]) -> io:put_chars(io:get_line("prompt> "));
 main(Args) ->
-    false = erlang:module_loaded(beam_pkg),
-    false = erlang:module_loaded(application),
+    false = beam:module_loaded(beam_pkg),
+    false = beam:module_loaded(application),
     packets(), retain(), io:format("NATIVE_PROJECT ~tp~n", [Args]).
 
 packets() ->
+    ok = 'café'(),
+    ok = stack_check(),
+    ok = stack_check_dirty(),
     packet_checks().
 
 packet_checks() ->
@@ -77,16 +84,16 @@ packet_http([Bytes|Rest]) ->
 packet_compare(Format,Type,Bytes,Maximum,Truncate,Delimiter) ->
     Options = [{packet_size,Maximum},{line_length,Truncate}],
     Selected = case Type of line -> [{line_delimiter,Delimiter}|Options]; _ -> Options end,
-    Expected = erlang:decode_packet(Type,Bytes,Selected),
+    Expected = beam:decode_packet(Type,Bytes,Selected),
     case packet(Format,Bytes,Maximum,Truncate,Delimiter,0) of
         {Expected,_} -> ok;
-        Actual -> erlang:error({packet_mismatch,Type,Bytes,Selected,Expected,Actual})
+        Actual -> beam:error({packet_mismatch,Type,Bytes,Selected,Expected,Actual})
     end,
     ok.
 
 embedded_dependencies(Mode) ->
-    #{included := Included, excluded := Excluded} = erlang:system_info(embedded_3pps),
-    [pcre2] = [N || N <- Included, N =:= pcre2],
+    #{included := Included, excluded := Excluded} = beam:system_info(embedded_3pps),
+    [] = [N || N <- Included, N =:= pcre2],
     [] = [N || N <- Excluded, N =:= pcre2],
     case Mode of
         present ->

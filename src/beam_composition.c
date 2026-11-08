@@ -4,6 +4,8 @@
 #include "beam_platform.h"
 #include "beam_core_modules.h"
 #include "beam_embedded_dependencies.h"
+
+#include "beam_builtin_catalog.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -118,6 +120,23 @@ void beam_composition_release(beam_composition **out)
     for (size_t i = 0; i < composition->embedded_dependency_count; ++i)
         free((void *)composition->embedded_dependencies[i].name);
     free(composition->embedded_dependencies);
+    for (size_t i = 0; i < composition->builtin_binding_count; ++i) {
+        free((void *)composition->builtin_bindings[i].implementation);
+        free((void *)composition->builtin_bindings[i].module);
+        free((void *)composition->builtin_bindings[i].function);
+    }
+    free(composition->builtin_bindings);
+    for (size_t i = 0; i < composition->core_export_count; ++i) {
+        free((void *)composition->core_exports[i].module);
+        free((void *)composition->core_exports[i].function);
+    }
+    free(composition->core_exports);
+    free(composition->default_tracer_module);
+    for (size_t i = 0; i < composition->system_worker_entry_count; ++i) {
+        free((void *)composition->system_worker_entries[i].module);
+        free((void *)composition->system_worker_entries[i].function);
+    }
+    free(composition->system_worker_entries);
     free(composition->program_helper);
     free(composition->nifs);
     free(composition->modules);
@@ -187,11 +206,108 @@ beam_status beam_composition_prepare(const beam_composition_options *options,
             !(options->native_admission & BEAM_NATIVE_DRIVERS))) ||
         options->module_count > 4096 ||
         options->preload_count > 4096 || (options->preload_count && !options->preloads) ||
-        (options->module_count && !options->modules))
+        (options->module_count && !options->modules) ||
+        options->builtin_binding_count > 1024 ||
+        (options->builtin_binding_count && !options->builtin_bindings) ||
+        options->core_export_count > 1024 ||
+        (options->core_export_count && !options->core_exports) ||
+        (options->default_tracer_module && !valid_utf8(options->default_tracer_module, 255)) ||
+        options->system_worker_entry_count > 1 ||
+        (options->system_worker_entry_count && !options->system_worker_entries))
         return fail(error, BEAM_INVALID_ARGUMENT, "invalid composition specification");
     composition = calloc(1, sizeof(*composition));
-    if (!composition) return fail(error, BEAM_OUT_OF_MEMORY, "could not allocate composition");
+    if (!composition)
+        return fail(error, BEAM_OUT_OF_MEMORY, "could not allocate composition");
     composition->references = 1;
+    if (options->default_tracer_module) {
+        composition->default_tracer_module = strdup(options->default_tracer_module);
+        if (!composition->default_tracer_module) { status = BEAM_OUT_OF_MEMORY; goto failed; }
+    }
+    if (options->system_worker_entry_count) {
+        const beam_system_worker_entry *entry = options->system_worker_entries;
+        if (entry->struct_size != sizeof(*entry) ||
+            entry->worker != BEAM_SYSTEM_WORKER_TRACE_CLEANER ||
+            !valid_utf8(entry->module, 255) || !valid_utf8(entry->function, 255)) {
+            status = fail(error, BEAM_INVALID_ARGUMENT, "invalid system worker entry");
+            goto failed;
+        }
+        int supplied = 0;
+        for (size_t i = 0; i < options->preload_count; ++i)
+            if (options->preloads[i].name && !strcmp(entry->module, options->preloads[i].name))
+                supplied = 1;
+        if (!supplied) {
+            status = fail(error, BEAM_INVALID_ARGUMENT, "system worker entry requires a supplied preload");
+            goto failed;
+        }
+        composition->system_worker_entries = calloc(1, sizeof(*entry));
+        if (!composition->system_worker_entries) { status = BEAM_OUT_OF_MEMORY; goto failed; }
+        composition->system_worker_entry_count = 1;
+        *composition->system_worker_entries = *entry;
+        composition->system_worker_entries->module = strdup(entry->module);
+        composition->system_worker_entries->function = strdup(entry->function);
+        if (!composition->system_worker_entries->module || !composition->system_worker_entries->function) {
+            status = BEAM_OUT_OF_MEMORY; goto failed;
+        }
+    }
+    if (options->builtin_binding_count) {
+        composition->builtin_bindings = calloc(options->builtin_binding_count,
+                                               sizeof(*composition->builtin_bindings));
+        if (!composition->builtin_bindings) { status = BEAM_OUT_OF_MEMORY; goto failed; }
+        for (size_t i = 0; i < options->builtin_binding_count; ++i) {
+            const beam_builtin_binding *spec = &options->builtin_bindings[i];
+            int valid = spec->struct_size == sizeof(*spec) &&
+                valid_utf8(spec->module, 255) && valid_utf8(spec->function, 255) &&
+                beam_builtin_implementation(spec->implementation, spec->arity) >= 0;
+            if (valid) {
+                valid = !beam_builtin_destination_reserved(spec->module, spec->function, spec->arity);
+                for (size_t j = 0; j < sizeof(beam_core_module_names) / sizeof(*beam_core_module_names); ++j)
+                    if (!strcmp(spec->module, beam_core_module_names[j]) &&
+                        !beam_builtin_core_destination(spec)) valid = 0;
+                for (size_t j = 0; j < i; ++j) {
+                    const beam_builtin_binding *other = &composition->builtin_bindings[j];
+                    if (!strcmp(spec->implementation, other->implementation) ||
+                        (spec->arity == other->arity && !strcmp(spec->module, other->module) &&
+                         !strcmp(spec->function, other->function))) valid = 0;
+                }
+            }
+            if (!valid) {
+                status = fail(error, BEAM_INVALID_ARGUMENT, "invalid or conflicting builtin binding");
+                goto failed;
+            }
+            beam_builtin_binding *copy = &composition->builtin_bindings[composition->builtin_binding_count++];
+            *copy = *spec;
+            copy->implementation = strdup(spec->implementation);
+            copy->module = strdup(spec->module);
+            copy->function = strdup(spec->function);
+            if (!copy->implementation || !copy->module || !copy->function) {
+                status = BEAM_OUT_OF_MEMORY; goto failed;
+            }
+        }
+    }
+    if (options->core_export_count) {
+        composition->core_exports = calloc(options->core_export_count, sizeof(*composition->core_exports));
+        if (!composition->core_exports) { status = BEAM_OUT_OF_MEMORY; goto failed; }
+        for (size_t i = 0; i < options->core_export_count; ++i) {
+            const beam_core_export *spec = &options->core_exports[i];
+            int valid = spec->struct_size == sizeof(*spec) &&
+                valid_utf8(spec->module, 255) && valid_utf8(spec->function, 255) &&
+                beam_core_export_known(spec->module, spec->function, spec->arity);
+            for (size_t j = 0; valid && j < i; ++j) {
+                const beam_core_export *other = &composition->core_exports[j];
+                if (spec->arity == other->arity && !strcmp(spec->module, other->module) &&
+                    !strcmp(spec->function, other->function)) valid = 0;
+            }
+            if (!valid) {
+                status = fail(error, BEAM_INVALID_ARGUMENT, "invalid or duplicate ordinary core export");
+                goto failed;
+            }
+            beam_core_export *copy = &composition->core_exports[composition->core_export_count++];
+            *copy = *spec;
+            copy->module = strdup(spec->module);
+            copy->function = strdup(spec->function);
+            if (!copy->module || !copy->function) { status = BEAM_OUT_OF_MEMORY; goto failed; }
+        }
+    }
     if (options->embedded_dependency_count) {
         static const char *const reserved[] = {
 #define BEAM_EMBEDDED_NAME(name, state) name,
@@ -391,7 +507,7 @@ beam_status beam_composition_stage(beam_vm *vm, const beam_composition *composit
     beam_status status;
     if (!composition) return BEAM_OK;
     for (size_t i = 0; i < composition->staged_count; ++i) {
-        status = beam_vm_load(vm, composition->modules[i].bytes);
+        status = beam_module_load(vm, composition->modules[i].bytes);
         if (status != BEAM_OK) return fail(error, status, "could not stage composition module");
     }
     return BEAM_OK;

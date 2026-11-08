@@ -29,6 +29,14 @@ and the distinction between modern hosts and the separate OTP product.
 Version notes such as “Available since OTP 26.0” identify upstream API history;
 they do not define BEAM/Erlang release numbers or a stable binary interface.
 
+Canonical `erlang` names below describe the corresponding OTP operations.
+Modern hosts select native `erlang` entries under `beam`, with clocks and timers
+under `beam_time`; ordinary `erlang` helpers retain their names. Legacy `now/0`
+has no modern export. See
+[native calls and language operations](../language/native-calls.md) for host
+selection and compiler target profiles. C NIF functions do not require those
+operations to have public Erlang exports.
+
 ## Description
 
 A NIF library contains native implementation of some functions of an Erlang
@@ -73,7 +81,7 @@ The recipe includes intentional failure cases for acceptance. Start with the
 See [loading and lifetime](loading.md) before choosing a loading route.
 
 Each NIF needs an Erlang function body as a fallback before native binding.
-A typical body calls `erlang:nif_error/1`. The `-nifs` attribute identifies the
+A typical modern body calls `beam:nif_error/1`. The `-nifs` attribute identifies the
 functions implemented by the native library. A NIF can be local to its module,
 but an unused local stub can be optimized away, preventing the native binding.
 

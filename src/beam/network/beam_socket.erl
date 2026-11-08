@@ -187,9 +187,9 @@ handle(Socket) -> #{module => beam_socket, owner => self(), socket => Socket}.
 timeout_ms(infinity) -> infinity;
 timeout_ms(Deadline) ->
     Left = max(0, Deadline - erlang:monotonic_time(native)),
-    Floor = erlang:convert_time_unit(Left, native, millisecond),
+    Floor = erts_internal:clock_convert_time_unit(Left, native, millisecond),
     %% Round upward without changing beam_time:remaining/1's public contract.
-    case erlang:convert_time_unit(Floor, millisecond, native) < Left of
+    case erts_internal:clock_convert_time_unit(Floor, millisecond, native) < Left of
         true -> Floor + 1;
         false -> Floor
     end.

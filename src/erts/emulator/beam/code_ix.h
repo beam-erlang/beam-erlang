@@ -195,6 +195,8 @@ void erts_release_code_load_permission(void);
  *   already have staging permission. The other way around is fine however.
  */
 int erts_try_seize_code_stage_permission(struct process* c_p);
+/* Process admission without suspension or a retained waiter. */
+int erts_try_seize_code_load_permission_nowait(struct process* c_p);
 
 /** @brief Release code stage permission. Resumes any suspended waiters. */
 void erts_release_code_stage_permission(void);

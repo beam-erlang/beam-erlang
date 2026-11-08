@@ -2615,6 +2615,10 @@ sub tr_parse_op {
 	$cond = 'is_not_bif';
 	$cond_val = -1;
 	$_ = $1;
+    } elsif (m@^\$impl:(\w+)(.*)@) {
+        $cond = 'is_bif';
+        $cond_val = "BIF_IMPL_$1";
+        $_ = $2;
     } elsif (m@^\$bif:(\w+):(\w+)/(\d)(.*)@) {
 	$cond = 'is_bif';
 	if ($1 eq 'erlang') {
@@ -2818,7 +2822,7 @@ END
         } else {
             $bif_comment = "Is $comment $bif_number?";
             $specific_bif_action = <<"END";
-        if (entry != &bif_table[$bif_number]) {
+        if (!beam_builtin_entry_matches(entry, $bif_number)) {
           $fail_action; /* Not $bif_number */
         }
 END
@@ -2834,7 +2838,13 @@ END
       if (i >= st->beam.imports.count) {
         $fail_action;
       } else {
-        BifEntry *entry = st->bif_imports[i];
+        /* BIF instructions represent language operations. Public call_ext
+         * instructions may specialize only their actual selected binding. */
+        BifEntry *entry =
+            (instr->op == genop_bif0_2 || instr->op == genop_bif1_4 ||
+             instr->op == genop_bif2_5 || instr->op == genop_gc_bif1_5 ||
+             instr->op == genop_gc_bif2_6 || instr->op == genop_gc_bif3_7)
+            ? st->primitive_imports[i] : st->bif_imports[i];
 
         if (!entry) {
           $fail_action; /* Not a BIF */
@@ -2863,24 +2873,14 @@ END
           $fail_action;
         }
 
-        /* erlang:apply/2,3 are strange. They exist as (dummy) BIFs
-         * so that they are included in the export table before
-         * the erlang module is loaded. They also exist in the
-         * erlang module as functions. When used in code, a special
-         * Beam instruction is used.
-         *
-         * Below we recognize erlang:apply/2,3 as special. This is
-         * necessary because after setting a trace pattern on
-         * them, you can no longer see from the export entry that
-         * they are special. */
         import = &st->beam.imports.entries[i];
-
-        if (import->module == am_erlang) {
-          if (import->function == am_apply) {
-            if (import->arity == 2 || import->arity == 3) {
-              $fail_action;
-            }
-          }
+        int private_slot = beam_load_private_native(st,i);
+        int instruction_slot = private_slot >= BIF_SIZE ? private_slot - BIF_SIZE :
+            private_slot < 0 ? beam_builtin_selected_instruction(import->module,
+                                                                import->function,import->arity) : -1;
+        if (instruction_slot == BEAM_INSTRUCTION_vm_apply_2 ||
+            instruction_slot == BEAM_INSTRUCTION_vm_apply_3) {
+          $fail_action;
         }
       }
     }

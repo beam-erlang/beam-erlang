@@ -4,17 +4,18 @@ set(_cli_out "${_cli_root}/ebin")
 set(_cli_include "${CMAKE_BINARY_DIR}/cli/include")
 file(MAKE_DIRECTORY "${_cli_include}")
 set(_cli_owned beam_run_io error_handler io io_lib io_lib_pretty erl_scan)
-set(_cli_support binary io_lib_format io_lib_fread records string unicode unicode_util)
+# The base inventory owns the complete public binary/collection/text modules.
+set(_cli_support io_lib_format io_lib_fread)
 # NETWORK already owns these exact artifacts. The distribution recipe acquires
 # the private copies only when no network component is selected.
-set(BEAM_CLI_FALLBACK_MODULES lists maps)
+set(BEAM_CLI_FALLBACK_MODULES beam_runtime_string_legacy)
 set(BEAM_CLI_MODULES ${_cli_owned} ${_cli_support})
 set(BEAM_CLI_BEAM_FILES)
 set(BEAM_CLI_FALLBACK_BEAM_FILES)
 add_custom_target(beam_cli_owned)
 foreach(_module IN LISTS _cli_owned)
     set(_target "beam_cli_module_${_module}")
-    beam_add_erlang_component(${_target}
+    beam_add_runtime_component(${_target}
         SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/${_module}.erl"
         OUTPUT_DIRECTORY "${_cli_out}")
     add_dependencies(beam_cli_owned ${_target})
@@ -22,12 +23,12 @@ foreach(_module IN LISTS _cli_owned)
 endforeach()
 set(_support_outputs)
 foreach(_module IN LISTS _cli_support BEAM_CLI_FALLBACK_MODULES)
-    set(_input "${BEAM_SUPPORT_OUTPUT_DIRECTORY}/${_module}.beam")
+    set(_input "${BEAM_RUNTIME_SUPPORT_OUTPUT_DIRECTORY}/${_module}.beam")
     set(_output "${_cli_out}/${_module}.beam")
     add_custom_command(OUTPUT "${_output}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${_cli_out}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_input}" "${_output}"
-        DEPENDS "${_input}" beam_support_modules VERBATIM)
+        DEPENDS "${_input}" beam_runtime_support_modules beam_legacy_string_module VERBATIM)
     list(APPEND _support_outputs "${_output}")
     if(_module IN_LIST BEAM_CLI_FALLBACK_MODULES)
         list(APPEND BEAM_CLI_FALLBACK_BEAM_FILES "${_output}")
@@ -69,7 +70,7 @@ endforeach()
 string(APPEND _reserved "};\n")
 file(CONFIGURE OUTPUT "${_cli_include}/beam_cli_core_inventory.h" CONTENT "${_reserved}" NEWLINE_STYLE UNIX @ONLY)
 
-beam_add_erlang_component(beam_application_support
+beam_add_runtime_component(beam_application_support
     SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/beam_application_run.erl"
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/beam/runtime/beam/application/ebin")
 add_dependencies(beam_cli_support beam_application_support)

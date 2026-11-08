@@ -129,6 +129,9 @@ struct LoaderState_ {
     BeamOp* genop;		/* The last generic instruction seen. */
 
     BifEntry **bif_imports;
+    BifEntry **primitive_imports;
+    BeamNativeGuardImport *native_guards;
+    int *private_natives; /* Import indices resolve implementation IDs at load time. */
 
     BeamInstr catches;		/* Linked list of catch_yf instructions. */
     BeamInstr *import_patches; /* Linked lists of import entries. */

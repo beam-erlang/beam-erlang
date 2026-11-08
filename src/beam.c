@@ -25,12 +25,16 @@
 #include "erl_map.h"
 #include "beam_platform.h"
 #include "beam_composition_internal.h"
+#include "beam_builtin_catalog.h"
 #include "erl_misc_utils.h"
 #include "erl_async.h"
 #include "atom.h"
 #include "erl_check_io.h"
 #include "erl_mseg.h"
 #include "beam_asm.h"
+#include "beam_module_inspection.h"
+#include "beam_module_management.h"
+#include "beam_process_management.h"
 
 #include <errno.h>
 #include <fenv.h>
@@ -93,7 +97,7 @@ beam_status_message(beam_status status)
     case BEAM_UNSUPPORTED: return "operation is unsupported";
     case BEAM_ALREADY_LOADED: return "the module is already loaded";
     case BEAM_INVALID_STATE: return "operation is invalid in the current VM state";
-    case BEAM_NOT_FOUND: return "the module was not found";
+    case BEAM_NOT_FOUND: return "the requested object was not found";
     case BEAM_BUSY: return "the runtime cannot complete the operation safely yet";
     default: return "unknown error";
     }
@@ -112,13 +116,32 @@ typedef struct beam_request {
     int recorded;
     int done;
     int is_call;
+    int replace;
     beam_selected_nif *nif;
     beam_error error;
-    enum { MODULE_INFO, MODULE_LIST, MODULE_UNLOAD } module_operation;
+    enum { MODULE_INFO, MODULE_LIST, MODULE_UNLOAD, MODULE_INSPECT,
+           MODULE_INSPECT_ALL, MODULE_DELETE, MODULE_SOFT_PURGE } module_operation;
     beam_module_info module_info;
     beam_module_list module_list;
+    beam_module_name module_name;
+    beam_module_query module_query;
+    beam_module_snapshot module_snapshot;
+    Eterm requester_pid;
+    int requester_deleted;
+    int purge_retired;
     unsigned schedulers_online;
     unsigned dirty_cpu_schedulers_online;
+    beam_scheduler_snapshot scheduler_snapshot;
+    BeamPid *process_pids;
+    size_t process_capacity;
+    size_t process_count;
+    unsigned process_references;
+    void *process_signal;
+    Eterm process_target;
+    beam_process_observation process_observation;
+    BeamTerm process_arguments;
+    BeamPid process_group_leader;
+    BeamPid process_spawned;
 } beam_request;
 
 typedef struct beam_host_request beam_host_request;
@@ -152,6 +175,7 @@ struct beam_vm {
     beam_cond_t condition;
     beam_request *active;
     beam_request *pending_call;
+    beam_request *management;
     int wake_pending;
     int stopped;
     int started;
@@ -785,8 +809,14 @@ void erts_bare_process_return(Process *p, Eterm value)
     beam_mutex_lock(&request->vm->mutex);
     if (!request->recorded) {
         request->recorded = 1;
-        request->result.kind = BEAM_RETURN;
-        request->status = encode_result(request, value);
+        if (request->module_operation == MODULE_SOFT_PURGE) {
+            request->status = value == am_true ? BEAM_OK :
+                value == am_false || value == am_busy ? BEAM_BUSY :
+                value == am_unsupported ? BEAM_UNSUPPORTED : BEAM_SYSTEM_ERROR;
+        } else {
+            request->result.kind = BEAM_RETURN;
+            request->status = encode_result(request, value);
+        }
     }
     beam_mutex_unlock(&request->vm->mutex);
 }
@@ -804,6 +834,11 @@ int erts_bare_process_exception(Process *p, Eterm exception_class,
         request->result.kind = BEAM_EXCEPTION;
         request->status = encode_result(request,
             TUPLE3(tuple, exception_class, reason, trace));
+        if (request->module_operation == MODULE_SOFT_PURGE) {
+            request->status = BEAM_SYSTEM_ERROR;
+            erts_snprintf(request->error.message, sizeof(request->error.message),
+                          "soft purge requester raised %T:%T", exception_class, reason);
+        }
     }
     beam_mutex_unlock(&request->vm->mutex);
     return 1;
@@ -819,9 +854,13 @@ void erts_bare_process_deleted(Process *p)
 {
     beam_request *request = p->bare_call;
     if (request) {
+        int deferred = request->module_operation == MODULE_SOFT_PURGE &&
+            erts_bare_module_purge_request_deleted(p);
         p->bare_call = NULL;
         beam_mutex_lock(&request->vm->mutex);
-        complete_locked(request, request->status);
+        request->requester_deleted = 1;
+        if (!deferred || request->purge_retired)
+            complete_locked(request, request->status);
         beam_mutex_unlock(&request->vm->mutex);
     }
 }
@@ -853,6 +892,12 @@ static void request_halt_locked(beam_vm *vm, int status)
             request->status = request->is_call ? BEAM_OK : BEAM_STOPPED;
         }
         request->done = 1;
+    }
+    /* Native management must finish retiring its own references. Recording
+     * a terminal outcome does not make its queued work or requester disappear. */
+    if (vm->management && !vm->management->recorded) {
+        vm->management->recorded = 1;
+        vm->management->status = BEAM_STOPPED;
     }
     if (vm->started) erts_bare_request_stop();
     beam_cond_signal(&vm->condition);
@@ -915,6 +960,22 @@ static void load_command(void *argument)
         request->prepared = prepared;
         request->module_atom = module;
     }
+    if (request->replace) {
+        beam_status status;
+        if (!erts_try_seize_code_load_permission_aux_nowait(request)) {
+            beam_load_prepared_free(prepared);
+            request->prepared = NULL;
+            complete(request, BEAM_BUSY);
+            return;
+        }
+        status = erts_bare_replace_prepared(prepared, module);
+        if (status != BEAM_OK)
+            beam_load_prepared_free(prepared);
+        request->prepared = NULL;
+        erts_release_code_load_permission();
+        complete(request, status);
+        return;
+    }
     if (!erts_try_seize_code_load_permission_aux(load_command, request))
         return;
     existing = erts_get_module(module, erts_active_code_ix());
@@ -950,6 +1011,15 @@ static beam_status module_operation(beam_request *request, int initial)
         return erts_bare_list_modules(initial, &request->module_list);
     case MODULE_UNLOAD:
         return erts_bare_unload_module(request->module, initial);
+    case MODULE_INSPECT:
+    case MODULE_INSPECT_ALL:
+        return erts_bare_inspect_modules(
+            request->module_operation == MODULE_INSPECT ? &request->module_name : NULL,
+            &request->module_query, initial, &request->module_snapshot);
+    case MODULE_DELETE:
+        return erts_bare_delete_module(request->module_name);
+    case MODULE_SOFT_PURGE:
+        return BEAM_INVALID_STATE;
     }
     return BEAM_INVALID_ARGUMENT;
 }
@@ -962,15 +1032,12 @@ static void module_command(void *argument)
         complete(request, BEAM_STOPPED);
         return;
     }
-    if (request->module_operation == MODULE_UNLOAD) {
-        /* In particular, a purger can retain staging permission while it
-         * waits for dirty work. Refuse rather than queue behind that purge. */
-        if (!erts_try_seize_code_load_permission_aux_nowait(request)) {
-            complete(request, BEAM_BUSY);
-            return;
-        }
-    } else if (!erts_try_seize_code_load_permission_aux(module_command, request))
+    /* A purger can retain permission while waiting for later host action.
+     * Observation and code management never queue behind that dependency. */
+    if (!erts_try_seize_code_load_permission_aux_nowait(request)) {
+        complete(request, BEAM_BUSY);
         return;
+    }
     status = module_operation(request, 0);
     erts_release_code_load_permission();
     complete(request, status);
@@ -1017,6 +1084,124 @@ static void scheduler_command(void *argument)
                 scheduler_change_complete, request);
     if (status != BEAM_OK)
         complete(request, status);
+}
+
+static void scheduler_inspect_command(void *argument)
+{
+    beam_request *request = argument;
+    beam_status status = erts_bare_stop_requested() ? BEAM_STOPPED :
+        erts_bare_inspect_schedulers(&request->scheduler_snapshot);
+    complete(request, status);
+}
+
+static void process_list_command(void *argument)
+{
+    beam_request *request = argument;
+    beam_status status = erts_bare_stop_requested() ? BEAM_STOPPED :
+        erts_bare_process_list_capture(request->process_pids,
+            request->process_capacity, &request->process_count);
+    complete(request, status);
+}
+
+void erts_bare_process_inspection_retain(void *context)
+{
+    beam_request *request = context;
+    beam_mutex_lock(&request->vm->mutex);
+    ++request->process_references;
+    beam_mutex_unlock(&request->vm->mutex);
+}
+
+void erts_bare_process_inspection_result(void *context, beam_status status,
+                                        const beam_process_observation *value)
+{
+    beam_request *request = context;
+    beam_mutex_lock(&request->vm->mutex);
+    if (!request->recorded) {
+        request->recorded = 1;
+        request->status = status;
+        if (status == BEAM_OK)
+            request->process_observation = *value;
+    }
+    beam_mutex_unlock(&request->vm->mutex);
+}
+
+void erts_bare_process_inspection_release(void *context)
+{
+    beam_request *request = context;
+    beam_vm *vm = request->vm;
+    beam_mutex_lock(&vm->mutex);
+    ASSERT(request->process_references);
+    if (!--request->process_references)
+        complete_locked(request, request->status);
+    beam_mutex_unlock(&vm->mutex);
+}
+
+static void process_inspect_command(void *argument)
+{
+    beam_request *request = argument;
+    void *signal = request->process_signal;
+    if (erts_bare_stop_requested()) {
+        erts_bare_process_inspection_result(request, BEAM_STOPPED, NULL);
+    }
+    else {
+        erts_bare_process_inspection_send(request->process_target, signal);
+    }
+    /* The target can finish on another scheduler before enqueueing returns. */
+    erts_bare_process_inspection_release(request);
+}
+
+static void process_spawn_command(void *argument)
+{
+    beam_request *request = argument;
+    Process *parent, *leader;
+    ErlSpawnOpts options;
+    Eterm module, function, pid;
+    beam_status status = BEAM_STOPPED;
+    if (erts_bare_stop_requested()) {
+        complete(request, status);
+        return;
+    }
+    module = erts_atom_put((const byte *)request->module, strlen(request->module),
+                           ERTS_ATOM_ENC_UTF8, 0);
+    function = erts_atom_put((const byte *)request->function, strlen(request->function),
+                             ERTS_ATOM_ENC_UTF8, 0);
+    if (is_non_value(module) || is_non_value(function)) {
+        complete(request, BEAM_INVALID_ARGUMENT);
+        return;
+    }
+    ERTS_SET_DEFAULT_SPAWN_OPTS(&options);
+    if (!beam_enif_is_pid_undefined(&request->process_group_leader)) {
+        leader = erts_pid2proc(NULL, 0, request->process_group_leader.pid,
+                               ERTS_PROC_LOCK_STATUS);
+        if (!leader) {
+            complete(request, BEAM_NOT_FOUND);
+            return;
+        }
+        options.local_group_leader = leader->common.id;
+        erts_proc_unlock(leader, ERTS_PROC_LOCK_STATUS);
+    }
+    parent = erts_pid2proc(NULL, 0, erts_init_process_id, ERTS_PROC_LOCK_MAIN);
+    if (!parent) {
+        complete(request, erts_bare_stop_requested() ? BEAM_STOPPED : BEAM_SYSTEM_ERROR);
+        return;
+    }
+    pid = erl_create_process(parent, module, function,
+                              (Eterm)request->process_arguments, &options);
+    erts_proc_unlock(parent, ERTS_PROC_LOCK_MAIN);
+    beam_mutex_lock(&request->vm->mutex);
+    if (is_internal_pid(pid)) {
+        /* Publication is irrevocable. A recorded stop cannot turn an admitted
+         * child into an apparent failure that invites duplicate creation. */
+        request->process_spawned.pid = pid;
+        request->recorded = 1;
+        request->status = BEAM_OK;
+        status = BEAM_OK;
+    }
+    else {
+        status = erts_bare_stop_requested() ? BEAM_STOPPED : BEAM_SYSTEM_ERROR;
+    }
+    complete_locked(request, status);
+    beam_mutex_unlock(&request->vm->mutex);
 }
 
 static void call_command(void *argument)
@@ -1085,6 +1270,35 @@ done:
         complete(request, status);
 }
 
+static void purge_command(void *argument)
+{
+    beam_request *request = argument;
+    Eterm module, cell[2];
+    beam_buffer arguments = {0};
+    beam_status status;
+    if (erts_bare_stop_requested()) {
+        complete(request, BEAM_STOPPED);
+        return;
+    }
+    status = erts_bare_module_name_atom(request->module_name, &module);
+    if (status == BEAM_NOT_FOUND) {
+        complete(request, BEAM_OK); /* No atom means there is no old code. */
+        return;
+    }
+    if (status != BEAM_OK) {
+        complete(request, status);
+        return;
+    }
+    status = encode_bytes(CONS(cell, module, NIL), &arguments);
+    if (status != BEAM_OK) {
+        complete(request, status);
+        return;
+    }
+    request->data = arguments.data;
+    request->size = arguments.size;
+    call_command(request);
+}
+
 
 static beam_status dispatch(beam_vm *vm, beam_request *request,
                             void (*command)(void *))
@@ -1125,6 +1339,75 @@ static beam_status dispatch(beam_vm *vm, beam_request *request,
         vm->stopped = 1;
     }
     return status;
+}
+
+/* Management does not consume the application entry slot or pump host requests.
+ * Pure observation never joins a halted VM. Completion means native/requester
+ * references have retired, even if a terminal outcome was recorded earlier. */
+static beam_status dispatch_management(beam_vm *vm, beam_request *request,
+                                        void (*command)(void *))
+{
+    beam_status status;
+    int retire_stopped_purge;
+    request->vm = vm;
+    beam_mutex_lock(&vm->mutex);
+    if (vm->halted || vm->stopped || vm->management) {
+        status = vm->management ? BEAM_BUSY : BEAM_STOPPED;
+        beam_mutex_unlock(&vm->mutex);
+        return status;
+    }
+    vm->management = request;
+    erts_schedule_misc_aux_work(1, command, request);
+    while (!request->done &&
+           !(vm->halted && request->module_operation == MODULE_SOFT_PURGE))
+        beam_cond_wait(&vm->condition, &vm->mutex);
+    status = request->status;
+    retire_stopped_purge = vm->halted &&
+        request->module_operation == MODULE_SOFT_PURGE;
+    if (retire_stopped_purge) {
+        /* Shutdown can retire the actual purger before it replies. This
+         * execution-bearing operation drains workers to retire that protocol;
+         * pure observation never takes this path. Keep its request published
+         * until the drain releases all process/later-operation references. */
+        beam_mutex_unlock(&vm->mutex);
+        erts_bare_stop_runtime();
+        erts_bare_module_purge_reset_after_stop();
+        beam_mutex_lock(&vm->mutex);
+        vm->stopped = 1;
+    }
+    vm->management = NULL;
+    beam_mutex_unlock(&vm->mutex);
+    return status;
+}
+
+int erts_bare_is_module_purge_request(Process *process)
+{
+    beam_request *request = process->bare_call;
+    beam_vm *vm = bare_vm;
+    int admitted;
+    if (!request || !vm)
+        return 0;
+    beam_mutex_lock(&vm->mutex);
+    admitted = request->module_operation == MODULE_SOFT_PURGE &&
+        request->vm == vm && vm->management == request;
+    if (admitted)
+        request->requester_pid = process->common.id;
+    beam_mutex_unlock(&vm->mutex);
+    return admitted;
+}
+
+void erts_bare_module_purge_retired(Eterm requester)
+{
+    beam_vm *vm = bare_vm;
+    beam_mutex_lock(&vm->mutex);
+    beam_request *request = vm->management;
+    if (request && request->module_operation == MODULE_SOFT_PURGE &&
+        request->requester_pid == requester) {
+        request->purge_retired = 1;
+        if (request->requester_deleted)
+            complete_locked(request, request->status);
+    }
+    beam_mutex_unlock(&vm->mutex);
 }
 
 static beam_status check_running(beam_vm *vm)
@@ -1197,11 +1480,45 @@ size_t erts_vm_preloads(const beam_module_spec **modules)
     return composition ? composition->preload_count : 0;
 }
 
+const char *erts_vm_default_tracer_module(void)
+{
+    return bare_vm && bare_vm->composition ? bare_vm->composition->default_tracer_module : NULL;
+}
+
+const beam_system_worker_entry *erts_vm_system_worker_entry(beam_system_worker worker)
+{
+    const beam_composition *composition = bare_vm ? bare_vm->composition : NULL;
+    if (composition)
+        for (size_t i = 0; i < composition->system_worker_entry_count; ++i)
+            if (composition->system_worker_entries[i].worker == worker)
+                return &composition->system_worker_entries[i];
+    return NULL;
+}
+
 size_t erts_vm_builtin_nifs(const beam_builtin_nif **entries)
 {
     const beam_composition *composition = bare_vm ? bare_vm->composition : NULL;
     *entries = composition ? composition->builtin_nifs : NULL;
     return composition ? composition->builtin_nif_count : 0;
+}
+
+int erts_vm_module_has_nif_selection(uintptr_t module)
+{
+    const beam_composition *composition = bare_vm ? bare_vm->composition : NULL;
+    if (!composition || !is_atom(module)) return 0;
+    const Atom *atom = atom_tab(atom_val(module));
+    const byte *name = erts_atom_get_name(atom);
+    for (size_t i = 0; i < composition->nif_count; ++i) {
+        const char *selected = composition->nifs[i].module;
+        size_t length = strlen(selected);
+        if (atom->len == length && !memcmp(name,selected,length)) return 1;
+    }
+    for (size_t i = 0; i < composition->builtin_nif_count; ++i) {
+        const char *selected = composition->builtin_nifs[i].name;
+        size_t length = strlen(selected);
+        if (atom->len == length && !memcmp(name,selected,length)) return 1;
+    }
+    return 0;
 }
 
 size_t erts_vm_embedded_dependencies(const beam_embedded_dependency **entries)
@@ -1225,7 +1542,7 @@ void erts_vm_native_init_failed(const char *kind, const char *name)
                  "built-in %s initialization failed: %s", kind, name);
 }
 
-beam_status beam_core_modules(const char *const **names, size_t *count)
+beam_status beam_module_core_names(const char *const **names, size_t *count)
 {
     if (!names || !count) return BEAM_INVALID_ARGUMENT;
     *names = beam_core_module_names;
@@ -1386,6 +1703,10 @@ beam_status beam_vm_init(beam_system *system, const beam_vm_options *options,
     erts_bare_mode = 1;
     beam_runtime_memory_begin();
     erts_bare_set_creation(++system->creation);
+    beam_builtin_begin(vm->composition ? vm->composition->builtin_bindings : NULL,
+                       vm->composition ? vm->composition->builtin_binding_count : 0,
+                       vm->composition ? vm->composition->core_exports : NULL,
+                       vm->composition ? vm->composition->core_export_count : 0);
     erts_bare_init(options);
     if (vm->initialization_error.message[0]) {
         if (error) *error = vm->initialization_error;
@@ -1395,6 +1716,11 @@ beam_status beam_vm_init(beam_system *system, const beam_vm_options *options,
     {
         status = validate_context(vm->startup_context);
         if (status == BEAM_OK) status = beam_composition_stage(vm, vm->composition, error);
+        if (status == BEAM_OK) {
+            status = erts_bare_validate_system_workers();
+            if (status != BEAM_OK && error)
+                snprintf(error->message, sizeof(error->message), "system worker entry is not an exported zero-argument function");
+        }
         else diagnostic(error, status, 0, "startup context must be one uncompressed ETF term");
         if (status != BEAM_OK) {
             beam_vm_terminate(&vm, NULL);
@@ -1584,7 +1910,7 @@ beam_status beam_host_reply_complete(beam_host_reply *reply, beam_bytes value, i
     return status;
 }
 
-beam_status beam_vm_load(beam_vm *vm, beam_bytes module)
+beam_status beam_module_load(beam_vm *vm, beam_bytes module)
 {
     beam_request request = {0};
     beam_status status = check_owner(vm);
@@ -1623,22 +1949,29 @@ static beam_status check_management(beam_vm *vm, int require_running)
     beam_mutex_lock(&vm->mutex);
     if (vm->halted || vm->stopped)
         status = BEAM_STOPPED;
-    else if (vm->pending_call)
-        status = BEAM_BUSY;
     else if (require_running && !vm->started)
         status = BEAM_INVALID_STATE;
     beam_mutex_unlock(&vm->mutex);
     return status;
 }
 
-static beam_status dispatch_module(beam_vm *vm, beam_request *request)
+static beam_status check_mutation(beam_vm *vm, int require_running)
 {
-    if (!vm->started)
-        return module_operation(request, 1);
-    return dispatch(vm, request, module_command);
+    beam_status status = check_management(vm, require_running);
+    if (status == BEAM_OK && vm->pending_call)
+        status = BEAM_BUSY;
+    return status;
 }
 
-beam_status beam_vm_get_module(beam_vm *vm, const char *name,
+static beam_status dispatch_module(beam_vm *vm, beam_request *request)
+{
+    request->vm = vm;
+    if (!vm->started)
+        return module_operation(request, 1);
+    return dispatch_management(vm, request, module_command);
+}
+
+beam_status beam_module_get_info(beam_vm *vm, const char *name,
                                beam_module_info *out)
 {
     beam_request *request;
@@ -1665,7 +1998,7 @@ beam_status beam_vm_get_module(beam_vm *vm, const char *name,
     return status;
 }
 
-beam_status beam_vm_list_modules(beam_vm *vm, beam_module_list *out)
+beam_status beam_module_list_names(beam_vm *vm, beam_module_list *out)
 {
     beam_request *request;
     beam_status status = check_management(vm, 0);
@@ -1686,6 +2019,43 @@ beam_status beam_vm_list_modules(beam_vm *vm, beam_module_list *out)
     return status;
 }
 
+static beam_status inspect_modules(beam_vm *vm, const beam_module_name *name,
+                                   const beam_module_query *query,
+                                   beam_module_snapshot *out)
+{
+    beam_request request = {0};
+    beam_status status = check_management(vm, 0);
+    if (status != BEAM_OK)
+        return status;
+    if (vm->execution != BEAM_HOST_CONTROLLED)
+        return BEAM_UNSUPPORTED;
+    if (!query || !out || query->struct_size != sizeof(*query))
+        return BEAM_INVALID_ARGUMENT;
+    request.module_operation = name ? MODULE_INSPECT : MODULE_INSPECT_ALL;
+    if (name)
+        request.module_name = *name;
+    request.module_query = *query;
+    status = dispatch_module(vm, &request);
+    if (status == BEAM_OK)
+        *out = request.module_snapshot;
+    else
+        beam_module_snapshot_release(&request.module_snapshot);
+    return status;
+}
+
+beam_status beam_module_inspect(beam_vm *vm, beam_module_name name,
+                                const beam_module_query *query,
+                                beam_module_snapshot *out)
+{
+    return inspect_modules(vm, &name, query, out);
+}
+
+beam_status beam_module_inspect_all(beam_vm *vm, const beam_module_query *query,
+                                    beam_module_snapshot *out)
+{
+    return inspect_modules(vm, NULL, query, out);
+}
+
 void beam_module_list_release(beam_module_list *list)
 {
     if (list) {
@@ -1694,12 +2064,12 @@ void beam_module_list_release(beam_module_list *list)
     }
 }
 
-beam_status beam_vm_unload(beam_vm *vm, const char *name, beam_error *error)
+beam_status beam_module_unload(beam_vm *vm, const char *name, beam_error *error)
 {
     beam_request *request;
     beam_status status;
     clear_error(error);
-    status = check_management(vm, 0);
+    status = check_mutation(vm, 0);
     if (status != BEAM_OK)
         return diagnostic(error, status, 0, beam_status_message(status));
     if (!name || !*name)
@@ -1736,7 +2106,79 @@ beam_status beam_vm_unload(beam_vm *vm, const char *name, beam_error *error)
     return BEAM_OK;
 }
 
-beam_status beam_vm_get_schedulers(beam_vm *vm, beam_scheduler_info *out)
+static beam_status module_failure(beam_error *error, beam_status status)
+{
+    return status == BEAM_OK ? BEAM_OK :
+        diagnostic(error, status, 0, beam_status_message(status));
+}
+
+beam_status beam_module_replace(beam_vm *vm, beam_bytes module,
+                                beam_error *error)
+{
+    beam_request request = {0};
+    beam_status status;
+    clear_error(error);
+    status = check_mutation(vm, 1);
+    if (status != BEAM_OK)
+        return module_failure(error, status);
+    if (vm->execution != BEAM_HOST_CONTROLLED)
+        return module_failure(error, BEAM_UNSUPPORTED);
+    if (!module.data || !module.size || module.size > (Uint)-1)
+        return module_failure(error, BEAM_INVALID_ARGUMENT);
+    request.data = malloc(module.size);
+    if (!request.data)
+        return module_failure(error, BEAM_OUT_OF_MEMORY);
+    memcpy(request.data, module.data, module.size);
+    request.size = module.size;
+    request.replace = 1;
+    status = dispatch_management(vm, &request, load_command);
+    free(request.data);
+    return module_failure(error, status);
+}
+
+beam_status beam_module_delete(beam_vm *vm, beam_module_name name,
+                               beam_error *error)
+{
+    beam_request request = {0};
+    beam_status status;
+    clear_error(error);
+    status = check_mutation(vm, 1);
+    if (status != BEAM_OK)
+        return module_failure(error, status);
+    if (vm->execution != BEAM_HOST_CONTROLLED)
+        return module_failure(error, BEAM_UNSUPPORTED);
+    request.module_operation = MODULE_DELETE;
+    request.module_name = name;
+    status = dispatch_module(vm, &request);
+    return module_failure(error, status);
+}
+
+beam_status beam_module_soft_purge(beam_vm *vm, beam_module_name name,
+                                   beam_error *error)
+{
+    beam_request request = {0};
+    beam_status status;
+    clear_error(error);
+    status = check_mutation(vm, 1);
+    if (status != BEAM_OK)
+        return module_failure(error, status);
+    if (vm->execution != BEAM_HOST_CONTROLLED)
+        return module_failure(error, BEAM_UNSUPPORTED);
+    request.module_operation = MODULE_SOFT_PURGE;
+    request.module_name = name;
+    request.module = "beam_internal";
+    request.function = "module_soft_purge";
+    status = dispatch_management(vm, &request, purge_command);
+    beam_result_release(&request.result);
+    free(request.data);
+    if (status != BEAM_OK && error && request.error.message[0]) {
+        *error = request.error;
+        return status;
+    }
+    return module_failure(error, status);
+}
+
+beam_status beam_scheduler_get_info(beam_vm *vm, beam_scheduler_info *out)
 {
     beam_scheduler_info info = {0};
     beam_status status = check_owner(vm);
@@ -1750,14 +2192,14 @@ beam_status beam_vm_get_schedulers(beam_vm *vm, beam_scheduler_info *out)
     return BEAM_OK;
 }
 
-beam_status beam_vm_set_schedulers_online(beam_vm *vm, unsigned normal,
+beam_status beam_scheduler_set_online(beam_vm *vm, unsigned normal,
                                          unsigned dirty, beam_error *error)
 {
     beam_scheduler_info info = {0};
     beam_request *request;
     beam_status status;
     clear_error(error);
-    status = check_management(vm, 1);
+    status = check_mutation(vm, 1);
     if (status != BEAM_OK)
         return diagnostic(error, status, 0, beam_status_message(status));
     erts_bare_get_schedulers(&info);
@@ -1781,6 +2223,217 @@ beam_status beam_vm_set_schedulers_online(beam_vm *vm, unsigned normal,
     if (status != BEAM_OK)
         return diagnostic(error, status, 0, beam_status_message(status));
     return BEAM_OK;
+}
+
+beam_status beam_scheduler_inspect_all(beam_vm *vm, beam_scheduler_snapshot *out)
+{
+    beam_request request = {0};
+    beam_scheduler_info info = {0};
+    beam_status status = check_management(vm, 1);
+    if (status != BEAM_OK) return status;
+    if (vm->execution != BEAM_HOST_CONTROLLED) return BEAM_UNSUPPORTED;
+    if (!out) return BEAM_INVALID_ARGUMENT;
+    erts_bare_get_schedulers(&info);
+    request.scheduler_snapshot.count = (size_t)info.schedulers +
+        info.dirty_cpu_schedulers + info.dirty_io_schedulers;
+    request.scheduler_snapshot.queue_count = (size_t)info.schedulers + 2;
+    request.scheduler_snapshot.items = calloc(request.scheduler_snapshot.count,
+                                                sizeof(beam_scheduler_record));
+    request.scheduler_snapshot.queues = calloc(request.scheduler_snapshot.queue_count,
+                                                sizeof(beam_scheduler_queue_record));
+    if (!request.scheduler_snapshot.items || !request.scheduler_snapshot.queues) {
+        beam_scheduler_snapshot_release(&request.scheduler_snapshot);
+        return BEAM_OUT_OF_MEMORY;
+    }
+    status = dispatch_management(vm, &request, scheduler_inspect_command);
+    if (status == BEAM_OK) *out = request.scheduler_snapshot;
+    else beam_scheduler_snapshot_release(&request.scheduler_snapshot);
+    return status;
+}
+
+void beam_scheduler_snapshot_release(beam_scheduler_snapshot *snapshot)
+{
+    if (!snapshot) return;
+    free((void *)snapshot->items);
+    free((void *)snapshot->queues);
+    memset(snapshot, 0, sizeof(*snapshot));
+}
+
+static beam_status check_process_management(beam_vm *vm, int mutation)
+{
+    beam_status status = mutation ? check_mutation(vm, 1) : check_management(vm, 1);
+    if (status != BEAM_OK) return status;
+    return vm->execution == BEAM_HOST_CONTROLLED ? BEAM_OK : BEAM_UNSUPPORTED;
+}
+
+beam_status beam_process_list_pids(beam_vm *vm, beam_process_list *out)
+{
+    BeamPid *pids;
+    size_t capacity, maximum;
+    beam_status status = check_process_management(vm, 0);
+    if (status != BEAM_OK) return status;
+    if (!out) return BEAM_INVALID_ARGUMENT;
+    maximum = (size_t)erts_ptab_max(&erts_proc);
+    capacity = (size_t)erts_ptab_count(&erts_proc);
+    if (capacity < 16) capacity = 16;
+    if (capacity > maximum) capacity = maximum;
+    for (;;) {
+        beam_request request = {0};
+        if (!capacity || capacity > SIZE_MAX / sizeof(*pids))
+            return BEAM_OUT_OF_MEMORY;
+        pids = malloc(capacity * sizeof(*pids));
+        if (!pids) return BEAM_OUT_OF_MEMORY;
+        request.process_pids = pids;
+        request.process_capacity = capacity;
+        status = dispatch_management(vm, &request, process_list_command);
+        if (status != BEAM_OK) {
+            free(pids);
+            return status;
+        }
+        if (request.process_count <= capacity) {
+            *out = (beam_process_list){request.process_count, pids};
+            return BEAM_OK;
+        }
+        free(pids);
+        capacity = capacity > maximum / 2 ? maximum : capacity * 2;
+        if (capacity < request.process_count) capacity = request.process_count;
+        ASSERT(capacity <= maximum);
+    }
+}
+
+void beam_process_list_release(beam_process_list *list)
+{
+    if (!list) return;
+    free((void *)list->pids);
+    memset(list, 0, sizeof(*list));
+}
+
+void beam_process_query_init(beam_process_query *query)
+{
+    if (query) *query = (beam_process_query){sizeof(*query), 0};
+}
+
+static beam_status process_copy_atom(Eterm atom, beam_process_atom_name *out)
+{
+    const Atom *entry = atom_tab(atom_val(atom));
+    size_t size = (size_t)entry->len;
+    char *copy = malloc(size + 1);
+    if (!copy) return BEAM_OUT_OF_MEMORY;
+    memcpy(copy, erts_atom_get_name(entry), size);
+    copy[size] = 0;
+    *out = (beam_process_atom_name){copy, size};
+    return BEAM_OK;
+}
+
+beam_status beam_process_inspect(beam_vm *vm, const BeamPid *target,
+                                 const beam_process_query *query,
+                                 beam_process_snapshot *out)
+{
+    const unsigned valid_fields = BEAM_PROCESS_FIELD_STATE | BEAM_PROCESS_FIELD_REDUCTIONS |
+        BEAM_PROCESS_FIELD_MEMORY | BEAM_PROCESS_FIELD_MESSAGE_QUEUE |
+        BEAM_PROCESS_FIELD_INITIAL_CALL | BEAM_PROCESS_FIELD_REGISTERED_NAME;
+    beam_request request = {0};
+    beam_process_snapshot snapshot = {0};
+    const beam_process_observation *value = &request.process_observation;
+    beam_status status = check_process_management(vm, 0);
+    if (status != BEAM_OK) return status;
+    if (!target || !is_internal_pid(target->pid) || beam_enif_is_pid_undefined(target) ||
+        !query || query->struct_size != sizeof(*query) ||
+        (query->fields & ~valid_fields) || !out)
+        return BEAM_INVALID_ARGUMENT;
+    request.process_target = target->pid;
+    request.process_references = 1;
+    status = erts_bare_process_inspection_prepare(query->fields, &request,
+                                                  &request.process_signal);
+    if (status != BEAM_OK) return status;
+    status = dispatch_management(vm, &request, process_inspect_command);
+    if (request.process_signal)
+        erts_bare_process_inspection_discard(request.process_signal);
+    if (status != BEAM_OK) return status;
+    snapshot.pid.pid = value->pid;
+    snapshot.is_system_process = value->is_system_process;
+    snapshot.fields = query->fields;
+    snapshot.state = value->state;
+    snapshot.reductions = value->reductions;
+    snapshot.memory_bytes = value->memory_bytes;
+    snapshot.message_queue_len = value->message_queue_len;
+    if (query->fields & BEAM_PROCESS_FIELD_INITIAL_CALL) {
+        status = process_copy_atom(value->module, &snapshot.initial_call.module);
+        if (status == BEAM_OK)
+            status = process_copy_atom(value->function, &snapshot.initial_call.function);
+        snapshot.initial_call.arity = value->arity;
+    }
+    if (status == BEAM_OK && (query->fields & BEAM_PROCESS_FIELD_REGISTERED_NAME)) {
+        snapshot.has_registered_name = value->has_registered_name;
+        if (snapshot.has_registered_name)
+            status = process_copy_atom(value->registered_name, &snapshot.registered_name);
+    }
+    if (status == BEAM_OK) *out = snapshot;
+    else beam_process_snapshot_release(&snapshot);
+    return status;
+}
+
+void beam_process_snapshot_release(beam_process_snapshot *snapshot)
+{
+    if (!snapshot) return;
+    free((void *)snapshot->initial_call.module.data);
+    free((void *)snapshot->initial_call.function.data);
+    free((void *)snapshot->registered_name.data);
+    memset(snapshot, 0, sizeof(*snapshot));
+}
+
+void beam_process_spawn_options_init(beam_process_spawn_options *options)
+{
+    if (!options) return;
+    memset(options, 0, sizeof(*options));
+    options->struct_size = sizeof(*options);
+    beam_enif_set_pid_undefined(&options->group_leader);
+}
+
+static int process_valid_entry_name(const char *name)
+{
+    const byte *end;
+    Uint characters;
+    size_t size = name ? strlen(name) : 0;
+    return size && size <= MAX_ATOM_SZ_LIMIT &&
+        erts_analyze_utf8_x((const byte *)name, size, &end, &characters,
+                            NULL, NULL, MAX_ATOM_CHARACTERS) == ERTS_UTF8_OK;
+}
+
+beam_status beam_process_spawn(beam_vm *vm, const char *module, const char *function,
+                               BeamEnv *arguments_env, BeamTerm arguments,
+                               const beam_process_spawn_options *options,
+                               BeamPid *out, beam_error *error)
+{
+    beam_request request = {0};
+    unsigned arity;
+    beam_status status;
+    clear_error(error);
+    status = check_process_management(vm, 1);
+    if (status != BEAM_OK) return module_failure(error, status);
+    if (!process_valid_entry_name(module) || !process_valid_entry_name(function) ||
+        !arguments_env || !options || options->struct_size != sizeof(*options) || !out ||
+        (options->group_leader.pid != am_undefined &&
+         !is_internal_pid(options->group_leader.pid)))
+        return module_failure(error, BEAM_INVALID_ARGUMENT);
+    if (!beam_enif_get_list_length(arguments_env, arguments, &arity) || arity > MAX_ARG)
+        return module_failure(error, BEAM_INVALID_TERM);
+    request.module = malloc(strlen(module) + 1);
+    request.function = malloc(strlen(function) + 1);
+    if (!request.module || !request.function) {
+        free(request.module);
+        free(request.function);
+        return module_failure(error, BEAM_OUT_OF_MEMORY);
+    }
+    strcpy(request.module, module);
+    strcpy(request.function, function);
+    request.process_arguments = arguments;
+    request.process_group_leader = options->group_leader;
+    status = dispatch_management(vm, &request, process_spawn_command);
+    if (status == BEAM_OK) *out = request.process_spawned;
+    free(request.module);
+    free(request.function);
+    return module_failure(error, status);
 }
 
 static void release_call(beam_request *request)
@@ -1980,6 +2633,7 @@ beam_status beam_vm_stop(beam_vm *vm, int *halt_status)
             erts_bare_request_stop();
         beam_mutex_unlock(&vm->mutex);
         erts_bare_stop_runtime();
+        erts_bare_module_purge_reset_after_stop();
         vm->stopped = 1;
     }
     beam_mutex_lock(&vm->mutex);
@@ -2076,7 +2730,7 @@ beam_status beam_vm_bind_nif(beam_vm *vm, const char *module, beam_error *error)
     if (index == vm->composition->nif_count) return BEAM_NOT_FOUND;
     if (vm->bound_nifs[index]) return BEAM_OK;
     beam_module_info info = {.struct_size = sizeof(info)};
-    status = beam_vm_get_module(vm, module, &info);
+    status = beam_module_get_info(vm, module, &info);
     if (status != BEAM_OK) return status;
     if (!(info.flags & BEAM_MODULE_CURRENT)) return BEAM_NOT_FOUND;
     if (info.flags & (BEAM_MODULE_ON_LOAD | BEAM_MODULE_PROTECTED)) return BEAM_INVALID_STATE;
@@ -2149,6 +2803,7 @@ void erts_bare_destroy_runtime(int started)
     erts_bare_reset_mmap();
 #endif
     erts_bare_reset_errno();
+    beam_builtin_reset();
     beam_runtime_memory_destroy();
     erts_bare_destroying = 0;
 }

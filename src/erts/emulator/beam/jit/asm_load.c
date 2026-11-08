@@ -29,6 +29,7 @@
 #include "erl_binary.h"
 #include "beam_catches.h"
 #include "beam_load.h"
+#include "beam_builtin_catalog.h"
 #include "erl_version.h"
 #include "beam_bp.h"
 #include "erl_debugger.h"
@@ -169,6 +170,9 @@ int beam_load_prepare_emit(LoaderState *stp) {
             erts_alloc(ERTS_ALC_T_PREPARED_CODE,
                        stp->beam.imports.count * sizeof(BifEntry **));
 
+    stp->primitive_imports = erts_alloc(ERTS_ALC_T_PREPARED_CODE,
+                                      stp->beam.imports.count * sizeof(BifEntry *));
+
     for (i = 0; i < stp->beam.imports.count; i++) {
         BeamFile_ImportEntry *import;
         const Export *export;
@@ -185,12 +189,24 @@ int beam_load_prepare_emit(LoaderState *stp) {
             bif_number = export->bif_number;
 
             if (bif_number >= 0) {
-                if (bif_number == BIF_load_nif_2) {
+                if (bif_number == BIF_IMPL_vm_load_nif_2) {
                     stp->may_load_nif = 1;
                 }
 
                 stp->bif_imports[i] = &bif_table[bif_number];
             }
+        }
+        int private_slot = beam_load_private_native(stp,i);
+        if (private_slot >= 0) {
+            stp->bif_imports[i] = private_slot < BIF_SIZE
+                ? (BifEntry *)beam_builtin_private_entry(private_slot) : NULL;
+        }
+        stp->primitive_imports[i] = stp->bif_imports[i];
+        if (!stp->primitive_imports[i]) {
+            int slot = beam_builtin_legacy_primitive(import->module,
+                                                    import->function, import->arity);
+            if (slot >= 0)
+                stp->primitive_imports[i] = (BifEntry *)beam_builtin_private_entry(slot);
         }
     }
 
@@ -266,6 +282,18 @@ int beam_load_prepared_dtor(Binary *magic) {
         stp->lambda_literals = NULL;
     }
 
+    if (stp->private_natives) {
+        erts_free(ERTS_ALC_T_PREPARED_CODE,stp->private_natives);
+        stp->private_natives = NULL;
+    }
+    if (stp->native_guards) {
+        erts_free(ERTS_ALC_T_PREPARED_CODE,stp->native_guards);
+        stp->native_guards = NULL;
+    }
+    if (stp->primitive_imports) {
+        erts_free(ERTS_ALC_T_PREPARED_CODE, stp->primitive_imports);
+        stp->primitive_imports = NULL;
+    }
     if (stp->bif_imports) {
         erts_free(ERTS_ALC_T_PREPARED_CODE, stp->bif_imports);
         stp->bif_imports = NULL;
@@ -531,6 +559,9 @@ int beam_load_emit_op(LoaderState *stp, BeamOp *tmp_op) {
             break;
         case 'e': /* Export entry */
             BeamLoadVerifyTag(stp, tag, TAG_u);
+            if (beam_load_is_native_guard(stp, curr->val)) {
+                BeamLoadError0(stp, "guard requirement used as callable import");
+            }
             if (curr->val >= stp->beam.imports.count) {
                 BeamLoadError1(stp, "invalid import table index %d", curr->val);
             }
@@ -541,10 +572,10 @@ int beam_load_emit_op(LoaderState *stp, BeamOp *tmp_op) {
             BeamLoadVerifyTag(stp, tag, TAG_u);
             if (i >= stp->beam.imports.count) {
                 BeamLoadError1(stp, "invalid import table index %d", i);
-            } else if (stp->bif_imports[i] == NULL) {
+            } else if (stp->primitive_imports[i] == NULL) {
                 BeamLoadError1(stp, "import %d not a BIF", i);
             } else {
-                curr->val = (BeamInstr)stp->bif_imports[i]->f;
+                curr->val = (BeamInstr)stp->primitive_imports[i]->f;
             }
         } break;
         case 'P': /* Byte offset into tuple */
@@ -1184,6 +1215,10 @@ void beam_load_finalize_code(LoaderState *stp,
 
         address = beamasm_get_code(stp->ba, entry->label);
         ep = erts_export_put(stp->module, entry->function, entry->arity);
+        int instruction = beam_builtin_selected_instruction(stp->module,
+                                                              entry->function,entry->arity);
+        if (instruction >= 0)
+            address = (ErtsCodePtr)beam_builtin_instruction_address(instruction);
 
         if (stp->on_load) {
             /* on_load: Don't make any of the exported functions
@@ -1201,7 +1236,11 @@ void beam_load_finalize_code(LoaderState *stp,
         BeamFile_ImportEntry *entry = &stp->beam.imports.entries[i];
         const Export *import;
 
-        import = erts_export_put(entry->module, entry->function, entry->arity);
+        if (beam_load_is_native_guard(stp, i)) continue;
+        int private_slot = beam_load_private_native(stp,i);
+        import = private_slot >= 0
+            ? (const Export *)beam_builtin_private_export(private_slot)
+            : erts_export_put(entry->module, entry->function, entry->arity);
         beamasm_patch_import(stp->ba, stp->writable_region, i, import);
     }
 

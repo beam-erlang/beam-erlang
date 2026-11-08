@@ -4,7 +4,7 @@ set(_run_out "${_run_root}/ebin")
 set(_run_include "${CMAKE_BINARY_DIR}/run/include")
 set(BEAM_RUN_MODULES beam_source_run)
 set(BEAM_RUN_BEAM_FILES "${_run_out}/beam_source_run.beam")
-beam_add_erlang_component(beam_run_support
+beam_add_runtime_component(beam_run_support
     SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/beam_source_run.erl"
     OUTPUT_DIRECTORY "${_run_out}")
 add_dependencies(beam_run_support beam_cli_support)

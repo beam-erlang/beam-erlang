@@ -9,7 +9,7 @@ import argparse
 from support.installation import add_installation_arguments, resolve_installation, stage_installation, expected_version
 import shutil
 
-from support.bytecode import TEST_SUPPORT_DIR, RETURNING_ASSETS
+from support.bytecode import TEST_SUPPORT_DIR, RETURNING_ASSETS, STDLIB_ASSETS
 from support.process import run as capture, isolated_environment, check
 
 
@@ -24,6 +24,7 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ('cmake', 'test-dir', 'source-dir'):
         parser.add_argument('--' + name, required=True)
+    parser.add_argument('--case', choices=('full', 'stdlib'), default='full')
     add_installation_arguments(parser)
     args = resolve_installation(parser, parser.parse_args())
     root = Path(args.test_dir).resolve()
@@ -37,18 +38,22 @@ def main():
         assert 'BEAM::Distribution' not in (sdk / 'lib/cmake/BEAM/BEAMTargets.cmake').read_text()
         source = root / 'source'
         shutil.copytree(Path(args.source_dir), source)
-        for case in ('bare', 'boot', 'file', 'network', 'zlib', 'program'):
+        cases = ('stdlib',) if args.case == 'stdlib' else ('bare', 'stdlib', 'boot', 'file', 'network', 'zlib', 'program')
+        for case in cases:
             build = root / ('build-' + case)
-            profile = 'bare' if case == 'bare' else 'beam-returning'
+            bare = case in ('bare', 'stdlib')
+            profile = 'bare' if bare else 'beam-returning'
             command = [args.cmake, '-S', source, '-B', build, f'-DCMAKE_PREFIX_PATH={sdk}', f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", f'-DPROFILE={profile}']
             if case in ('file', 'network', 'zlib', 'program'): command.append(f'-DCOMPONENTS={case}')
+            if case == 'stdlib': command.append('-DINVENTORIES=stdlib')
             run(command, work, env)
             run([args.cmake, '--build', build, '--parallel', '2'], work, env)
             stage = root / ('stage-' + case)
             run([args.cmake, '--install', build, '--prefix', stage], work, env)
             bundle = root / ('relocated 日本 é ' + case); stage.rename(bundle)
             expected = {'bin/deployment_host', artifact_relative(sdk,'runtime')}
-            if case != 'bare': expected |= set(RETURNING_ASSETS)
+            if not bare: expected |= set(RETURNING_ASSETS)
+            if case == 'stdlib': expected |= set(STDLIB_ASSETS)
             if case in ('file', 'network'): expected.add(artifact_relative(sdk,"library." + case + ".shared"))
             if case == 'zlib': expected |= {artifact_relative(sdk,'library.zlib.shared')}
             if case == 'program': expected.add('libexec/beam/erl_child_setup')
@@ -69,10 +74,10 @@ def main():
             hidden = root / 'unavailable-sdk'; sdk.rename(hidden)
             try:
                 out, err = run([host, case], work, test_env)
-                entries = 0 if case == 'bare' else 2
+                entries = 0 if bare else 2
                 assert out == 'DEPLOY_ENTERED\n' * entries + 'DEPLOY_OK\n' and not err, (out, err)
                 missing = []
-                if case != 'bare': missing += list(RETURNING_ASSETS)
+                if not bare: missing += list(RETURNING_ASSETS)
                 if case in ('file', 'network'): missing.append(selected[case])
                 if case == 'zlib': missing += [selected['zlib']]
                 for name in missing:
@@ -83,6 +88,8 @@ def main():
                     finally: held.rename(asset)
             finally: hidden.rename(sdk)
             print(f'deployment {case} ok', flush=True)
+        if args.case == 'stdlib':
+            return
         for options in (['-DPROFILE=unknown'], ['-DPROFILE=bare', '-DCOMPONENTS=file'],
                         ['-DPROFILE=beam-returning', '-DCOMPONENTS=unknown'],
                         ['-DPROFILE=otp-boot', '-DOTP_APPLICATIONS=unknown']):

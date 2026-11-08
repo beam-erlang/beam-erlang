@@ -24,6 +24,7 @@
 #  include "config.h"
 #endif
 
+#include "beam_builtin_catalog.h"
 #include "sys.h"
 #include "erl_vm.h"
 #include "global.h"
@@ -277,7 +278,8 @@ erts_lookup_function_info(FunctionInfo* fi, ErtsCodePtr pc, int full_info)
     fi->loc = LINE_INVALID_LOCATION;
     rp = find_range(pc);
     if (rp == 0) {
-	return;
+        fi->mfa = beam_builtin_instruction_from_pc((uintptr_t)pc);
+        return;
     }
     hdr = (BeamCodeHeader*) rp->start;
 

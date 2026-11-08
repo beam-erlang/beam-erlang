@@ -279,6 +279,7 @@ void run_entry(const char *root, const char *function, beam_bytes arguments,
     options.arguments = arguments;
     bytecode_input base = {0};
     check(bytecode_input_read(&base, root, INPUT_RETURNING, &error) == BEAM_OK, "read verified base inventory");
+    if (services & TEST_SOCKET) bytecode_input_partition_network(&base);
     beam_return_module *selected = calloc(count + base.count, sizeof(*selected));
     check(selected != NULL, "allocate selected modules");
     for (size_t i = 0; i < base.count; ++i) {
@@ -315,7 +316,9 @@ void run_entry(const char *root, const char *function, beam_bytes arguments,
     }
     check(buffer_u8(&selection,106)&&buffer_u8(&selection,106),"selection tail");
     actions[action_count++]=(beam_startup_action){"beam_boot","select",{selection.data,selection.size}};
-    beam_composition_options generic={.struct_size=sizeof(generic)};
+    beam_composition_options generic={.struct_size=sizeof(generic),
+        .builtin_binding_count=BEAM_TEST_MODERN_BINDING_COUNT,
+        .builtin_bindings=beam_test_modern_bindings};
     if(services&TEST_PROGRAM){
         generic.native_admission=BEAM_NATIVE_MANAGED_PORTS;
 #ifndef _WIN32

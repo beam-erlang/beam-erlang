@@ -16,7 +16,8 @@ release policy and upstream propagation in [release/](../release/README.md).
 ## Core and product code
 
 Shared `BEAM::Runtime` and static `BEAM::RuntimeStatic` use the same VM objects.
-Both physically embed exactly nine modules from `src/erts/preloaded/`:
+Both physically embed exactly six modules; the canonical sources are under
+`src/erts/preloaded/` and private `beam_internal` is under `src/beam/core/`:
 
 | Module | Responsibility |
 | --- | --- |
@@ -24,8 +25,7 @@ Both physically embed exactly nine modules from `src/erts/preloaded/`:
 | `erts_code_purger` | Code purge coordination. |
 | `erts_literal_area_collector` | Reclamation of code literals and persistent-term storage. |
 | `erts_dirty_process_signal_handler` | Erlang signals and system requests for dirty execution. |
-| `erts_trace_cleaner` | Cleanup of retired trace-session references. |
-| `atomics`, `counters`, `persistent_term` | Shared Erlang/native data mechanisms. |
+| `beam_internal` | Mandatory trace-session cleanup worker and its private native calls. |
 
 [RuntimeCoreModules.cmake](../cmake/RuntimeCoreModules.cmake) owns this inventory.
 Initialization stages these modules without workers or Erlang execution. Bare
@@ -34,10 +34,17 @@ literal collector, three dirty signal handlers and a trace cleaner. These are
 Erlang processes, not an OS-thread count. The root is not registered as `init`
 and supplies no I/O server. Changing the mandatory core requires an architecture
 decision covering execution and active and quiescent cleanup.
+Private embedded code remains protected through both C module management and
+Erlang loading, deletion and purge paths. `beam_internal` is not replaceable by
+ordinary code or by an OTP restart.
 
-OTP supplies thirteen additional preloads through public composition, preserving
+OTP supplies seventeen additional preloads through public composition, preserving
 its 22 preloaded/sticky modules and restart behavior. Its executable embeds
 those product-owned bytes and selects already-linked native implementations.
+The five canonical SDK core names plus seventeen OTP preloads preserve the
+reported inventory: private `beam_internal` remains physically embedded but is
+excluded from Erlang preload reporting. OTP supplies `erts_trace_cleaner` as a
+compatibility facade and selects its `start/0` as the cleaner startup entry.
 The modern CLI retains shared linkage. Libraries support shared VM/shared
 libraries, shared VM/static libraries and static VM/static libraries. Extensions
 resolve against one host runtime; second-runtime mappings are rejected.
@@ -60,12 +67,99 @@ startup services.
 
 | Unit | Modules | Installed inventory or library |
 | --- | --- | --- |
-| Base | `beam`, `beam_list`, `beam_map`, `beam_bytes`, `beam_text`, `beam_format`, `beam_time` | `lib/beam/library/{modules.txt,ebin/*.beam}` |
+| Base | `beam`, `beam_format`, `beam_time`, `beam_atomics`, `beam_counters`, `beam_persistent_term`, `beam_binary`, `beam_lists`, `beam_maps`, `beam_records`, `beam_ets`, `beam_string`, `beam_unicode`, `beam_math`, `beam_ddll`, `beam_debugger`, private `beam_runtime_unicode_util` | `lib/beam/library/{modules.txt,ebin/*.beam}` |
+| Standard library | `array`, `dict`, `graph`, `gb_sets`, `gb_trees`, `orddict`, `ordsets`, `proplists`, `queue`, `sets`, `sofs`, `digraph`, `digraph_utils` | `lib/beam/stdlib/{modules.txt,ebin/*.beam}` |
 | Boot | `beam_return_boot`, `beam_boot` | `lib/beam/boot/{modules.txt,ebin/*.beam}` |
 | Services | `beam_startup`, `beam_host`, `beam_output`, `beam_code` | `lib/beam/services/{modules.txt,ebin/*.beam}` |
 | File | `beam_file`, `prim_buffer`, `prim_file` | `lib/libbeam-file.so` |
-| Network | `beam_socket`, `socket_registry`, `socket`, `maps`, `lists`, `prim_socket` | `lib/libbeam-network.so` |
+| Network | `beam_socket`, `socket_registry`, `socket`, `beam_maps`, `beam_lists`, `beam_runtime_string_legacy`, `prim_socket` | `lib/libbeam-network.so` |
 | Zlib | `zlib` | `lib/libbeam-zlib.so` |
+| Tracing | `beam_trace`, private `beam_runtime_trace_errors` | `lib/libbeam-tracing.so` |
+
+The ordinary base modules define library interfaces independently of native
+execution. The collection and text interfaces select canonical native contracts
+under `beam_binary`, `beam_lists`, `beam_maps`, `beam_records`, `beam_string` and
+`beam_unicode`. OTP selects the same contracts at its own canonical names.
+Each ID has one host-selected destination; unbound contracts publish no exports.
+
+The catalog contains 573 native calling contracts. The modern library recipe
+binds 558 operations, including four ETS implementation protocols; canonical
+compiler and OTP hosts bind 556. Identical contracts
+share one descriptor with one destination MFA per VM, while differing argument,
+result or continuation-error policies retain distinct descriptors. Modern
+execution does not supply `binary`, `lists`, `maps`, `string`, `unicode`, `atomics`,
+`counters`, `persistent_term`, `ets`, `math`, `erl_ddll` or `erl_debugger`.
+Modern hosts select the mathematics, driver and debugger contracts under
+`beam_math`, `beam_ddll` and `beam_debugger`. Compiler-only canonical modules and OTP's facade
+modules keep their names. Their storage and private array execution mechanisms
+remain VM-owned; public native helper exports are selected explicitly. All 51 ETS contracts are shared descriptors: modern hosts bind
+`beam_ets`, while canonical hosts bind `ets`. Table ownership, representation,
+concurrency and continuation protocols retain their existing semantics.
+
+The tracing component supplies twenty public session/sequential functions, ten
+private native-access slots, the private delivery callbacks `enabled/3` and
+`trace/5`, and explicit `load_nif/0` activation. `erts_internal:system_monitor/3`
+retains its native destination. The VM owns trace state and event production;
+ordinary delivery acquisition and activation do not create a collector or worker.
+The cleaner runs independently as mandatory core code. Composition separately
+selects its startup entry and an optional default tracer identity.
+
+The public `beam_binary`, `beam_lists`, `beam_maps`, `beam_records`, `beam_string`,
+`beam_unicode`, `beam_math`, `beam_ddll` and `beam_debugger` implementations are maintained directly under
+`src/beam/library/`, with modern module declarations, calls and native slots.
+They compile without runtime projection and retain deterministic artifact
+verification and executable-import auditing. Their canonical compiler sources
+remain separate, source-attested inputs to the private compiler/bootstrap VM.
+The three mathematics, driver and debugger modules retain all 57 upstream
+exports, including ordinary math constants and driver compatibility stubs.
+Native binding selection neither grants driver admission nor enables debugger
+instrumentation. Debugger support retains its experimental, configuration-dependent
+contract. OTP retains its canonical module names and native selections.
+
+`src/beam/library` is the base-library source boundary. Its modules may combine
+BIF-backed functions with ordinary Erlang wrappers, algorithms and constants.
+`src/beam/stdlib` contains thirteen modules without BIF-implemented functions.
+Its separate verified inventory is explicitly acquired by normal CLI execution
+and independently selected by embedding hosts. The library has no native slots
+or startup hooks. Ordinary functions within base modules remain in the base
+library.
+
+A deterministic build-only projection still derives `beam_ets`, the private
+Unicode helper and owned command/support modules from canonical sources. It
+filters the adopted ETS export set and rewrites owned runtime references
+independently of compiler target profiles, preserving source data, encoding atoms
+and user-written MFAs.
+Private Unicode algorithms remain under `beam_runtime_unicode_util`. Required
+legacy Latin-1 `chr/2` and `to_upper/1` behavior remains in the private
+`beam_runtime_string_legacy` helper, outside public `beam_string` exports.
+
+Shell collection algorithms use `beam_runtime_queue`, `beam_runtime_sets`,
+`beam_runtime_proplists` and `beam_runtime_orddict`. Their private names remain internal to shell tooling.
+The ordinary standard library supplies thirteen public modules under their
+upstream names. It is their sole modern producer; canonical compiler support
+remains isolated in its own VM. Normal CLI execution verifies and acquires the
+standard-library inventory explicitly before entry. Bare and component hosts
+select it independently, without changing native selections or capabilities.
+
+Base and networking use the same verified collection artifacts. Hosts partition
+`beam_lists`/`beam_maps` explicitly when both inventories are selected; generic
+composition still rejects duplicate names. Networking remains usable without
+acquiring the complete base library. The CLI fallback owns the legacy helper
+only when networking is absent. The public `beam_ets` facade has one producer
+in the base library; interactive support uses that same supplied artifact.
+Its 63 exports preserve table operations and ordinary algorithms while keeping
+QLC/DETS adapters outside the interface. File-persistence and inspection exports
+are withheld pending their own placement decisions. Match-spec compiler and
+shell support are selected in their separate tooling inventories.
+Type references, language/I/O protocols and hidden
+noncallable diagnostic labels do not imply supplied facade modules.
+
+[The C API reference](c-api/reference.md#optional-native-bif-bindings) owns the
+binding contracts and their experimental identifiers. Empty composition publishes
+no native callable exports. Ordinary code acquisition and native binding remain separate. Modern compiler
+policy lowers map comprehensions through core map construction, so language
+syntax also works with no optional bindings. Explicit user MFAs are preserved;
+canonical targets retain their own explicit binding profiles.
 
 These paths describe shared Linux delivery; each native library also has an
 installed static archive and explicit shared/static CMake targets. Consumers use
@@ -180,9 +274,9 @@ Host allocator capacity retained in RSS alone does not establish a VM leak.
 Host-controlled lifetimes preserve host signals, standard descriptors, terminal
 state, environment and floating-point state. Workers own their masks and
 alternate stacks. Native-stack JIT requires compatible synchronous-fault
-handlers using `SA_ONSTACK`; initialization/start validate that policy. Vendored
-PCRE has private visibility because its adapted match state is incompatible
-with host PCRE; installed coexistence acceptance checks both symbol directions.
+handlers using `SA_ONSTACK`; initialization/start validate that policy. Regex
+implementations belong to ordinary native providers. Neither VM image contains
+PCRE or regex BIFs; installed coexistence acceptance includes host PCRE.
 
 Module inspection/unload preserves processes and leaves code unchanged when
 busy; runtime modules stay protected. Scheduler online control stays within
@@ -229,3 +323,13 @@ lives under `lib/beam/apps/beam-pkg`; its shared recipe selects outputs. Project
 launch selects an installed generation and never builds/installs implicitly.
 Source tasks use literal argv, with native handoff after tool VM/system teardown.
 The [package guide](packaging/README.md) links canonical package policy.
+
+## Clock and timer API selection
+
+Clock/timer implementations are shared nameless contracts. Modern compositions
+bind 15 operations under `beam_time`; canonical compiler and OTP hosts bind them
+under `erlang` and additionally select legacy `now/0`. The ordinary canonical
+converter is an explicit core-export selection. Embedded core bytecode retains
+its bodies while the shared loader publishes only selected optional core slots.
+The private mandatory conversion helper supports native continuations and
+component-internal conversions without acquiring the ordinary base library.

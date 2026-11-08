@@ -45,7 +45,7 @@ add_test(NAME native-image-location COMMAND beam_image_location_tests)
 
 endif()
 
-add_executable(beam_api_validation checks/api_validation.c)
+add_executable(beam_api_validation checks/api_validation.c checks/etf_validation.c)
 target_link_libraries(beam_api_validation PRIVATE BEAM::Runtime Threads::Threads)
 add_test(NAME api-validation COMMAND beam_api_validation)
 add_executable(beam_bytecode_verifier_tests checks/bytecode_verifier.c)
@@ -149,16 +149,17 @@ set_tests_properties(native-artifacts-beam PROPERTIES TIMEOUT 60)
 add_test(NAME compiler-artifacts
     COMMAND ${Python3_EXECUTABLE} -B "${CMAKE_CURRENT_SOURCE_DIR}/checks/compiler_artifacts.py"
         --cmake ${CMAKE_COMMAND} --source-dir "${CMAKE_SOURCE_DIR}"
-        --build-dir "${CMAKE_BINARY_DIR}" --test-dir "${CMAKE_CURRENT_BINARY_DIR}/compiler-artifacts")
-set_tests_properties(compiler-artifacts PROPERTIES TIMEOUT 60 LABELS "checks;BEAM")
+        --build-dir "${CMAKE_BINARY_DIR}" --test-dir "${CMAKE_CURRENT_BINARY_DIR}/compiler-artifacts"
+        --bootstrap $<TARGET_FILE:beam_bootstrap>
+        --projection "${CMAKE_BINARY_DIR}/runtime-support/src/beam_runtime_projection.beam")
+set_tests_properties(compiler-artifacts PROPERTIES TIMEOUT 180 LABELS "checks;BEAM")
 # Capture actual native target linkage in the production runtime. The boot
 # probe links this same library; there is no alternate native runtime.
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/libbeam-native-links-$<CONFIG>.txt"
     CONTENT "$<JOIN:$<TARGET_PROPERTY:libbeam,LINK_LIBRARIES>,\n>\n$<JOIN:$<TARGET_PROPERTY:libbeam,SOURCES>,\n>\n")
-set(_native_components --component beam_erl_tracer_nif
-    "beam/tracing" $<TARGET_FILE:beam_erl_tracer_nif>)
+set(_native_components)
 set(_runtime_units)
-foreach(_unit IN ITEMS file network zlib)
+foreach(_unit IN ITEMS file network zlib tracing)
     set(_unit_source "${_unit}")
     list(APPEND _runtime_units --unit beam_${_unit}_component "beam/${_unit_source}"
         $<TARGET_FILE:beam_${_unit}_component>)
@@ -167,6 +168,8 @@ add_test(NAME native-library-boundary
     COMMAND ${Python3_EXECUTABLE} -B -m checks.native_component_boundary
         --nm ${CMAKE_NM}
         --readelf ${CMAKE_READELF}
+        --ar ${CMAKE_AR}
+        --runtime-static $<TARGET_FILE:libbeam_static>
         --source-dir ${PROJECT_SOURCE_DIR}
         --compile-commands ${CMAKE_BINARY_DIR}/compile_commands.json
         --test-dir ${CMAKE_CURRENT_BINARY_DIR}/native-boundary

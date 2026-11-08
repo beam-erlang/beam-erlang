@@ -30,6 +30,8 @@ extern "C"
 {
 #include "bif.h"
 #include "beam_common.h"
+#include "erl_bif_table.h"
+#include "beam_builtin_catalog.h"
 }
 
 BeamGlobalAssembler::BeamGlobalAssembler(JitAllocator *allocator)
@@ -50,6 +52,25 @@ BeamGlobalAssembler::BeamGlobalAssembler(JitAllocator *allocator)
         /* This funky syntax calls the function pointer within this instance
          * of BeamGlobalAssembler */
         (this->*val.second)();
+    }
+
+    /* Stable native wrappers let optional exports work without ordinary
+     * facade code. Their immediate MFA addresses refer to per-VM trap metadata;
+     * dispatch has no implementation-registry lookup. */
+    std::vector<std::pair<int, Label>> native_exports;
+    for (int i = 0; i < BIF_SIZE; ++i) {
+        if (!*bif_descriptors[i].implementation)
+            continue;
+        std::string name = "native::" + std::string(bif_descriptors[i].implementation);
+        Label entry = a.new_named_label(name.c_str());
+        a.align(AlignMode::kCode, 8);
+        a.bind(entry);
+        native_exports.emplace_back(i, entry);
+        emit_enter_erlang_frame();
+        a.mov(ARG2, imm((UWord)&bif_trap_exports__[i].info.mfa));
+        a.adr(ARG3, entry);
+        a.mov(ARG4, imm((UWord)bif_table[i].f));
+        a.b(labels[call_bif_shared]);
     }
 
     {
@@ -73,7 +94,7 @@ BeamGlobalAssembler::BeamGlobalAssembler(JitAllocator *allocator)
         if (val.first + 1 < emitPtrs.size()) {
             stop = (ErtsCodePtr)getCode(labels[(GlobalLabels)(val.first + 1)]);
         } else {
-            stop = (ErtsCodePtr)((char *)getBaseAddress() + code.code_size());
+            stop = (ErtsCodePtr)getCode(native_exports.front().second);
         }
 
         ranges.push_back(AsmRange{start,
@@ -82,10 +103,23 @@ BeamGlobalAssembler::BeamGlobalAssembler(JitAllocator *allocator)
                                   {}});
     }
 
+    for (size_t i = 0; i < native_exports.size(); ++i) {
+        Label entry = native_exports[i].second;
+        ErtsCodePtr start = (ErtsCodePtr)getCode(entry);
+        ErtsCodePtr stop = i + 1 < native_exports.size()
+            ? (ErtsCodePtr)getCode(native_exports[i + 1].second)
+            : (ErtsCodePtr)((char *)getBaseAddress() + code.code_size());
+        ranges.push_back(AsmRange{start, stop, code.label_entry_of(entry).name(), {}});
+    }
+
     (void)beamasm_metadata_insert("global",
                                   (ErtsCodePtr)getBaseAddress(),
                                   code.code_size(),
                                   ranges);
+
+    for (auto entry : native_exports) {
+        beam_builtin_set_jit_export_address(entry.first, getCode(entry.second));
+    }
 
     /* `this->get_xxx` are populated last to ensure that we crash if we use
      * them instead of labels in global code. */
@@ -263,6 +297,12 @@ void BeamModuleAssembler::emit_raise_exception(Label I,
     } else {
         a.b(resolve_fragment(ga->get_raise_exception_null_exp(), disp128MB));
     }
+}
+
+void BeamModuleAssembler::emit_raise_exception_from_current(Label I) {
+    a.adr(ARG2, I);
+    a.ldr(ARG4, a64::Mem(c_p, offsetof(Process, current)));
+    a.b(resolve_fragment(ga->get_raise_exception_shared(), disp128MB));
 }
 
 void BeamGlobalAssembler::emit_process_exit() {

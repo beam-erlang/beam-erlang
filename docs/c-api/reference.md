@@ -3,8 +3,10 @@
 Candidate reference for the current experimental SDK.
 
 This reference describes the experimental Linux interface. `<beam/beam.h>`
-exposes `<beam/runtime.h>`; optional returning-boot declarations require
-`<beam/boot.h>` and linkage with `BEAM::Host`.
+exposes `<beam/runtime.h>`. Term operations require `<beam/beam_enif.h>`;
+process management additionally requires `<beam/process.h>`.
+Optional returning-boot declarations require `<beam/boot.h>` and linkage with
+`BEAM::Host`.
 The [source header](../../include/beam/beam.h) supplies VM declarations;
 [Embedding BEAM from C](guide.md) supplies a working introduction. Interpreter
 and JIT expose the same API. Use matching installed headers and libraries:
@@ -17,7 +19,9 @@ Use this reference by topic:
 - [Discovery and configuration](#discovery-and-configuration)
 - [Composition](#composition)
 - [System and VM lifecycle](#system-and-vm-lifecycle)
+- [Term environments](#term-environments)
 - [Loading, inspection and scheduler control](#loading-inspection-and-scheduler-control)
+- [Process management](#process-management)
 - [Calling and results](#calling-and-results)
 - [Host services](#host-services)
 - [Returning BEAM boot](#returning-beam-boot)
@@ -42,7 +46,7 @@ a copied handle does not retain ownership.
 | `beam_bytes { const unsigned char *data; size_t size; }` | Input/borrowed view, measured in bytes; no terminating NUL requirement. |
 | `beam_buffer { unsigned char *data; size_t size; }` | Library-allocated copied output, released through its enclosing result API. |
 | VM options, module bytes/names/origins, call inputs | Copied/consumed by the operation; caller storage may be released after return. Composition mappings are retained separately. |
-| Result buffers and module-name snapshots | Caller-owned until their release function; survive VM/system termination while the library stays loaded. |
+| Result buffers, module/process lists and module/scheduler/process snapshots | Caller-owned until their release function; survive VM/system termination while the library stays loaded. |
 | Callback context | Borrowed host state, kept valid through stop/run completion. |
 | Callback request and reply handle | Borrowed only for that invocation; copy request bytes to retain them. |
 | Diagnostic/observation records | Caller-owned values without separate release obligations. |
@@ -73,7 +77,7 @@ can still terminate the process. The API does not promise universal rollback.
 | `BEAM_UNSUPPORTED` | 10 | Unsupported operation/configuration. |
 | `BEAM_ALREADY_LOADED` | 11 | Module replacement is unavailable. |
 | `BEAM_INVALID_STATE` | 12 | Lifecycle or callback reentry disallows the operation. |
-| `BEAM_NOT_FOUND` | 13 | Module to unload has no code. |
+| `BEAM_NOT_FOUND` | 13 | Requested module/code, process or explicit group leader is absent. |
 | `BEAM_BUSY` | 14 | Code or native coordination is in use; retry after it settles. |
 
 Functions declaring an optional `beam_error *` clear that record on entry.
@@ -88,8 +92,8 @@ performs no filesystem access or VM initialization and is available before
 
 `beam_version()` returns `BEAM/Erlang <release> (erts-<version>)`.
 `beam_status_message(status)` returns a general description or `"unknown error"`.
-Neither starts a VM. `beam_core_modules(&names, &count)` borrows the immutable
-nine-module inventory for the loaded library's lifetime. The pure
+Neither starts a VM. `beam_module_core_names(&names, &count)` borrows the immutable
+six-module inventory for the loaded library's lifetime. The pure
 `beam_system_is_initialized()` query observes process admission, not a reservation.
 
 `beam_library_path(buffer, capacity, &required, &error)` reports the absolute
@@ -198,25 +202,279 @@ names, origins and native registrations. It creates no VM, maps no image and
 runs no native initializer. The output must initially be NULL and `struct_size`
 must match exactly. Failure leaves the output unchanged. Structural validation
 happens during preparation; the VM loader performs complete bytecode validation.
+Worker destinations are validated during initialization and before workers start.
+Neither preparation nor initialization runs Erlang or acquires libraries. These
+selections survive framework restart and are cleared with the VM lifetime.
 
 | Composition field | Contract |
 | --- | --- |
 | `module_count`, `modules` | Up to 4096 ordinary `beam_module_spec` inputs. |
 | `defer_modules` | Retain ordinary bytes for the host to load explicitly before use. |
 | `preload_count`, `preloads` | Up to 4096 additional preloads, staged even when ordinary modules are deferred. |
-| `builtin_nif_count`, `builtin_nifs` | Up to 1024 resident NIF registrations. Table access occurs at VM initialization; load callbacks occur at ordinary `erlang:load_nif/2`. |
+| `builtin_nif_count`, `builtin_nifs` | Up to 1024 resident NIF registrations. Table access occurs at VM initialization; load callbacks occur at the selected native `load_nif/2` binding. |
 | `builtin_driver_count`, `builtin_drivers` | Up to 1024 resident driver registrations; requires driver admission. |
 | `binding_count`, `bindings` | Up to 1024 explicit `beam_nif_binding` declarations, bound individually after start. |
 | `native_owner_count`, `native_owners` | Opaque retain/release records keeping native pointers valid through reclamation. |
 | `program_helper` | Copied absolute executable path for admitted ports/programs; preparation does not launch it. |
 | `native_admission` | Explicit NIF, driver, port, distribution or managed-port permissions. |
+| `builtin_binding_count`, `builtin_bindings` | Up to 1024 optional native implementation bindings, described below. Zero binds none, including when no composition is supplied. |
+| `default_tracer_module` | Copied UTF-8 module identity for PID/port tracer delivery. NULL selects no default backend; a name neither loads nor activates code. Explicit `{Module, State}` tracers remain independent. |
+| `system_worker_entry_count`, `system_worker_entries` | Finite immutable worker-entry table; currently only `BEAM_SYSTEM_WORKER_TRACE_CLEANER`. The default is `beam_internal:trace_cleaner_start/0`. An override must name an exported zero-argument function in a supplied preload. |
+| `core_export_count`, `core_exports` | Explicitly select declared ordinary core exports; zero selects none. Native core slots are selected through matching native bindings. |
 
 `beam_module_spec` contains `name`, complete `bytes` and optional UTF-8 `origin`.
 NULL origin becomes `memory`. Names contain at most 255 Unicode characters;
 origins are diagnostic labels, never acquisition paths. Duplicate names across
-ordinary modules and preloads, conflicts with the nine core modules, and
+ordinary modules and preloads, conflicts with the six core modules, and
 conflicting resident/explicit native registrations are rejected. Generic
 composition requires no product support modules or named facilities.
+
+### Optional native BIF bindings
+
+`BEAM_BUILTIN_BINDING_API_VERSION` is `1`. A `beam_builtin_binding` contains
+`struct_size`, `implementation`, `module`, `function` and `arity`. Implementation
+identifiers select compiled calling contracts; they expose neither internal BIF
+indices nor executable pointers. Identifiers are experimental inputs to an exact
+SDK. Each contract fixes arity, argument interpretation, BIF classification and
+scheduling/continuation behavior. All native callable contracts are selectable,
+including heavy, guard/operator, dirty and instruction-backed entries. Language
+guard eligibility is recorded separately from calling class. The
+[callable catalog](native-contracts.md) lists IDs and execution traits.
+
+Preparation copies each identifier and both public names without creating atoms.
+Module/function names must be nonempty valid UTF-8 with at most 255 Unicode
+characters. Unknown implementations, wrong arities, repeated implementations,
+duplicate destination MFAs and unauthorized core destinations are rejected with
+`BEAM_INVALID_ARGUMENT`. Core-module namespaces are reserved except for declared native slots paired
+with their exact implementation descriptor. Validation
+failure preserves the caller's output pointer.
+
+Bindings are installed after atom initialization, before preloads and ordinary
+code. They remain fixed through reload and framework restart, until VM
+termination. A later fresh VM can select different names. Every loaded module
+must export its installed bound BIFs, including on reload. Binding a name does
+not acquire module code, execute initialization or grant native permissions.
+The ordinary loader and BIF dispatch resolve the binding; calls perform no
+additional implementation-name lookup. An unbound descriptor creates no public
+export and contributes no MFA to `system_info(snifs)`.
+
+Embedded core native stub exports are optional core slots. They
+are published only when their matching implementation is bound to that canonical
+MFA. Selecting another destination leaves the canonical export absent. The
+loader filters publication, retaining the compiled bodies; live export queries
+report the selected surface. Ordinary module loading retains its existing
+requirement to declare installed bound native exports.
+
+`beam_core_export` contains `struct_size`, `module`, `function` and `arity`.
+`beam_composition_options.core_export_count/core_exports` select declared
+ordinary core exports independently of native bindings. The only current slot
+is `erlang:convert_time_unit/3`. Zero selects none. Unknown slots, duplicates,
+incorrect record sizes and malformed pointer/count pairs are rejected with
+`BEAM_INVALID_ARGUMENT`; preparation copies names without creating atoms and
+preserves caller outputs on failure. Selection remains fixed across framework
+restart and lasts until VM termination. This exact-SDK preview interface does
+not allow replacing core code or exporting arbitrary private functions.
+
+Canonical hosts select all clock/timer native descriptors at their `erlang`
+MFAs, legacy `now/0`, and the ordinary converter. Modern hosts bind the 15 modern
+operations under `beam_time` and select no canonical time exports. The VM's
+private conversion continuation remains available without any public time
+selection. No family selector or execution-time registry lookup is involved.
+
+The optional identifiers are:
+
+| Implementation identifier | Calling contract |
+| --- | --- |
+| `clock_monotonic_0` | Existing `erlang:monotonic_time/0` semantics. |
+| `clock_monotonic_1` | Existing `erlang:monotonic_time/1` semantics. |
+| `clock_system_0` | Existing `erlang:system_time/0` semantics. |
+| `clock_system_1` | Existing `erlang:system_time/1` semantics. |
+| `clock_offset_0` | Existing `erlang:time_offset/0` semantics. |
+| `clock_offset_1` | Existing `erlang:time_offset/1` semantics. |
+| `clock_timestamp_0` | Existing `erlang:timestamp/0` semantics. |
+| `timer_start_3` | Existing `erlang:start_timer/3` semantics. |
+| `timer_start_4` | Existing `erlang:start_timer/4` semantics. |
+| `timer_send_after_3` | Existing `erlang:send_after/3` semantics. |
+| `timer_send_after_4` | Existing `erlang:send_after/4` semantics. |
+| `timer_cancel_1` | Existing `erlang:cancel_timer/1` semantics. |
+| `timer_cancel_2` | Existing `erlang:cancel_timer/2` semantics. |
+| `timer_read_1` | Existing `erlang:read_timer/1` semantics. |
+| `timer_read_2` | Existing `erlang:read_timer/2` semantics. |
+| `clock_legacy_now_0` | Existing `erlang:now/0` semantics; canonical compatibility only, no modern `now/0`. |
+| `bytes_compile_pattern_1` | Existing `binary:compile_pattern/1` semantics. |
+| `bytes_match_list_2` | Existing `binary:match/2` semantics. |
+| `bytes_match_list_3` | Existing `binary:match/3` semantics. |
+| `bytes_find_all_2` | Existing `binary:matches/2` semantics. |
+| `bytes_matches_list_3` | Existing `binary:matches/3` semantics. |
+| `bytes_common_prefix_size_1` | Existing `binary:longest_common_prefix/1` semantics. |
+| `bytes_common_suffix_size_1` | Existing `binary:longest_common_suffix/1` semantics. |
+| `bytes_first_1` | Existing `binary:first/1` semantics. |
+| `bytes_last_1` | Existing `binary:last/1` semantics. |
+| `bytes_at_2` | Existing `binary:at/2` semantics. |
+| `bytes_part_2` | Existing `binary:part/2` semantics. |
+| `bytes_part_3` | Existing `binary:part/3` semantics. |
+| `bytes_from_list_1` | Existing `binary:list_to_bin/1` semantics. |
+| `bytes_copy_1` | Existing `binary:copy/1` semantics. |
+| `bytes_copy_2` | Existing `binary:copy/2` semantics. |
+| `bitstring_referenced_size_1` | Existing `binary:referenced_byte_size/1` semantics. |
+| `bytes_encode_unsigned_1` | Existing `binary:encode_unsigned/1` semantics. |
+| `bytes_encode_unsigned_2` | Existing `binary:encode_unsigned/2` semantics. |
+| `bytes_decode_unsigned_1` | Existing `binary:decode_unsigned/1` semantics. |
+| `bytes_decode_unsigned_2` | Existing `binary:decode_unsigned/2` semantics. |
+| `bytes_split_2` | Default split options. |
+| `bytes_split_list_3` | OTP list split options. |
+| `bytes_split_map_3` | Modern map split options. |
+| `bytes_repeat_modern_2` | Repeat a binary; preserve empty/zero shortcuts and `system_limit` for unrepresentable nonempty counts. |
+| `bytes_referenced_size_modern_1` | Referenced backing size, restricted to binaries. |
+| `bytes_find_modern_2` | First range as `{ok, Range}`, or `not_found`. |
+| `bytes_find_modern_3` | First range with strict map scope options. |
+| `bytes_find_all_modern_3` | Nonoverlapping range list with strict map scope options. |
+
+There are 573 implementation descriptors. Identical contracts share one identifier;
+separate distributions choose different destinations. A descriptor has one MFA per
+VM and cannot expose both facade spellings simultaneously. `bytes_split_2` is
+shared by default splitting; `bytes_find_all_2` is shared by unscoped range-list
+search. List/map options for `/3`, tagged search results, repeat and binary-only
+referenced size remain distinct contracts. Pattern representation and kernels
+are shared. The unselected experimental search variant `/3` accepts only `#{}` or exactly
+`#{scope => {Offset, Count}}` with nonnegative in-range bounds; its result policy
+survives native continuations.
+
+Modern hosts select the 51 canonical binary, list, map, record, string and
+Unicode contracts under the corresponding `beam_` module names. Canonical
+compiler and OTP hosts select their upstream names. These are separate host
+compositions, not simultaneous aliases. Ordinary algorithms require their
+explicitly supplied module bytes.
+
+The distinct experimental byte/list/map/text variant contracts remain available
+for exact-SDK consumers, but no default composition selects the superseded
+facade names. Their argument/result/error policies remain distinct from the
+canonical contracts and must not be substituted by identifier spelling.
+`list_reverse_2` retains upstream resumed-argument reporting on late errors;
+`list_reverse_modern_2` retains its original-argument policy.
+
+| Module | Native operations |
+| --- | --- |
+| `beam_binary` | `compile_pattern/1`, `match/2`, `match/3`, `matches/2`, `matches/3`, `longest_common_prefix/1`, `longest_common_suffix/1`, `first/1`, `last/1`, `at/2`, `part/2`, `part/3`, `list_to_bin/1`, `copy/1`, `copy/2`, `referenced_byte_size/1`, `encode_unsigned/1`, `encode_unsigned/2`, `decode_unsigned/1`, `decode_unsigned/2`, `split/2`, `split/3` |
+| `beam_lists` | `member/2`, `reverse/2`, `keymember/3`, `keysearch/3`, `keyfind/3` |
+| `beam_maps` | `find/2`, `get/2`, `from_list/1`, `is_key/2`, `keys/1`, `merge/2`, `put/3`, `remove/2`, `update/3`, `values/1`, `take/2`, `from_keys/2` |
+| `beam_records` | `get_module/1`, `get_name/1`, `get/2`, `get_field_names/1`, `is_exported/1`, `create/4`, `update/4`, `get_definition/2` |
+| `beam_string` | `list_to_float/1` |
+| `beam_unicode` | `characters_to_binary/2`, `characters_to_list/2`, `bin_is_7bit/1` |
+
+Array and persistent-store contracts retain the existing opaque resource
+representations and one VM-wide persistent keyspace. The following identifiers
+are independent slots; hosts may choose other module and function names.
+
+| Implementation identifier | Product host binding |
+| --- | --- |
+| `atomic_array_get_2` | `atomics:get/2` / `beam_atomics:get/2` |
+| `atomic_array_put_3` | `atomics:put/3` / `beam_atomics:put/3` |
+| `atomic_array_add_3` | `atomics:add/3` / `beam_atomics:add/3` |
+| `atomic_array_add_get_3` | `atomics:add_get/3` / `beam_atomics:add_get/3` |
+| `atomic_array_exchange_3` | `atomics:exchange/3` / `beam_atomics:exchange/3` |
+| `atomic_array_compare_exchange_4` | `atomics:compare_exchange/4` / `beam_atomics:compare_exchange/4` |
+| `atomic_array_info_1` | `atomics:info/1` / `beam_atomics:info/1` |
+| `persistent_value_put_2` | `persistent_term:put/2` / `beam_persistent_term:put/2` |
+| `persistent_value_put_new_2` | `persistent_term:put_new/2` / `beam_persistent_term:put_new/2` |
+| `persistent_value_get_0` | `persistent_term:get/0` / `beam_persistent_term:get/0` |
+| `persistent_value_get_1` | `persistent_term:get/1` / `beam_persistent_term:get/1` |
+| `persistent_value_get_2` | `persistent_term:get/2` / `beam_persistent_term:get/2` |
+| `persistent_value_erase_1` | `persistent_term:erase/1` / `beam_persistent_term:erase/1` |
+| `persistent_value_info_0` | `persistent_term:info/0` / `beam_persistent_term:info/0` |
+| `atomic_array_new_list_modern_2` | `beam_atomics:new/2` |
+| `counter_array_new_list_modern_2` | `beam_counters:new/2` |
+| `counter_array_get_modern_2` | `beam_counters:get/2` |
+| `counter_array_put_modern_3` | `beam_counters:put/3` |
+| `counter_array_add_modern_3` | `beam_counters:add/3` |
+| `counter_array_info_modern_1` | `beam_counters:info/1` |
+
+The modern library recipe selects 558 bindings; OTP and canonical compiler
+tooling select 556. Modern command profiles use that same selection, without an
+additional private support binding list. Bare hosts still choose explicit
+subsets or zero bindings. Remaining `erlang` primitives bind under `beam`.
+The [callable catalog](native-contracts.md) records implementation contracts.
+Shared descriptors have one destination each; independent modern and canonical
+profiles select their respective MFAs. OTP's `atomics:new/2`, subtraction helpers and all
+six `counters` functions remain ordinary Erlang functions. The six VM-private
+array mechanisms retain their existing contracts; their `erts_internal` callable
+exports require explicit native bindings. Modern native
+counter operations call the typed kernels directly and need no public `atomics`
+binding. Modern subtraction helpers are ordinary Erlang and require their own
+module's addition binding.
+
+ETS contributes 51 shared contracts. Each identifier is
+`term_table_<function>_<arity>`, except `new/2`, whose identifier is
+`term_table_new_list_2`. Modern recipes bind them under `beam_ets`; canonical
+hosts bind them under `ets`. Hosts may choose other module and function names.
+
+| Functions | Arities |
+| --- | --- |
+| `new` | 2 (identifier `term_table_new_list_2`) |
+| `delete`, `lookup_element`, `info`, `match`, `match_object`, `select`, `select_reverse`, `update_counter`, `update_element` | `delete/1,2`, `lookup_element/3,4`, `info/1,2`, `match/1,2,3`, `match_object/1,2,3`, `select/1,2,3`, `select_reverse/1,2,3`, `update_counter/3,4`, `update_element/3,4` |
+| `first`, `first_lookup`, `last`, `last_lookup`, `is_compiled_ms`, `match_spec_compile`, `whereis` | 1 |
+| `delete_object`, `lookup`, `member`, `next`, `next_lookup`, `prev`, `prev_lookup`, `insert`, `insert_new`, `rename`, `safe_fixtable`, `slot`, `select_count`, `select_replace`, `setopts`, `take` | 2 |
+| `give_away` | 3 |
+| `internal_request_all`, `internal_delete_all`, `internal_select_delete`, `match_spec_run_r` | 0, 2, 2, 3 respectively |
+
+The last four entries are implementation protocols, not additional public API
+promises. They retain their existing replies, arguments and ordinary-wrapper
+classification. Table IDs, compiled match programs, continuation tuples,
+`'$end_of_table'` and `'ETS-TRANSFER'` messages are unchanged. A bound `select/1`
+is the ordinary ordered-table resume target; without it, a VM-private resume
+retains the initiating binding and arguments. `info(Table,binary)` needs no
+optional `safe_fixtable/2` binding and retains diagnostic access to private tables.
+Tracing's matcher and the private ETS mechanisms execute independently of
+public exports. Callable `match_spec_test/3` and `erts_internal:ets_info_binary/1`
+exports require their explicit bindings. ETS accounting follows the native implementation and
+retains existing allocator and diagnostic category labels.
+
+Installed optional native exports are callable through compiled calls, dynamic
+calls and external funs before ordinary module code is supplied. Loading a module
+still requires all its installed optional BIFs in the export list. Native wrappers
+remain VM-owned across ordinary code unloading. Declared native provider slots
+are filtered before publication when no native binding selects them. Ordinary
+functions and retained compiled bodies keep their own loading behavior.
+
+Array constructors validate option lists before size. Atomics default to signed;
+repeated `{signed, Boolean}` options use the last value. Counters accept exactly
+`[]`, `[atomics]` or `[write_concurrency]`. Indexing is one-based and arithmetic
+wraps at 64 bits. Atomic counter `info/1` includes `min` and `max`; the striped
+backend reports `size` and `memory`. Handles interoperate across the APIs within
+one VM. Subtraction negates before reference validation, so a nonnumeric
+decrement raises `badarith` with the original public arguments.
+
+Persistent `put_new/2` succeeds for an identical existing value and raises
+`badarg` for a differing value. Contention and native continuations retain the
+bound identity, original arguments and result policy. These bindings do not add
+an execution-time registry lookup. Unknown public names retain generic extended
+cause metadata; canonical OTP names keep their established error formatter.
+
+Modern map arguments are map-first and invalid maps raise `badarg`; OTP map
+contracts retain their key-first arguments and `badmap` errors. Modern lookup
+returns `not_found` on a miss. List membership uses exact equality and stops at
+its first match; an invalid tail raises `badarg` only when reached. Reversal
+requires a proper first list and accepts an arbitrary tail term.
+
+Unicode conversion accepts `latin1`, `unicode`, `utf8`, `utf16`, `utf32`, and
+`{utf16,big|little}` / `{utf32,big|little}`. Integers in lists are codepoints.
+Conversion preserves nested error remainders and incomplete sequences without
+requiring ordinary `unicode` code. The modern UTF-8 validator accepts only byte
+binaries, returns the original binary on success, and reports invalid or
+incomplete text as `{error, #{kind => invalid_data}}`.
+
+Canonical library exports can also be selected by modern hosts for their
+ordinary support modules. They are callable exports once installed. Core map
+instructions and guards remain mandatory. Compiler rewrites of canonical map
+calls can use these core operations even when the corresponding optional export
+is absent; dynamic calls and external funs observe export selection directly.
+
+Implementation diagnostics may identify an unbound descriptor by its identifier.
+Extended microstate accounting preserves established bound-name labels where
+those labels fit an atom and are unique, and uses the implementation label
+for long or colliding custom names.
+
+### Native registrations
 
 `beam_builtin_nif` and `beam_builtin_driver` carry exact sizes, names, SDK build
 identities, typed table accessors and taint flags. Their code must remain resident
@@ -276,7 +534,7 @@ actions. Raw embedders may implement the same ordering with public VM calls.
 | `beam_vm_terminate(&vm, &halt_status)` | Stop if needed, reclaim VM resources and clear handle, permitting fresh initialization. |
 | `beam_terminate(&system)` | Release system infrastructure only after its VM handle is gone, then clear handle. |
 
-Initialization loads the [nine core modules](guide.md#choose-a-composed-lifecycle),
+Initialization loads the [six core modules](guide.md#choose-a-composed-lifecycle),
 plus explicit composition code. It acquires no boot script, application tree,
 compiler, automatic loader or I/O server. Unconfigured bare VMs reject ordinary
 NIF/driver loading, ports, distribution and direct debug output (`display`,
@@ -325,7 +583,9 @@ is retained. Termination leaves no queryable handle.
 
 | Operation | Initialized | Running | Halt requested / stopped |
 | --- | --- | --- | --- |
-| State/scheduler/report query | Observe | Observe | Observe only. |
+| State/scheduler-info/report query | Observe | Observe | Observe only. |
+| Scheduler inventory/process list/process inspection | `BEAM_INVALID_STATE` | Completed copied result | `BEAM_STOPPED`; no implicit join. |
+| Process spawn | `BEAM_INVALID_STATE` | Publish child | `BEAM_STOPPED` before publication. |
 | Module query/list/unload | Native operation | Native operation | `BEAM_STOPPED`. |
 | Load | Load | Load | `BEAM_STOPPED`; halted load completes joining. |
 | Call | `BEAM_INVALID_STATE` | Execute after readiness | `BEAM_STOPPED`; halted call completes joining. |
@@ -368,23 +628,73 @@ for synchronous faults (`SIGSEGV`, `SIGBUS`, `SIGILL`, `SIGFPE`, `SIGTRAP`,
 incompatible handlers rather than rewriting them; maintain the policy while live.
 Explicit process-owned policy is the separate route for process-wide effects.
 
+## Term environments
+
+Include `<beam/beam_enif.h>` and link `BEAM::Runtime` or `BEAM::RuntimeStatic`.
+The header declares the host subset of the [NIF API](../native-extensions/nif.md).
+Each `beam_enif_*` function has the corresponding `enif_*` operation's argument,
+return, failure, and ownership rules. `BeamEnv`, `BeamTerm`, and the other
+BEAM types in this header are aliases of the native types and use the existing
+NIF flags and enum values.
+
+`beam_enif_alloc_env()` creates a caller-owned, process-independent `BeamEnv`.
+Call these functions on the VM owner thread outside VM callbacks after
+successful `beam_vm_init()`. An unstarted VM supports ordinary term operations.
+Use terms and identities from the current VM and follow the input requirements
+of each operation, including finite doubles and valid text for constructors.
+
+`beam_enif_clear_env(env)` releases the terms and retains the environment for
+reuse.
+`beam_enif_free_env(env)` releases the terms and the environment. Both require a
+valid, non-NULL, owned environment. Terms become invalid when the environment
+is cleared or freed. Free all host-owned environments before
+`beam_vm_terminate()`. An empty environment or one holding ordinary terms can
+be cleared or freed after `beam_vm_stop()` or a call that reports `BEAM_HALT`.
+
+Host-owned environments may hold ordinary terms. Releasing NIF resource
+references can require scheduler work, so those references are outside the
+host environment contract. Destroy map iterators before clearing their source
+environment. Release owned buffers and binaries before VM termination. Treat
+borrowed views as valid only for their source lifetime.
+
+`beam_enif_binary_to_term()` accepts caller-trusted ordinary ETF under the
+native decoder's input contract. Exclude VM-local encodings from its input.
+`ERL_NIF_BIN2TERM_SAFE` restricts native decoding but still permits VM-local
+encodings. `beam_vm_call()` independently rejects those encodings at its
+public call boundary.
+
+Registered-name lookup, liveness queries, and sending require a started VM.
+Pass `NULL` for the caller environment in `beam_enif_whereis_pid()`,
+`beam_enif_whereis_port()`, and `beam_enif_send()` from the host thread.
+Send to a live local PID. A successful send with a supplied message environment
+invalidates its terms. Clear the environment for reuse or free it. A failed
+send leaves the message and its environment valid.
+
+`beam_enif_make_pid(env, &pid)` constructs the native PID term in `env`.
+`beam_enif_compare_pids(&left, &right)` returns a negative value, zero or a
+positive value according to native PID ordering. These helpers preserve the
+corresponding NIF semantics. Use valid identities from the current VM; neither
+construction nor comparison keeps a process alive. Use the undefined-PID helpers
+for absence rather than inspecting native representation or structure padding.
+
 ## Loading, inspection and scheduler control
 
-`beam_vm_load(vm, module)` accepts the complete unpacked BEAM container from
+`beam_module_load(vm, module)` accepts the complete unpacked BEAM container from
 copied memory. Data must be non-NULL, nonempty and representable by the native
 byte-count type. Loading before or after start executes no Erlang and acquires
 no dependencies; existing background execution can continue independently.
 Malformed/incompatible code returns `BEAM_INVALID_BEAM`, `on_load` returns
 `BEAM_UNSUPPORTED`, and existing code returns `BEAM_ALREADY_LOADED`. Rejection
-leaves existing code callable. Unload successfully before loading a replacement.
+leaves existing code callable. Use `beam_module_replace` for explicit hot code
+publication; `beam_module_load` retains its first-load-only policy.
 
-`beam_vm_get_module(vm, name, &info)` fills exact-size `beam_module_info.flags`.
+`beam_module_get_info(vm, name, &info)` fills exact-size `beam_module_info.flags`.
 CURRENT, OLD, ON_LOAD and PROTECTED flags, prefixed `BEAM_MODULE_`, can combine.
 An unknown valid name succeeds with zero flags and creates no atom. Names are
 nonempty NUL-terminated UTF-8 of at most 255 Unicode characters. Output is
 unchanged on errors; flags are observations, not code-retaining references.
 
-`beam_vm_list_modules(vm, &list)` copies unique names having current, old or
+`beam_module_list_names(vm, &list)` copies unique names having current, old or
 pending code, sorted by UTF-8 byte order. Atoms without code are not listed.
 Native module names that are empty or contain embedded NUL return
 `BEAM_UNSUPPORTED` rather than being truncated. Initialize the list to `{0}`
@@ -394,7 +704,138 @@ accepts NULL/empty values, frees the snapshot and clears it. Do not free or
 modify individual names. The snapshot survives code changes and VM/system
 termination while the library remains loaded.
 
-`beam_vm_unload(vm, name, &error)` removes all current/old code only when safe
+Get-info and name-list observation remain available while an asynchronous entry
+occupies its separate application slot. They share inspection's nonwaiting
+code-permission policy and do not pump callbacks or join workers.
+
+### Detailed module snapshots
+
+`beam_module_inspect(vm, name, &query, &snapshot)` captures one module namespace;
+`beam_module_inspect_all(vm, &query, &snapshot)` captures the selected inventory.
+Both return a completed, independently owned `beam_module_snapshot`. A targeted
+query returns `BEAM_NOT_FOUND` when its name is outside the selected scopes;
+an empty inventory succeeds. These functions require no Host archive, ordinary
+library inventory, code server or application helper.
+Detailed inspection supports host-controlled VMs; process-owned execution
+returns `BEAM_UNSUPPORTED`.
+
+Initialize `beam_module_query` with `beam_module_query_init`. Set `struct_size`
+exactly. Its default is `BEAM_MODULE_SCOPE_LOADED` with zero detail fields.
+`scopes` selects a nonempty union of these memberships, without duplicate names:
+
+| Scope | Membership |
+| --- | --- |
+| `BEAM_MODULE_SCOPE_LOADED` | Current, old or pending BEAM code. |
+| `BEAM_MODULE_SCOPE_CALLABLE` | At least one effective externally callable MFA, including native-only destinations. |
+
+Unknown scope/field bits or an empty scope selection return
+`BEAM_INVALID_ARGUMENT`. Names in the new inspection, delete and soft-purge
+functions use `beam_module_name`: UTF-8 bytes with authoritative byte length,
+including empty and embedded-NUL atom identities. Lookup never creates an atom.
+The data pointer must be non-NULL even for an empty name, and names retain the
+255-Unicode-character atom limit.
+The older get-info, names and unload interfaces retain their C-string rules.
+Inputs remain valid until return and are not retained afterward.
+
+A snapshot contains `count` read-only `beam_module_record` values in `items`,
+sorted by name bytes and then length. Each record contains its copied name,
+presence/protection flags and a summary for each present `current`, `old` and
+`pending` code slot. Check `BEAM_MODULE_CURRENT`, `BEAM_MODULE_OLD` and
+`BEAM_MODULE_ON_LOAD` before reading those slots; absent slots are zeroed.
+Pending describes retained provisional `on_load` code, not a historical property
+of successfully published code. Protection follows the six runtime core modules.
+
+Each present `beam_module_code_info` contains these actual runtime observations:
+
+| Member | Meaning |
+| --- | --- |
+| `loaded_code_bytes` | The instance's loaded-code accounting value; interpreter/JIT representations differ, and literals are separate. |
+| `function_table_count` | Internal function-table entries, including unnamed stubs omitted from named functions. |
+| `has_nif`, `has_line_table` | Actual attached NIF and retained line-table presence. |
+| `md5[16]` | Existing module checksum over selected BEAM chunks; excludes attributes/compile information and is neither provenance nor a unique load identity. |
+
+`query.fields` selects optional copied details. On success each record's
+`fields` equals the requested mask, including when a requested group is empty:
+
+| Field | Result |
+| --- | --- |
+| `BEAM_MODULE_FIELD_EXPORTS` | Parent record's effective namespace `exports`, each a function name and arity. |
+| `BEAM_MODULE_FIELD_FUNCTIONS` | Each present slot's named `functions`, including locals and excluding NIL-name stubs. |
+| `BEAM_MODULE_FIELD_NIFS` | Each present slot's attached NIF registrations in `nifs`, including unexported registrations; names are copied as UTF-8. |
+| `BEAM_MODULE_FIELD_ATTRIBUTES` | Retained attributes ETF in each present slot's `attributes_etf`. |
+| `BEAM_MODULE_FIELD_COMPILE` | Retained compilation-information ETF in each present slot's `compile_info_etf`. |
+
+Exports represent active external dispatch, including tracing, and exclude
+error-handler placeholders. They are not historical exports of old/pending
+code. Native-only records can have exports with no code-presence flags. An
+old-only record can have code with no effective exports. Neither inventory
+guarantees later resolution, application readiness or successful execution.
+
+Metadata bytes include their ETF version byte. A requested NULL pointer with
+zero size means no retained chunk; encoded `[]` is present data. Unrequested
+details are zeroed. Decoding uses `beam_enif` under its existing trusted-input
+contract: copied bytes may outlive the VM, while a host `BeamEnv` must be freed
+before VM termination. Inspection adds no decoder-safety guarantee.
+
+Initialize snapshots to `{0}` and release an earlier result before reusing its
+destination. Errors leave the output unchanged; allocation failure fails the
+whole capture rather than returning a truncated inventory. Every nested pointer
+belongs to copied snapshot storage. `beam_module_snapshot_release` frees all
+of it and clears the snapshot; NULL/empty values are harmless. Release needs no
+live VM. Keeping a snapshot does not pin executable code or native objects.
+
+Inspection captures membership and selected code/export facts in one protected
+observation. It can run before start without workers and while background
+Erlang or an asynchronous application entry runs. It remains an owner-thread
+operation outside callbacks. Conflicting code-management permission returns
+`BEAM_BUSY`; inspection does not wait behind permission held by work that may
+need a later host action. Scheduled work and copying can still take unbounded
+time. Queries neither pump host callbacks nor join workers. Separate queries
+can observe different code states. Fresh work is rejected after terminal
+admission closes; a racing capture returns its completed result if completion
+wins, otherwise `BEAM_STOPPED`, after its internal work retires.
+
+### Publication, deletion and reclamation
+
+`beam_module_replace(vm, module, &error)` publishes complete supplied BEAM bytes
+using the runtime's current/old slot rules. With current code and no old code,
+publication moves current to old and installs the supplied current code. An
+empty or old-only namespace can also receive current code. Current plus old
+returns `BEAM_BUSY`; no implicit purge occurs. Publication changes external MFA
+dispatch. Existing processes can remain in old local code until the application
+coordinates an external tail call. C does not migrate their state.
+
+`beam_module_delete(vm, name, &error)` withdraws ordinary current external
+dispatch and moves current code to old. An occupied old slot returns
+`BEAM_BUSY`; no current code returns `BEAM_NOT_FOUND`. Deletion does not kill
+processes or reclaim old code. Selected native exports can remain callable.
+
+`beam_module_soft_purge(vm, name, &error)` asks the actual core purger to check
+and reclaim old code without killing processes. No old code is a successful
+no-op. A process still using old code returns `BEAM_BUSY`, preserving current
+and old code. A successful purge leaves current code intact. Process-code
+checks, native execution and runtime barriers can delay completion; there is no
+timeout or promise of bounded latency. The call pumps no host callbacks.
+Detected old-code execution returns `BEAM_BUSY` rather than waiting for processes
+to switch versions.
+If halt wins while a purge is accepted, the call drains and joins terminal VM
+work before returning `BEAM_STOPPED`, keeping its requester storage alive until
+that work retires. This execution-bearing cleanup differs from pure inspection,
+which never joins workers.
+
+These three operations require a running host-controlled VM, owner-thread use
+outside callbacks, and no outstanding asynchronous application entry. Active
+code management returns `BEAM_BUSY` without queueing behind it. Core code,
+pending/incoming `on_load` and attached NIF instances remain unsupported;
+explicitly selected NIF targets remain busy. Native replacement, hard purge,
+prepared batches and `on_load` execution are not exposed by these functions.
+Admission rejection and `BEAM_BUSY` leave published code and processes unchanged.
+If an accepted purge loses its internal requester, it returns `BEAM_SYSTEM_ERROR`
+only after the purger protocol retires; reclamation may already have completed.
+Inspect the remaining code state before deciding whether to retry. Terminal
+outcomes retain the VM's normal shutdown and cleanup semantics.
+
+`beam_module_unload(vm, name, &error)` removes all current/old code only when safe
 without terminating processes. It starts no workers before start, dispatches no
 callbacks and does not freeze registration. Missing code returns NOT_FOUND;
 core/protected, pending `on_load` and bound native code are unsupported. Active
@@ -404,7 +845,9 @@ Unloading does not unregister processes, erase atoms/tables or reset application
 state. Retained literal values survive while storage reclamation may be deferred.
 A fun alone does not pin code and may become uncallable after removal.
 
-`beam_vm_get_schedulers(vm, &info)` fills exact-size `beam_scheduler_info` with
+### Scheduler control
+
+`beam_scheduler_get_info(vm, &info)` fills exact-size `beam_scheduler_info` with
 normal/dirty CPU totals and online counts plus the dirty-I/O total. No Erlang,
 callbacks, joining or handler-registration freeze occurs. Output is unchanged
 on errors. Counts describe selected policy, not utilization or live threads;
@@ -412,7 +855,7 @@ before start/after stop they remain meaningful configuration. A transition can
 precede worker acknowledgment; Erlang may subsequently change online counts.
 Async/polling workers are not included as schedulers.
 
-`beam_vm_set_schedulers_online(vm, normal, dirty_cpu, &error)` changes both
+`beam_scheduler_set_online(vm, normal, dirty_cpu, &error)` changes both
 online counts together in a running VM. Positive counts must fit initialized
 capacity and dirty CPU online must not exceed normal online. There is no scaling
 or clamping; invalid input changes neither count. BEAM_OK waits for both groups
@@ -420,6 +863,168 @@ to acknowledge; an existing transition returns BEAM_BUSY. Halt retires pending
 native work and returns BEAM_STOPPED. The operation pumps no callbacks and has
 no timeout. Offline workers retain threads/resources; this does not resize
 capacity, change dirty-I/O workers or pause the VM.
+
+`beam_scheduler_inspect_all(vm, &snapshot)` returns a complete copied
+`beam_scheduler_snapshot` with aggregate `info`, `count` scheduler records in
+`items`, and `queue_count` distinct run-queue records in `queues`.
+Initialize the destination to `{0}` and release an earlier result before reuse.
+Failure leaves it unchanged. Allocation failure returns `BEAM_OUT_OF_MEMORY`
+after freeing partial copies. The library fills `info.struct_size` on success.
+
+Scheduler identities and queue identities each contain a `kind` and a one-based
+class-local `index`. The arrays are sorted by kind, then index:
+
+| Kind | Scheduler membership | Queue association |
+| --- | --- | --- |
+| `BEAM_SCHEDULER_NORMAL` | Initialized normal capacity, including offline selections | Scheduler index N references normal queue N. |
+| `BEAM_SCHEDULER_DIRTY_CPU` | Initialized dirty CPU capacity, including offline selections | All reference dirty CPU queue 1. |
+| `BEAM_SCHEDULER_DIRTY_IO` | Initialized dirty I/O capacity | All reference dirty I/O queue 1. |
+
+Each `beam_scheduler_record` contains its `id`, boolean `selected_online`, and
+`queue` identity. Normal and dirty CPU selection follows the captured online
+prefix; dirty I/O is selected because it has no independent offline control.
+Selection is policy, not worker acknowledgement, activity or CPU consumption.
+Identities belong to this VM lifetime and are neither OS thread IDs nor CPU
+numbers. Normal work can move between queues.
+
+Each `beam_scheduler_queue_record` contains its `id` and actual `queued_tasks`
+observation, counting queued process/port work and excluding executing work.
+Each shared dirty queue appears once. Counts do not represent mailbox length,
+total processes, utilization or a permanent assignment of processes to schedulers.
+A zero queue length does not establish that a scheduler or VM is idle.
+
+The aggregate policy and derived selection bits are consistent within the
+snapshot. Queue lengths are individually synchronized observations taken while
+execution continues; they are not a simultaneous global measurement and need
+not sum to a separately captured statistic. Capacity and membership stay fixed
+when online participation changes.
+
+Inventory inspection requires a running host-controlled VM, the owner thread
+outside callbacks, and management admission independent of the asynchronous
+application-entry slot. Process-owned execution returns `BEAM_UNSUPPORTED`.
+Queries invoke no callbacks, start no workers and do not join them. Stop races
+return a completed copy if completion wins, otherwise `BEAM_STOPPED` after
+native request references retire. Synchronous completion has no latency bound.
+`beam_scheduler_snapshot_release` frees both copied arrays and clears the record;
+NULL/empty values are harmless, no live VM is required, and the snapshot remains
+readable through VM/system termination while the library stays loaded.
+
+Scheduler wall-time measurement, CPU binding and pause/resume are not exposed
+by this interface.
+
+## Process management
+
+Include `<beam/process.h>` and link the selected `BEAM::Runtime` or
+`BEAM::RuntimeStatic`. Process management uses existing `BeamPid`, `BeamEnv` and
+`BeamTerm` values; sending, registered lookup and liveness retain their
+`beam_enif` interfaces. A copied PID identifies a process in its originating VM
+lifetime and does not retain that process. After termination it is historical
+data, unsuitable for fresh PID operations.
+
+These functions require a running host-controlled VM on its owner thread,
+outside callbacks. Process-owned execution returns `BEAM_UNSUPPORTED`, pre-start
+calls return `BEAM_INVALID_STATE`, and fresh work after terminal admission closes
+returns `BEAM_STOPPED`. Wrong-thread and callback calls retain
+`BEAM_WRONG_THREAD` and `BEAM_INVALID_STATE`, respectively.
+Read-only requests use management admission independently of an outstanding
+asynchronous application entry; a conflicting management operation can return
+`BEAM_BUSY`. Queries neither service callbacks nor join workers. An admitted
+query racing stop returns its completed safe copy if completion wins, otherwise
+`BEAM_STOPPED`, after all native request references retire. Target cooperation
+and native/dirty execution can delay inspection; there is no timeout or promise
+of bounded latency.
+
+### PID membership
+
+`beam_process_list_pids(vm, &list)` returns `beam_process_list { count, pids }`.
+The read-only copied array contains local PIDs at one observation point during
+the call, including runtime processes, without duplicates and in unspecified
+order. It is a membership snapshot; it does not capture all process states,
+heaps or mailboxes together. A listed process can disappear before inspection.
+An empty membership is a successful observation, whereas a stopped VM returns
+`BEAM_STOPPED`.
+
+Zero-initialize the destination, release an earlier list before reuse, and leave
+individual array elements owned by the list. Errors leave the destination
+unchanged; allocation failure returns `BEAM_OUT_OF_MEMORY` rather than a partial
+list. `beam_process_list_release` frees its storage and clears it, accepts
+NULL/empty values, and requires no environment or live VM.
+
+### Targeted process snapshots
+
+Initialize `beam_process_query` with `beam_process_query_init`. It sets exact
+`struct_size` and `fields = 0`, requesting PID and `is_system_process` only.
+`beam_process_inspect(vm, &pid, &query, &snapshot)` returns a completed copied
+`beam_process_snapshot`. Unknown field bits or an incorrect structure size
+return `BEAM_INVALID_ARGUMENT`. An absent target, including one that disappeared
+after enumeration, returns `BEAM_NOT_FOUND` without a fabricated terminal state.
+
+Every successful snapshot contains its `pid`, actual runtime system-process
+flag, and requested `fields` mask. Unrequested groups are zeroed. Inspect the
+mask before using optional fields:
+
+| Field bit | Snapshot members and meaning |
+| --- | --- |
+| `BEAM_PROCESS_FIELD_STATE` | `state`: observable process-info status, using `BEAM_PROCESS_RUNNABLE`, `RUNNING`, `WAITING`, `GARBAGE_COLLECTING`, `SUSPENDED` or `EXITING` with the same prefix. Inspection's temporary system work does not establish application activity. |
+| `BEAM_PROCESS_FIELD_REDUCTIONS` | `reductions`: existing scheduling-work accounting in a `uint64_t` container, not elapsed time or a new nonwrapping counter. |
+| `BEAM_PROCESS_FIELD_MEMORY` | `memory_bytes`: process-memory accounting in bytes, not host RSS or all storage retained by referenced binaries. |
+| `BEAM_PROCESS_FIELD_MESSAGE_QUEUE` | `message_queue_len`: message count under process-info signal/mailbox semantics, not every pending signal. |
+| `BEAM_PROCESS_FIELD_INITIAL_CALL` | `initial_call`: stored module/function atom names and unsigned arity in `beam_process_mfa`, not a current stack trace or inferred application entry. |
+| `BEAM_PROCESS_FIELD_REGISTERED_NAME` | `has_registered_name` and `registered_name`: observed registration, with an explicit presence bit distinguishing no name from registration under an empty atom. |
+
+`beam_process_atom_name` contains copied UTF-8 `data` and authoritative byte
+`size`, preserving empty atoms and embedded NUL bytes. Names are not retained
+registrations. Different inspections can observe different states, and a
+snapshot keeps neither the target nor its code alive. Collection uses existing
+process-info locking, signal preparation and accounting; ordinary processes
+waiting for a host-request reply remain inspectable through system signals.
+No helper process, implicit library module or host callback is required.
+
+Zero-initialize snapshots and release an earlier result before reuse. Errors
+leave output unchanged, including after partial-copy allocation failure; the
+whole requested result succeeds or fails. `beam_process_snapshot_release` frees
+nested copied names and clears the record, accepts NULL/empty values and needs
+no live VM. Both process lists and detailed snapshots survive VM/system
+termination while the library stays loaded. VM-bound terms and environments
+retain their separate lifetime rules.
+
+### Spawn and publication
+
+`beam_process_spawn_options_init(&options)` sets exact `struct_size` and an
+undefined `group_leader` PID. The initial options contain no other tuning.
+
+```c
+beam_status beam_process_spawn(beam_vm *vm,
+    const char *module, const char *function,
+    BeamEnv *arguments_env, BeamTerm arguments,
+    const beam_process_spawn_options *options, BeamPid *out, beam_error *error);
+```
+
+Names use the existing entry-call nonempty UTF-8 C-string restrictions.
+Arguments are a proper list in a valid host environment, within the runtime
+arity limit. Spawn copies inputs and preserves the environment on both success
+and failure; after return the host can clear or free it. This differs from the
+consuming message-environment form of `beam_enif_send`.
+
+`BEAM_OK` means the ordinary child was published and `out` contains its PID,
+even if it exits immediately or stop races publication. Failure before
+publication creates no child and leaves the PID output unchanged. The call
+does not wait for readiness or the MFA's outcome. A missing export follows
+ordinary child `undef` behavior; normal return ends the child and discards its
+result. Use application acknowledgements or `beam_vm_call` when a result matters.
+
+An undefined group leader selects the existing VM-root default. An explicit
+leader must be a live local process at admission; absence returns
+`BEAM_NOT_FOUND`. It is not kept alive. Root parent bookkeeping remains the
+runtime's own; C does not acquire an Erlang sender identity or parent mailbox.
+No code, I/O server, library inventory or native capability is acquired by spawn.
+An occupied asynchronous application-entry slot returns `BEAM_BUSY` before
+creation; background children from completed calls can continue independently.
+
+Application stop messages and ordinary Erlang monitors can coordinate shutdown,
+but sending success alone establishes enqueueing. Native host monitors/waits,
+atomic monitored spawn, kill/general exit, links, suspended creation, scheduling
+tuning and remote spawning remain outside this initial interface.
 
 ## Calling and results
 
@@ -444,7 +1049,8 @@ after BEAM_OK, which accompanies all four result kinds:
 | `BEAM_HALT` | Empty buffer. | First accepted Erlang halt status. |
 | `BEAM_COMPLETE` | Copied opaque ETF terminal host value. | Selected completion status. |
 
-Ordinary integer `erlang:halt` returns to the host-controlled caller; its stored
+Ordinary integer halt (`beam:halt` in modern hosts, `erlang:halt` in OTP hosts)
+returns to the host-controlled caller; its stored
 status is masked with `INT_MAX`. A halt during an admitted call completes
 shutdown and returns BEAM_HALT. A background halt before admission makes a
 later call return BEAM_STOPPED; observe status or stop to complete cleanup.
@@ -597,7 +1203,7 @@ Acceptance also observes actual OS resources; counters alone do not prove cleanu
 [SDK deployment](deployment.md) documents CMake targets, verified
 artifacts, native headers and relative bundles. Deployment does not activate
 services or infer code inventories from entry names. OTP owns its acquisition,
-thirteen external preloads, commands and application policy through the generic
+seventeen external preloads, commands and application policy through the generic
 process-owned API; the SDK supplies no OTP boot adapter or catalog.
 
 Output callbacks cannot report partial counts: a failed callback has zero
@@ -623,11 +1229,15 @@ An owner may stop with an outstanding call; result retrieval remains available
 after workers join. Destroying a VM releases an unconsumed slot. Existing copied
 results remain host-owned.
 
+Module get-info, copied name lists and detailed inspection can coexist with the
+occupied entry slot. They do not pump callbacks or consume its result. Module
+mutation and scheduler changes remain busy until the entry slot is consumed.
+
 ## Supplemental embedded dependencies
 
 `beam_composition_options.embedded_dependency_count` and
 `embedded_dependencies` supply immutable product-declared build facts for
-`erlang:system_info(embedded_3pps)`. Each `beam_embedded_dependency` has an exact
+`beam:system_info(embedded_3pps)`. Each `beam_embedded_dependency` has an exact
 `struct_size`, a nonempty UTF-8 `name` of at most 255 Unicode characters and a
 `state`: `BEAM_EMBEDDED_INCLUDED` or `BEAM_EMBEDDED_EXCLUDED`. At most 1024 entries
 are accepted. Names are case-sensitive, unique across states and cannot collide

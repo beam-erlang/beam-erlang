@@ -52,7 +52,7 @@ try
     First = zlib:deflate(Z, <<"hello, ">>),
     Last = zlib:deflate(Z, <<"BEAM/Erlang">>, finish),
     ok = zlib:deflateEnd(Z),
-    erlang:iolist_to_binary([First, Last])
+    beam:iolist_to_binary([First, Last])
 after
     zlib:close(Z)
 end.

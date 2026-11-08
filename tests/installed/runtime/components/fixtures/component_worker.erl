@@ -1,13 +1,13 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(component_worker).
 -export([start/3, arm/0, count/0, fail_file/0, fail_socket/0,
-         compress/0, passive/0, on_load/0, activated/0, support_ready/0]).
+         tracing/0, compress/0, passive/0, on_load/0, activated/0, support_ready/0]).
 
 start(File, Network, Path) ->
     undefined = whereis(component_worker),
-    undefined = persistent_term:get(component_resource, undefined),
+    undefined = beam_persistent_term:get(component_resource, undefined),
     Parent = self(),
-    {Pid, Ref} = spawn_monitor(fun() -> init(Parent, File, Network, Path) end),
+    {Pid, Ref} = erlang:spawn_monitor(fun() -> init(Parent, File, Network, Path) end),
     receive
         {Pid, ready, Port} -> demonitor(Ref, [flush]), Port;
         {'DOWN', Ref, process, Pid, Reason} -> error(Reason)
@@ -27,7 +27,7 @@ init(Parent, File, Network, Path) ->
             {L, P};
         0 -> {undefined, 0}
     end,
-    persistent_term:put(component_resource, {Fd, Listener}),
+    beam_persistent_term:put(component_resource, {Fd, Listener}),
     Parent ! {self(), ready, Port},
     loop(Fd, Listener, 0).
 
@@ -76,22 +76,22 @@ read_exact(Socket, Remaining, Deadline, Acc) ->
 
 passive() ->
     false = is_pid(whereis(beam_output_server)),
-    false = persistent_term:get(beam_code_enabled, false),
+    false = beam_persistent_term:get(beam_code_enabled, false),
     undefined = whereis(beam_output_server),
     undefined = whereis(beam_file_owner),
     undefined = whereis(socket_registry),
-    undefined = persistent_term:get(beam_boot_origins, undefined),
-    false = erlang:module_loaded(beam_boot),
-    false = erlang:module_loaded(beam_file),
-    false = erlang:module_loaded(beam_socket),
-    false = erlang:module_loaded(zlib),
-    9 = length(erlang:pre_loaded()),
+    undefined = beam_persistent_term:get(beam_boot_origins, undefined),
+    false = beam:module_loaded(beam_boot),
+    false = beam:module_loaded(beam_file),
+    false = beam:module_loaded(beam_socket),
+    false = beam:module_loaded(zlib),
+    5 = length(beam:pre_loaded()),
     {error, #{kind := unavailable, service := output}} = beam_output:write(standard_output, <<"unused">>, infinity),
     {error, #{kind := unavailable, service := code}} = beam_code:fetch(<<"unused">>, ?MODULE, infinity),
     42.
 
-on_load() -> persistent_term:put(activation_probe, true), ok.
-activated() -> true = persistent_term:get(activation_probe), 42.
+on_load() -> beam_persistent_term:put(activation_probe, true), ok.
+activated() -> true = beam_persistent_term:get(activation_probe), 42.
 support_ready() -> true = is_pid(whereis(beam_output_server)), 42.
 
 compress() ->
@@ -99,5 +99,10 @@ compress() ->
     Bytes = zlib:gunzip(zlib:gzip(Bytes)),
     Stream = zlib:open(),
     ok = zlib:deflateInit(Stream),
-    persistent_term:put(combined_stream, Stream),
+    beam_persistent_term:put(combined_stream, Stream),
+    42.
+
+tracing() ->
+    S = beam_trace:session_create(component, self(), []),
+    true = beam_trace:session_destroy(S),
     42.

@@ -21,9 +21,18 @@ Do not reference temporary development records from product documentation.
   OTP's [compatibility contract](../erlang-otp/docs/compatibility.md) for its
   objective, gates and stop rules. Ownership separation does not establish full
   OTP compatibility.
-- Shared/static SDK forms embed exactly nine core modules. Seven base modules,
-  boot and service-support inventories remain ordinary, explicitly supplied code.
-  OTP supplies thirteen additional preloads and its own linked native selections.
+- Shared/static SDK forms embed exactly six core modules. Ordinary modern base
+  modules, boot and service-support inventories remain explicitly supplied code.
+  The VM exposes nameless optional native contracts; hosts supply public MFAs.
+  The catalog contains 573 selectable descriptors. Modern library recipes select 558
+  bindings; OTP/compiler hosts select 556 canonical bindings. Identical contracts
+  use one identifier with one destination per VM. Preserve distinct reversal
+  contracts and late-error arguments. Modern execution supplies the upstream-based `beam_` library modules and
+  explicit private support. Full CLI selects the same 558 bindings. Empty
+  composition publishes no native callable exports; component hosts select
+  their required native subsets explicitly. Compiler seeds and canonical support stay unchanged by
+  runtime projection under `src/beam/runtime_support`.
+  OTP supplies seventeen additional preloads and its own linked native selections.
   Supplying support enables no capabilities; generic composition does not require
   modern base or boot. Preserve single-runtime linkage and native rejection.
 - `beam` is modern-only. Do not restore runtime-family flags/APIs/locking,
@@ -112,14 +121,14 @@ and placement assertions. They do not waive shell, source execution, embedding,
 native lifetime, relocation or OTP compatibility requirements. Establish
 equivalent installed product coverage before retiring each old test path.
 
-- After installation, `beam run hello_world.erl` must compile and execute the source in `tests/fixtures/hello_world.erl`, write exactly `Hello, World!` followed by a newline to stdout, leave stderr empty, and exit 0. It must not write a compiled `.beam` file. The fixture uses the normal `io:format/2` and `erlang:halt/1` path; do not alter it to weaken the requirement.
-- Installed `beam shell` and bare `beam` must open the same native Erlang shell. Preserve the prompt, expression evaluation, bindings between expressions, terminal editing, and recovery after evaluation errors. `q().` must shut down and exit 0; piped expressions must be evaluated and EOF must exit 0. `erlang:halt(Status).` must preserve the requested status. Unknown shell arguments must be rejected. Banner wording is not fixed.
+- After installation, `beam run hello_world.erl` must compile and execute the source in `tests/fixtures/hello_world.erl`, write exactly `Hello, World!` followed by a newline to stdout, leave stderr empty, and exit 0. It must not write a compiled `.beam` file. The fixture uses the normal `io:format/2` and `beam:halt/1` path; do not alter it to weaken the requirement.
+- Installed `beam shell` and bare `beam` must open the same native Erlang shell. Preserve the prompt, expression evaluation, bindings between expressions, terminal editing, and recovery after evaluation errors. `q().` must shut down and exit 0; piped expressions must be evaluated and EOF must exit 0. `beam:halt(Status).` must preserve the requested status. Unknown shell arguments must be rejected. Banner wording is not fixed.
 - BEAM acceptance must use the installed native `beam`, linked to the installed `libbeam.so`, and the distribution's own runtime files. OTP acceptance uses its own installed commands and host linked to that sole VM implementation. Both products must work from an unrelated working directory and after relocating the complete prefix, without runtime or loader overrides.
 - Never satisfy a requirement by substituting system Erlang, loading runtime files from reference/source/build trees, special-casing the example, fabricating output, or weakening tests. Supported boot stages, explicit dependencies, and architectural changes are legitimate implementations; an alternate path that only makes a check pass is not.
 - If the intended implementation cannot satisfy these constraints through the supported project architecture, stop that implementation path and report the concrete blocker and architectural change needed. Do not hide the blocker behind an undocumented bypass.
 - Use focused checks while developing and for test-only refactors. At integration gates for build, installation, runtime, CLI or embedding changes, run the complete CTest suite on `linux-emu` and `linux-jit`, plus affected package and OTP acceptance. Full cross-product matrices belong to those gates, not every local edit. Report untested coverage explicitly; focused checks do not establish a completed distribution milestone.
 - Bare embedding must load complete module bytes from host memory, return copied results or exceptions to C, and stop all VM-owned threads and OS activity while C continues. It must work without external runtime files or native child helpers. Initialization and pre-start loading create no workers and execute no Erlang. Termination reclaims VM resources and permits a fresh VM under the same system; retaining runtime state, using child processes, or reloading the library cannot substitute for teardown. Copied results survive subsequent VM lifetimes and system termination while the library remains loaded. Preserve host signals, standard descriptors, terminal state, environment, and floating-point state. The distribution-owned `installed-bare-beam` test exercises this contract independently of development consumers.
-- Bare host-service callbacks run serially on the owner thread during `beam_vm_call`, with copied request/reply bytes and without VM locks held. They must not reenter the VM. Pending background requests wait for a subsequent call; stop cancels them. Optional host support and I/O modules are loaded explicitly, preserving the nine-module bare composition. Lifecycle queries observe state without running Erlang or implicitly joining workers. Preserve these contracts in independent installed acceptance.
+- Bare host-service callbacks run serially on the owner thread during `beam_vm_call`, with copied request/reply bytes and without VM locks held. They must not reenter the VM. Pending background requests wait for a subsequent call; stop cancels them. Optional host support and I/O modules are loaded explicitly, preserving the six-module bare composition. Lifecycle queries observe state without running Erlang or implicitly joining workers. Preserve these contracts in independent installed acceptance.
 
 `installed-deployment` builds public-SDK clients for bare and returning
 boot/file/network/zlib/program compositions. Preserve exact project-owned asset

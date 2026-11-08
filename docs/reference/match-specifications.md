@@ -34,6 +34,8 @@ The VM mechanism is distinct from the Erlang APIs that expose it. The modern
 [public module catalog](../stdlib/README.md) does not currently supply the OTP
 `ets`, `trace`, `seq_trace` or `erl_tracer` modules as public modern interfaces.
 Compiler-private copies and runtime support do not establish that availability.
+Modern consumers use ordinary `beam_ets` and the separately selected
+[`beam_trace`](../components/tracing/README.md) library.
 References below to APIs such as `ets:select/2` and `trace:function/4` explain the
 inherited consumers and semantics; they are not instructions to call absent
 modules in a default modern composition.

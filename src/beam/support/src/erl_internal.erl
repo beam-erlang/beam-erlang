@@ -101,7 +101,8 @@ guard_bif(size, 1) -> true;
 guard_bif(tl, 1) -> true;
 guard_bif(trunc, 1) -> true;
 guard_bif(tuple_size, 1) -> true;
-guard_bif(Name, A) -> new_type_test(Name, A).
+guard_bif(Name, A) ->
+    lists:prefix("$beam_guard_", atom_to_list(Name)) orelse new_type_test(Name, A).
 
 %%  Erlang type tests.
 -doc "Returns `true` if `Name/Arity` is a valid Erlang type test, otherwise `false`.".

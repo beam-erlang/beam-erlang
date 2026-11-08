@@ -1,12 +1,15 @@
 """Run complete unchanged VM suites through an attested installed OTP host."""
 
 from pathlib import Path
+from contextlib import contextmanager
+from collections import Counter
 import argparse
 import hashlib
 import json
 import os
 import re
 import shutil
+import socket
 import stat
 import subprocess
 import time
@@ -14,7 +17,8 @@ import sys
 
 from support.process import child_process, isolated_environment
 from support.scratch import scratch
-from .manifest import CASES, INPUTS, CORE_MODULES, SDK_ROOTS
+from .manifest import (CASES, INPUTS, CORE_MODULES, SDK_ROOTS, NATIVE_SUITES, MATCH_SPEC_TRACE_CASES,
+                       MATCH_SPEC_FLAT_CASES, MATCH_SPEC_GROUPS)
 
 
 UPSTREAM = "550d7b7898706c7822362c42e7b93120c1d1f29a"
@@ -48,6 +52,20 @@ def read_json(path):
     return json.loads(Path(path).read_text(), object_pairs_hook=unique_object)
 
 
+def source_identities(root, inputs, upstream):
+    identities = {}
+    for source in inputs:
+        relative = source.relative_to(root).as_posix()
+        identity = digest(source)
+        pinned = upstream["files"].get("../" + relative)
+        if relative.startswith("emulator/"):
+            require(pinned is not None, f"Missing upstream suite provenance: {source}")
+        if pinned is not None:
+            require(identity == pinned["sha256"], f"Pinned upstream input changed: {source}")
+        identities[relative] = identity
+    return identities
+
+
 def inventory(prefix):
     """Match the external OTP format-1 entry, mode and byte contract."""
     entries = {".": {"kind": "directory", "mode": format(stat.S_IMODE(prefix.stat().st_mode), "04o")}}
@@ -71,7 +89,7 @@ def consumed_artifacts(artifacts):
     require(isinstance(artifacts, dict), "SDK artifacts must be a mapping")
     for prefix in ("core.", "core-source."):
         require({name[len(prefix):] for name in artifacts if name.startswith(prefix)} == CORE_MODULES,
-                f"SDK {prefix} inventory differs from the nine VM core modules")
+                f"SDK {prefix} inventory differs from the six VM core modules")
     roots = SDK_ROOTS | {name for name in artifacts if name.startswith(("header.", "link.static"))}
     required, visiting = set(), set()
 
@@ -167,6 +185,17 @@ def expression(prefix, flavor, suite, stage, work, observer=None):
     origins = ",".join(ORIGIN_MODULES)
     sources = [stage / name for name in
                ("ts_install_cth.erl", "beam_vm_ct_event.erl", suite + ".erl")]
+    if suite == "guard_SUITE":
+        sources.append(stage / "beam_vm_bytes.erl")
+    if suite == "persistent_term_SUITE":
+        sources.append(stage / "erts_test_destructor.erl")
+    if suite in ("time_SUITE", "timer_bif_SUITE"):
+        sources.append(stage / "erts_test_utils.erl")
+    if suite == "match_spec_SUITE":
+        sources.extend(stage/name for name in ("trace_sessions.erl", "erts_test_utils.erl"))
+    if suite in NATIVE_SUITES:
+        sources = [stage / Path(name).name for name in INPUTS[suite]
+                   if name.endswith(".erl") and "_SUITE_data/" not in name]
     files = "[" + ",".join(map(erl_string, sources)) + "]"
     expected = "[" + ",".join(CASES[suite]) + "]"
     code = (
@@ -183,19 +212,66 @@ def expression(prefix, flavor, suite, stage, work, observer=None):
         f"ok=file:write_file({erl_string(work / 'preflight.json')},json:encode("
         '#{prefix=>unicode:characters_to_binary(Prefix),executable=>unicode:characters_to_binary(Host),'
         f'flavor=><<"{flavor}">>,otp_release=><<"29">>,schedulers_online=>2,modules=>Origins}})), '
-        f"[begin case compile:file(F,[debug_info,return_errors,return_warnings,{{outdir,{erl_string(stage)}}}]) of "
+        f"ok=file:set_cwd({erl_string(stage)}),"
+        f"[begin case compile:file(filename:basename(F),[debug_info,return_errors,return_warnings,{{outdir,{erl_string(stage)}}}]) of "
         '{ok,_,_}->ok;{ok,_}->ok;Error->erlang:error({compile_failed,F,Error}) end end || F <- '
         f"{files}],true=code:add_patha({erl_string(stage)}),"
         f"[begin {{module,M}}=code:ensure_loaded(M),true=lists:prefix({erl_string(stage)}++\"/\","
         f"code:which(M)) end || M <- [ts_install_cth,beam_vm_ct_event,{suite}]],"
         f"Expected={expected},Expected={suite}:all(),"
         f"ok=file:write_file({erl_string(work / 'all.json')},json:encode([atom_to_binary(C)||C<-Expected])),"
+        "BYTE_TRACE_PREFLIGHT"
         f"Result=ct:run_test([{{dir,{erl_string(stage)}}},{{suite,{suite}}},"
         f"{{auto_compile,false}},{{logdir,{erl_string(work / 'logs')}}},"
         f"{{event_handler,{{beam_vm_ct_event,[{erl_string(work / 'events.log')}]}}}}]),"
         f"ok=file:write_file({erl_string(work / 'ct-result.term')},io_lib:format(\"~tp.~n\",[Result])),"
         f"case Result of {{{len(CASES[suite])},0,{{0,0}}}}->halt(0);_->halt(1) end."
     )
+    if suite in NATIVE_SUITES:
+        declarations = NATIVE_SUITES[suite]
+        original = f"Expected={expected},Expected={suite}:all(),"
+        verified = f"Expected={expected},NativeAll={declarations['all']},NativeAll={suite}:all(),"
+        if declarations["groups"] is not None:
+            verified += f"NativeGroups={declarations['groups']},NativeGroups={suite}:groups(),"
+        code = code.replace(original, verified)
+    if suite == "match_spec_SUITE":
+        trace = "[" + ",".join(MATCH_SPEC_TRACE_CASES) + "]"
+        flat = "[" + ",".join(MATCH_SPEC_FLAT_CASES) + "]"
+        old = (f"Expected={expected},Expected={suite}:all(),"
+               f"ok=file:write_file({erl_string(work / 'all.json')},json:encode([atom_to_binary(C)||C<-Expected])),")
+        declaration = (
+            f"TraceCases={trace},FlatCases={flat},"
+            f"DeclaredGroups={suite}:groups(),2=length(DeclaredGroups),"
+            "GroupNames=[G || {G,[],C}<-DeclaredGroups,C=:=TraceCases],"
+            "[dynamic_pre_post,legacy_pre_post]=lists:sort(GroupNames),"
+            f"[{{group,G1}},{{group,G2}}|FlatCases]={suite}:all(),"
+            "[dynamic_pre_post,legacy_pre_post]=lists:sort([G1,G2]),"
+            f"ok=file:write_file({erl_string(work / 'all.json')},json:encode("
+            "#{group_order=>[G1,G2],trace=>TraceCases,flat=>FlatCases,"
+            "cases=>TraceCases++TraceCases++FlatCases})),")
+        require(old in code, "Missing grouped suite declaration boundary")
+        code = code.replace(old, declaration)
+    if suite == "time_SUITE":
+        old = f"Expected={expected},Expected={suite}:all(),"
+        declaration = (
+            "[{now,[],[now_unique,now_update]}]=time_SUITE:groups(),"
+            f"Expected={expected},"
+            "Expected=lists:append([case Item of {group,now}->[now_unique,now_update];"
+            "Name->[Name] end || Item <- time_SUITE:all()]),")
+        require(old in code, "Missing time suite declaration boundary")
+        code = code.replace(old, declaration)
+    byte_check = ""
+    if suite == "guard_SUITE":
+        byte_check = (
+            '{module,erl_tracer}=code:ensure_loaded(erl_tracer),'
+            'preloaded=code:which(erl_tracer),true=lists:member(erl_tracer,erlang:pre_loaded()),'
+            '{module,beam_vm_bytes}=code:ensure_loaded(beam_vm_bytes),'
+            f'true=lists:prefix({erl_string(stage)}++"/",code:which(beam_vm_bytes)),'
+            'ok=beam_vm_bytes:trace_calls(),'
+            f'ok=file:write_file({erl_string(work / "byte-trace.json")},json:encode('
+            '#{status=><<"passed">>,tracer=><<"preloaded">>,tracer_host=>unicode:characters_to_binary(Host),'
+            'bif=><<"binary:match/2">>})),')
+    code = code.replace("BYTE_TRACE_PREFLIGHT", byte_check)
 
     if sys.platform == 'darwin':
         require(observer is not None, "Darwin Common Test requires a selected native host observer")
@@ -218,7 +294,23 @@ def expression(prefix, flavor, suite, stage, work, observer=None):
 
 def protocol(suite, all_cases, events, result_text):
     expected = CASES[suite]
-    require(all_cases == expected, "Suite all/0 differs from the complete expected case inventory")
+    grouped = suite in ("match_spec_SUITE", "time_SUITE") or suite in NATIVE_SUITES
+    expected_paths = None
+    group_configurations = []
+    if suite == "match_spec_SUITE":
+        require(isinstance(all_cases, dict), "Grouped declarations are missing")
+        order = all_cases.get("group_order", [])
+        require(sorted(order) == sorted(MATCH_SPEC_GROUPS), "Trace-session groups differ")
+        require(all_cases.get("trace") == MATCH_SPEC_TRACE_CASES and
+                all_cases.get("flat") == MATCH_SPEC_FLAT_CASES and
+                all_cases.get("cases") == expected, "Grouped case declarations differ")
+        expected_paths = [[g] for g in order for _ in MATCH_SPEC_TRACE_CASES] + [[] for _ in MATCH_SPEC_FLAT_CASES]
+    elif suite == "time_SUITE":
+        require(all_cases == expected, "Time suite case declarations differ")
+        order = ["now"]
+        expected_paths = [["now"] if name in ("now_unique", "now_update") else [] for name in expected]
+    else:
+        require(all_cases == expected, "Suite all/0 differs from the complete expected case inventory")
     require(events and events[0] == {"event": "handler_start"}
             and events[-1] == {"event": "handler_stop"}, "Common Test event recording is incomplete")
     cases = []
@@ -231,6 +323,16 @@ def protocol(suite, all_cases, events, result_text):
         if event["event"] in ("tc_user_skip", "tc_auto_skip"):
             require(event["status"] == event["event"][3:] + "ped",
                     f"Skip event has a conflicting status: {event}")
+        if grouped:
+            require(isinstance(event.get("groups"), list) and
+                    all(isinstance(group, str) for group in event["groups"]),
+                    f"Malformed group path: {event}")
+        if event.get("name") in ("init_per_group", "end_per_group"):
+            require(grouped and event.get("suite") in (suite, "ct_framework"),
+                    f"Unexpected group configuration: {event}")
+            require(event.get("status") == "passed", f"Group configuration failed: {event}")
+            group_configurations.append((event["name"], event.get("groups")))
+            continue
         if event.get("name") in ("init_per_suite", "end_per_suite"):
             # CT supplies these callbacks from ct_framework when an unchanged
             # suite has no corresponding function. They are configuration, not
@@ -243,9 +345,32 @@ def protocol(suite, all_cases, events, result_text):
             continue
         require(event.get("suite") == suite, f"Unexpected event suite: {event}")
         require(event.get("name") in expected, f"Unexpected case: {event}")
-        cases.append({key: event.get(key, "") for key in ("name", "status", "reason")})
-    require([case["name"] for case in cases] == expected,
-            "Common Test events contain missing, repeated or reordered cases")
+        case = {key: event.get(key, "") for key in ("name", "status", "reason")}
+        if grouped:
+            case["groups"] = event.get("groups")
+        cases.append(case)
+    if suite in NATIVE_SUITES:
+        declarations = NATIVE_SUITES[suite]
+        wanted = [(c["name"], tuple(c["groups"])) for c in declarations["occurrences"]]
+        observed_cases = [(c["name"], tuple(c["groups"])) for c in cases]
+        if declarations["parallel"]:
+            require(Counter(observed_cases) == Counter(wanted),
+                    "Parallel events contain missing, repeated or misplaced case occurrences")
+        else:
+            require(observed_cases == wanted,
+                    "Events contain missing, repeated, reordered or misplaced case occurrences")
+        wanted_groups = [(kind, tuple(path)) for path in declarations["group_paths"]
+                         for kind in ("init_per_group", "end_per_group")]
+        require(Counter((kind, tuple(path)) for kind, path in group_configurations) ==
+                Counter(wanted_groups), "Group setup/teardown occurrences differ")
+    else:
+        require([case["name"] for case in cases] == expected,
+                "Common Test events contain missing, repeated or reordered cases")
+    if grouped and suite not in NATIVE_SUITES:
+        require([c["groups"] for c in cases] == expected_paths,
+                "Grouped events contain missing, repeated or reordered occurrences")
+        require(group_configurations == [(kind,[g]) for g in order for kind in
+                ("init_per_group","end_per_group")], "Group setup/teardown occurrences differ")
     match = re.fullmatch(r"\s*\{(\d+),(\d+),\{(\d+),(\d+)\}\}\.\s*", result_text)
     require(match is not None, "Missing or malformed Common Test aggregate result")
     passed, failed, user, auto = map(int, match.groups())
@@ -265,6 +390,52 @@ def run_process(command, work, environment, timeout, inspect=None):
             if inspect is not None:
                 inspect(child.returncode)
             require(child.returncode == 0, f"Installed Common Test process exited {child.returncode}")
+
+
+@contextmanager
+def distributed_parent(prefix, work, environment, suite, report):
+    """Run unchanged peer cases with a private owned distribution parent."""
+    if suite not in ("match_spec_SUITE", "time_SUITE", "timer_bif_SUITE") and suite not in NATIVE_SUITES:
+        yield []
+        return
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    environment["ERL_EPMD_PORT"] = str(port)
+    environment["ERL_AFLAGS"] = "+S2:2 +SDcpu2:2 +SDio2 -start_epmd false"
+    cookie = Path(environment["HOME"]) / ".erlang.cookie"
+    with cookie.open("x") as stream:
+        cookie.chmod(0o600)
+        stream.write("beam_vm_acceptance\n")
+    addresses = ",".join(sorted({"127.0.0.1", socket.gethostbyname(socket.gethostname())}))
+    command = [prefix / "bin/epmd", "-port", str(port), "-address", addresses]
+    parent = "beam_vm_match_spec" if suite == "match_spec_SUITE" else "beam_vm_" + suite.removesuffix("_SUITE")
+    report["distribution"] = dict(epmd_command=list(map(str, command)), port=port,
+                                  parent=parent, peer_defaults=environment["ERL_AFLAGS"])
+    with (work / "epmd.log").open("wb") as log:
+        with child_process(command, cwd=work, env=environment, stdin=subprocess.DEVNULL,
+                           stdout=log, stderr=subprocess.STDOUT) as daemon:
+            try:
+                deadline = time.monotonic() + 10
+                while True:
+                    require(daemon.poll() is None, "Owned EPMD exited before readiness")
+                    try:
+                        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                            break
+                    except OSError:
+                        require(time.monotonic() < deadline, "Owned EPMD readiness timed out")
+                        time.sleep(0.05)
+                yield ["-sname", parent, "-setcookie", "beam_vm_acceptance",
+                       "-start_epmd", "false"]
+            finally:
+                if daemon.poll() is None:
+                    daemon.terminate()
+                    try:
+                        daemon.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        daemon.kill()
+                        daemon.wait(timeout=5)
+                report["distribution"]["epmd_stopped"] = daemon.poll() is not None
 
 
 def execute(args):
@@ -290,7 +461,7 @@ def execute(args):
                 child.unlink()
     report = {"suite": suite, "expected_cases": len(CASES[suite]), "expected_case_names": CASES[suite],
               "complete": False, "outcome": "failed", "cases": [], "suites": {},
-              "normal_schedulers": 2, "timeout_seconds": 600}
+              "normal_schedulers": 2, "timeout_seconds": 14400 if suite in NATIVE_SUITES or suite in ("persistent_term_SUITE", "time_SUITE", "timer_bif_SUITE") else 3600 if suite == "match_spec_SUITE" else 600}
     started = time.monotonic()
     with scratch(work):
         try:
@@ -305,10 +476,66 @@ def execute(args):
             require(digest(hook) == upstream["files"]["../support/ts_install_cth.erl"]["sha256"],
                     "Pinned Common Test hook changed")
             inputs = [HERE.parent / relative for relative in INPUTS[suite]]
-            report["source_sha256"] = {str(p.relative_to(HERE.parent)): digest(p) for p in inputs}
+            report["source_sha256"] = source_identities(HERE.parent, inputs, upstream)
             for source in inputs:
-                shutil.copy2(source, stage / source.name)
+                destination = stage / source.name
+                relative = source.relative_to(HERE.parent / "emulator") if source.is_relative_to(HERE.parent / "emulator") else None
+                if relative is not None and len(relative.parts) > 1:
+                    destination = stage / relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                elif source.suffix == ".c":
+                    destination = stage / "persistent_term_SUITE_data" / source.name
+                    destination.parent.mkdir(exist_ok=True)
+                shutil.copy2(source, destination)
             environment = isolated_environment(work)
+            # Upstream cases also write generated inputs into otherwise empty
+            # data directories supplied by the original test build.
+            (stage / (suite + "_data")).mkdir(exist_ok=True)
+            # Unchanged suites also find nested Erlang commands through PATH.
+            # Keep those children on the independently selected installation.
+            environment["PATH"] = str(args.otp_prefix.resolve() / "bin") + os.pathsep + environment["PATH"]
+            for name in ("erl", "erlc"):
+                require(Path(shutil.which(name, path=environment["PATH"])).resolve()
+                        == (args.otp_prefix.resolve() / "bin" / name).resolve(),
+                        f"Nested {name} does not select the attested OTP installation")
+            if suite == "time_SUITE":
+                # The unchanged calendar cases explicitly require Stockholm time.
+                environment["TZ"] = "Europe/Stockholm"
+                report["timezone"] = environment["TZ"]
+            if suite == "persistent_term_SUITE":
+                native = work / "native"
+                native.mkdir()
+                shutil.copy2(HERE / "destructor.cmake", native / "CMakeLists.txt")
+                commands = [
+                    ["cmake", "-S", str(native), "-B", str(native / "build"),
+                     "-DCMAKE_BUILD_TYPE=Release", "-DBEAM_DIR=" + str(args.sdk.resolve() / "lib/cmake/BEAM"),
+                     "-DDESTRUCTOR_SOURCE=" + str(stage / "persistent_term_SUITE_data/erts_test_destructor.c"),
+                     "-DDESTRUCTOR_OUTPUT=" + str(stage / "persistent_term_SUITE_data")],
+                    ["cmake", "--build", str(native / "build"), "--parallel", "2"]]
+                report["native_commands"] = commands
+                for number, native_command in enumerate(commands):
+                    with child_process(native_command, cwd=work, env=environment,
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as child:
+                        output, _ = child.communicate(timeout=180)
+                        (logs / f"native-{number}.log").write_bytes(output)
+                        require(child.returncode == 0, "Public-SDK destructor NIF build failed")
+            if suite in ("float_SUITE", "process_SUITE", "signal_SUITE", "tracer_SUITE", "seq_trace_SUITE"):
+                native = work / "native"
+                native.mkdir()
+                shutil.copy2(HERE / "native-fixtures.cmake", native / "CMakeLists.txt")
+                commands = [
+                    ["cmake", "-S", str(native), "-B", str(native / "build"),
+                     "-DCMAKE_BUILD_TYPE=Release", "-DBEAM_DIR=" + str(args.sdk.resolve() / "lib/cmake/BEAM"),
+                     "-DOTP_PREFIX=" + str(args.otp_prefix.resolve()), "-DSUITE=" + suite,
+                     "-DDATA_DIRECTORY=" + str(stage / (suite + "_data"))],
+                    ["cmake", "--build", str(native / "build"), "--parallel", "2"]]
+                report["native_commands"] = commands
+                for number, native_command in enumerate(commands):
+                    with child_process(native_command, cwd=work, env=environment,
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as child:
+                        output, _ = child.communicate(timeout=180)
+                        (logs / f"native-{number}.log").write_bytes(output)
+                        require(child.returncode == 0, "Installed native fixture build failed")
             # Installed launchers and nested compiler invocations retain the explicit bound.
             environment["ERL_FLAGS"] = "+S2:2 +SDcpu2:2 +SDio2"
             observer = None
@@ -325,6 +552,9 @@ def execute(args):
             def inspect(returncode):
                 report["returncode"] = returncode
                 report["preflight"] = read_json(work / "preflight.json")
+                if suite == "guard_SUITE":
+                    report["byte_trace"] = read_json(work / "byte-trace.json")
+                    require(report["byte_trace"]["status"] == "passed", "Byte tracing did not pass")
                 all_cases = read_json(work / "all.json")
                 events = [json.loads(line, object_pairs_hook=unique_object)
                           for line in (work / "events.log").read_text().splitlines()]
@@ -333,7 +563,9 @@ def execute(args):
                 report.update(cases=cases, suites={suite: counts})
                 require(complete, "Complete suite did not pass; failures and skips are not accepted")
 
-            run_process(command, work, environment, 600, inspect)
+            with distributed_parent(args.otp_prefix.resolve(), work, environment, suite, report) as flags:
+                command[1:1] = flags
+                run_process(command, work, environment, report["timeout_seconds"], inspect)
             for source in inputs:
                 require(digest(source) == report["source_sha256"][str(source.relative_to(HERE.parent))],
                         f"Original suite/support source changed during execution: {source}")

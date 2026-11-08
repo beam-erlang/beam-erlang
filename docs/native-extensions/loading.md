@@ -11,7 +11,7 @@ and lifetime policy.
 
 | Route | Initializer and load timing |
 | --- | --- |
-| Resident registrations | Preparation copies descriptors; VM initialization obtains/validates entry tables; the owning Erlang module later invokes `erlang:load_nif/2` with actual load information. |
+| Resident registrations | Preparation copies descriptors; VM initialization obtains/validates entry tables; the owning Erlang module later invokes the selected `load_nif/2` binding with actual load information. |
 | Explicit native bindings | Host acquisition produces a `beam_nif_binding` and owner. `beam_vm_bind_nif` invokes the initializer after start, using `undefined` load information. |
 | Ordinary native admission | A process-owned product supplies its own loading code and explicitly authorizes ordinary NIF, driver, port or distribution operations at entry. |
 
@@ -40,6 +40,19 @@ through static linking. Shared and static runtime hosts support resident code;
 a static VM rejects a modern shared library that depends on a runtime DSO.
 Ordinary OTP dynamic NIFs remain supported under ordinary admission.
 
+## Native stack space
+
+`beam_native_stack_has_space(reserve_bytes)` in `<beam/native.h>` checks the
+current C stack against the VM's recorded scheduler bound. It returns `1` when
+the requested reserve remains, `0` when it does not, and `-1` outside an eligible
+scheduler context or when the bound is unavailable. Call it synchronously from
+an ordinary or dirty NIF callback, including recursive C calls on the same
+thread. NIF-created threads and the embedding owner thread are not scheduler
+contexts. Treat an unavailable bound explicitly; it does not authorize unchecked
+recursion. The query allocates nothing, exposes no pointers and does not yield or
+reenter the VM. The precise usable stack size depends on the selected scheduler
+configuration and native call frames.
+
 The [external-NIF fixture](../../tests/installed/runtime/nifs/main.c) and
 [built-in fixture](../../tests/installed/runtime/nifs/builtins.c) exercise these
 routes, including conflicts, delayed initialization and failed binding cleanup.
@@ -47,9 +60,14 @@ routes, including conflicts, delayed initialization and failed binding cleanup.
 ## Load information and module callbacks
 
 Explicit binding passes `undefined` as `load_info` and does not execute a wrapper
-`on_load`. Resident registrations preserve ordinary `erlang:load_nif/2` semantics:
+`on_load`. Resident registrations preserve ordinary `load_nif/2` semantics
+(`beam:load_nif/2` in modern hosts, `erlang:load_nif/2` in OTP hosts):
 file startup passes the real janitor PID, socket startup passes registry/configuration
 information, and zlib loads directly without an artificial owner process.
+The tracing library uses private `beam_trace:load_nif/0`; it activates the
+delivery callbacks without starting a collector or worker. Default tracer
+identity remains a separate composition selection. Canonical OTP retains
+`erl_tracer:on_load/0` and its existing loader protocol.
 
 Ordinary and preload initialization reject modules carrying `on_load` without
 executing that callback. The optional Host layer accepts an explicit deferred

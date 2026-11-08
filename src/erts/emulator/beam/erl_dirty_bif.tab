@@ -24,7 +24,7 @@
 # Static declaration of BIFs that should execute on dirty schedulers.
 #
 # <dirty-bif-decl> ::= <type> <bif>
-# <bif> ::= <module> ":" <name> "/" <arity>
+# <bif> ::= implementation descriptor identifier
 # <type> ::= dirty-cpu | dirty-io | dirty-cpu-test | dirty-io-test
 #
 # When dirty scheduler support is available, a BIF declared with the
@@ -45,14 +45,14 @@
 
 # --- Dirty BIFs ---
 
-dirty-cpu erts_debug:dirty_cpu/2
-dirty-io erts_debug:dirty_io/2
+dirty-cpu vm_erts_debug_dirty_cpu_2
+dirty-io vm_erts_debug_dirty_io_2
 
 # lcnt_control/1 doesn't need to be dirty.
-dirty-cpu erts_debug:lcnt_control/2
-dirty-cpu erts_debug:lcnt_collect/0
-dirty-cpu erts_debug:lcnt_clear/0
-dirty-cpu erlang:display_string/2
+dirty-cpu vm_erts_debug_lcnt_control_2
+dirty-cpu vm_erts_debug_lcnt_collect_0
+dirty-cpu vm_erts_debug_lcnt_clear_0
+dirty-cpu vm_display_string_2
 
 # --- TEST of Dirty BIF functionality ---
 #  Functions below will execute on dirty schedulers when emulator has
@@ -60,26 +60,21 @@ dirty-cpu erlang:display_string/2
 #  and debug purposes only. We really do *not* want to execute these
 #  on dirty schedulers on a real system.
 
-dirty-cpu-test erlang:make_tuple/2
-dirty-cpu-test erlang:make_tuple/3
-dirty-cpu-test erlang:append_element/2
-dirty-cpu-test erlang:insert_element/3
-dirty-cpu-test erlang:delete_element/2
-dirty-cpu-test erlang:atom_to_list/1
-dirty-cpu-test erlang:list_to_atom/1
-dirty-cpu-test erlang:list_to_existing_atom/1
-dirty-cpu-test erlang:integer_to_list/1
-dirty-cpu-test erlang:string_to_integer/1
-dirty-cpu-test erlang:list_to_integer/1
-dirty-cpu-test erlang:list_to_integer/2
-dirty-cpu-test erlang:float_to_list/1
-dirty-cpu-test erlang:float_to_list/2
-dirty-cpu-test erlang:float_to_binary/1
-dirty-cpu-test erlang:float_to_binary/2
-dirty-cpu-test erlang:string_to_float/1
-dirty-cpu-test erlang:list_to_float/1
-dirty-cpu-test erlang:binary_to_float/1
-dirty-cpu-test erlang:tuple_to_list/1
-dirty-cpu-test erlang:list_to_tuple/1
-dirty-cpu-test erlang:display/1
-dirty-cpu-test erlang:display_string/1
+dirty-cpu-test vm_make_tuple_2
+dirty-cpu-test vm_make_tuple_3
+dirty-cpu-test vm_append_element_2
+dirty-cpu-test vm_insert_element_3
+dirty-cpu-test vm_delete_element_2
+dirty-cpu-test vm_atom_to_list_1
+dirty-cpu-test vm_list_to_atom_1
+dirty-cpu-test vm_list_to_existing_atom_1
+dirty-cpu-test vm_integer_to_list_1
+dirty-cpu-test vm_float_to_list_1
+dirty-cpu-test vm_float_to_list_2
+dirty-cpu-test vm_float_to_binary_1
+dirty-cpu-test vm_float_to_binary_2
+dirty-cpu-test vm_list_to_float_1
+dirty-cpu-test vm_binary_to_float_1
+dirty-cpu-test vm_tuple_to_list_1
+dirty-cpu-test vm_list_to_tuple_1
+dirty-cpu-test vm_display_1

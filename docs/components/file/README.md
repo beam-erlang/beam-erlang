@@ -129,3 +129,7 @@ their capabilities remain separately selected.
 The current implementation is defined by
 [beam_file.erl](../../../src/beam/file/beam_file.erl) and the
 [file library recipe](../../../src/beam/file/CMakeLists.txt).
+
+Embedding hosts must explicitly bind `list_reverse_2` to `beam_lists:reverse/2` for
+`prim_file` directory-list handling. The passive library does not choose BIF
+bindings. The modern CLI file recipe supplies this dependency.

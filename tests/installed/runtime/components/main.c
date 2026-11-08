@@ -6,8 +6,10 @@
 #include <beam/libraries/file.h>
 #include <beam/libraries/network.h>
 #include <beam/libraries/zlib.h>
+#include <beam/libraries/tracing.h>
 #endif
 #include "bytecode_input.h"
+#include "builtin_bindings.h"
 #include "host_observe.h"
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -17,6 +19,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 static void require(int condition, const char *message)
@@ -37,6 +40,46 @@ static int entries(const char *path)
     closedir(dir);
     return count;
 #endif
+}
+
+static void require_worker_cleanup(int expected)
+{
+    int actual = entries("/proc/self/task");
+    if (actual != expected) {
+        struct timespec deadline, now;
+        require(!clock_gettime(CLOCK_MONOTONIC, &deadline), "worker inventory deadline");
+        ++deadline.tv_sec;
+        /* A joined thread's kernel task entry can briefly outlive pthread_join.
+         * Still require the exact OS baseline, with a bounded observation wait. */
+        do {
+            usleep(1000);
+            actual = entries("/proc/self/task");
+            require(!clock_gettime(CLOCK_MONOTONIC, &now), "worker inventory clock");
+        } while (actual != expected && (now.tv_sec < deadline.tv_sec ||
+                 (now.tv_sec == deadline.tv_sec && now.tv_nsec < deadline.tv_nsec)));
+    }
+    if (actual != expected) {
+        fprintf(stderr, "components: worker inventory expected=%d actual=%d\n", expected, actual);
+#ifdef __linux__
+        DIR *dir = opendir("/proc/self/task");
+        struct dirent *entry;
+        if (dir) {
+            while ((entry = readdir(dir))) {
+                char path[512], line[512];
+                FILE *status;
+                if (entry->d_name[0] == '.') continue;
+                snprintf(path, sizeof(path), "/proc/self/task/%s/stat", entry->d_name);
+                status = fopen(path, "r");
+                if (status) {
+                    if (fgets(line, sizeof(line), status)) fprintf(stderr, "task: %s", line);
+                    fclose(status);
+                } else fprintf(stderr, "task %s exited during observation\n", entry->d_name);
+            }
+            closedir(dir);
+        }
+#endif
+        require(0, "actual worker cleanup");
+    }
 }
 
 static beam_buffer read_bytes(const char *path)
@@ -69,6 +112,11 @@ static beam_result call(beam_vm *vm, const char *function, beam_bytes args)
     beam_result result = {0};
     require(beam_vm_call(vm, "component_worker", function, args, &result) == BEAM_OK,
             "call worker");
+    if (result.kind != BEAM_RETURN) {
+        fprintf(stderr,"component_worker:%s ETF=",function);
+        for(size_t i=0;i<result.value.size && i<512;++i) fprintf(stderr,"%02x",result.value.data[i]);
+        fputc('\n',stderr);
+    }
     return result;
 }
 
@@ -92,12 +140,19 @@ static void support_contracts(beam_system *system, const char *prefix, const bea
 {
     bytecode_input input={0};beam_error error={0};
     require(bytecode_input_read(&input,prefix,INPUT_BASE|INPUT_SERVICES,&error)==BEAM_OK,error.message);
-    beam_module_spec modules[16];memcpy(modules,input.modules,input.count*sizeof(*modules));
+    beam_module_spec modules[32];memcpy(modules,input.modules,input.count*sizeof(*modules));
     modules[input.count]=*worker;
     int descriptors=entries("/proc/self/fd"),threads=entries("/proc/self/task");
+    beam_builtin_binding selected[BEAM_TEST_RETENTION_BINDING_COUNT+BEAM_TEST_RETURNING_BINDING_COUNT+2];
+    size_t selected_count=0;
+    if (!beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+            beam_test_retention_bindings,BEAM_TEST_RETENTION_BINDING_COUNT) ||
+        !beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+            beam_test_returning_bindings,BEAM_TEST_RETURNING_BINDING_COUNT)) abort();
     for(int mode=0;mode<4;++mode){
         beam_composition_options generic={.struct_size=sizeof(generic),.modules=modules,
-            .module_count=input.count+(mode!=1)};
+            .module_count=input.count+(mode!=1),
+            .builtin_bindings=selected,.builtin_binding_count=selected_count};
         beam_startup_action action={"beam_output","start",{0}};
         beam_host_options plan={.struct_size=sizeof(plan),.composition=&generic,
             .startup_count=mode>=2,.startup=&action,.deferred_count=mode==1,.deferred=worker};
@@ -106,7 +161,7 @@ static void support_contracts(beam_system *system, const char *prefix, const bea
         options.composition=beam_host_composition(host);
         require(beam_vm_init(system,&options,&vm,&error)==BEAM_OK,error.message);
         require(entries("/proc/self/task")==threads,"passive preparation and initialization");
-        if(mode==3)require(beam_vm_unload(vm,"beam_startup",&error)==BEAM_OK,"remove startup controller");
+        if(mode==3)require(beam_module_unload(vm,"beam_startup",&error)==BEAM_OK,"remove startup controller");
         require(beam_vm_start(vm,&error)==BEAM_OK,error.message);
         const unsigned char nil[]={131,106};beam_bytes args={nil,sizeof(nil)};
         if(mode==0){beam_result result=call(vm,"passive",args);require(integer(&result)==42,"passive support");beam_result_release(&result);}
@@ -116,7 +171,8 @@ static void support_contracts(beam_system *system, const char *prefix, const bea
         if(mode==3){beam_vm_state_info state;require(error.message[0]&&beam_vm_get_state(vm,&state)==BEAM_OK&&state.state==BEAM_VM_STOPPED,"failed startup stops VM");}
         beam_host_release(&host);
         require(beam_vm_terminate(&vm,NULL)==BEAM_OK,"terminate support VM");
-        require(entries("/proc/self/fd")==descriptors&&entries("/proc/self/task")==threads,"support cleanup");
+        require(entries("/proc/self/fd")==descriptors,"support descriptor cleanup");
+        require_worker_cleanup(threads);
     }
     /* An output-only host does not require the code acquisition module. */
     size_t count=0;
@@ -133,13 +189,13 @@ int main(int argc, char **argv)
     beam_system *system = NULL;
     const beam_composition *composition = NULL;
     beam_host *host = NULL;
-    beam_library *libraries[3] = {0};
+    beam_library *libraries[4] = {0};
     size_t library_count=0;
-    beam_startup_action startup[3];
+    beam_startup_action startup[4];
     size_t startup_count=0;
     beam_composition_options preparation = {.struct_size = sizeof(preparation)};
     beam_error error = {0};
-    char paths[3][4096];
+    char paths[4][4096];
     unsigned char args[8192] = {131, 108, 0, 0, 0, 3, 97, 0, 97, 0, 109};
     unsigned char nil[] = {131, 106};
     beam_bytes empty = {nil, sizeof(nil)};
@@ -153,11 +209,28 @@ int main(int argc, char **argv)
     file = strcmp(argv[4], "network") != 0;
     network = strcmp(argv[4], "file") != 0;
     fault = atoi(argv[5]);
+    beam_builtin_binding selected[BEAM_TEST_NETWORK_BINDING_COUNT+BEAM_TEST_FILE_BINDING_COUNT+
+        BEAM_TEST_RETENTION_BINDING_COUNT+BEAM_TEST_RETURNING_BINDING_COUNT+2];
+    size_t selected_count=0;
+    require(beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+        network ? beam_test_network_bindings : beam_test_file_bindings,
+        network ? BEAM_TEST_NETWORK_BINDING_COUNT : BEAM_TEST_FILE_BINDING_COUNT), "support selection");
+    if (network && file)
+        require(beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+            beam_test_file_bindings,BEAM_TEST_FILE_BINDING_COUNT), "file selection");
+    require(beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+        beam_test_retention_bindings,BEAM_TEST_RETENTION_BINDING_COUNT), "retention selection");
+    require(beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+        beam_test_returning_bindings,BEAM_TEST_RETURNING_BINDING_COUNT), "controller selection");
+    preparation.builtin_bindings = selected;
+    preparation.builtin_binding_count = selected_count;
+
     code = read_bytes(argv[2]);
     module = (beam_module_spec){"component_worker", {code.data, code.size}, origin};
     bytecode_input base = {0};
     require(bytecode_input_read(&base, argv[1], INPUT_BASE | INPUT_SERVICES, &error) == BEAM_OK, error.message);
-    beam_module_spec modules[14];
+    if (network) bytecode_input_partition_network(&base);
+    beam_module_spec modules[32];
     memcpy(modules, base.modules, base.count * sizeof(*base.modules)); modules[base.count] = module;
     preparation.module_count = base.count + 1;
     preparation.modules = modules;
@@ -184,6 +257,22 @@ int main(int argc, char **argv)
         require(beam_library_open(paths[j],&libraries[j],&error)==BEAM_OK,error.message);
 #endif
         startup[startup_count++]=(beam_startup_action){"zlib","on_load",{0}};
+    }
+    if (zlib) {
+        size_t j = library_count++;
+#ifdef BEAM_TEST_STATIC_LIBRARIES
+        require(beam_library_from_static(beam_tracing_library(),&libraries[j],&error)==BEAM_OK,error.message);
+#else
+        require(snprintf(paths[j], sizeof(paths[j]), "%s/%s", argv[1], beam_test_component("tracing")) < (int)sizeof(paths[j]), "tracing path");
+        require(beam_library_open(paths[j],&libraries[j],&error)==BEAM_OK,error.message);
+#endif
+        const beam_builtin_binding trace_bindings[] = {
+            {sizeof(beam_builtin_binding),"vm_erts_internal_trace_session_create_3","beam_trace","trace_session_create",3},
+            {sizeof(beam_builtin_binding),"vm_erts_internal_trace_session_destroy_1","beam_trace","trace_session_destroy",1}};
+        require(beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,trace_bindings,2),"trace selection");
+        preparation.builtin_binding_count = selected_count;
+        preparation.default_tracer_module = "beam_trace";
+        startup[startup_count++]=(beam_startup_action){"beam_trace","load_nif",{0}};
     }
     beam_host_options plan={.struct_size=sizeof(plan),.composition=&preparation,
         .library_count=library_count,.libraries=libraries,.startup_count=startup_count,.startup=startup};
@@ -222,12 +311,13 @@ int main(int argc, char **argv)
         options.composition = composition;
         require(beam_vm_init(system, &options, &vm, &error) == BEAM_OK, error.message);
         require(entries("/proc/self/task") == thread_count, "initialization starts no workers");
-        require(beam_vm_unload(vm, "beam_startup", &error) == BEAM_OK, "remove activation entry to exercise failure");
+        require(beam_module_unload(vm, "beam_startup", &error) == BEAM_OK, "remove activation entry to exercise failure");
         require(beam_vm_start(vm, &error) == BEAM_OK, error.message);
         require(beam_host_start(host, vm, &error) == BEAM_SYSTEM_ERROR && error.message[0], "activation fails with diagnostics");
         require(beam_vm_get_state(vm, &state) == BEAM_OK && state.state == BEAM_VM_STOPPED, "activation failure stops partial VM");
         require(beam_vm_terminate(&vm, NULL) == BEAM_OK, "terminate failed activation");
-        require(entries("/proc/self/fd") == fd_count && entries("/proc/self/task") == thread_count, "failed activation cleanup");
+        require(entries("/proc/self/fd") == fd_count, "failed activation descriptor cleanup");
+        require_worker_cleanup(thread_count);
     }
     for (int pass = 0; pass < 3; ++pass) {
         beam_vm_options options;
@@ -237,11 +327,14 @@ int main(int argc, char **argv)
         options.composition = composition;
         require(beam_vm_init(system, &options, &vm, &error) == BEAM_OK, error.message);
         beam_module_info loaded = {.struct_size = sizeof(loaded)};
-        require(beam_vm_get_module(vm, "component_worker", &loaded) == BEAM_OK && (loaded.flags & BEAM_MODULE_CURRENT), "composition stages application code");
+        require(beam_module_get_info(vm, "component_worker", &loaded) == BEAM_OK && (loaded.flags & BEAM_MODULE_CURRENT), "composition stages application code");
         require(beam_vm_start(vm, &error) == BEAM_OK, error.message);
         require(beam_host_start(host, vm, &error) == BEAM_OK, error.message);
         if(pass==2)beam_host_release(&host);
         if (zlib) {
+            beam_result traced = call(vm, "tracing", empty);
+            require(integer(&traced)==42,"explicit tracing library activation");
+            beam_result_release(&traced);
             beam_result compressed = call(vm, "compress", empty);
             require(integer(&compressed)==42 && beam_zlib_stream_count()>0,"combined compression and retained stream");
             beam_result_release(&compressed);
@@ -276,7 +369,7 @@ int main(int argc, char **argv)
         require(beam_vm_terminate(&vm, NULL) == BEAM_OK && !vm, "terminate live owners");
         require(beam_file_descriptor_count() == 0 && beam_socket_count() == 0 && beam_zlib_stream_count() == 0, "native resource finalization");
         require(entries("/proc/self/fd") == fd_count, "actual descriptor cleanup");
-        require(entries("/proc/self/task") == thread_count, "actual worker cleanup");
+        require_worker_cleanup(thread_count);
         require(integer(&saved) == 1, "copied result survives fresh VMs");
     }
     for(size_t i=0;i<library_count;++i)beam_library_release(&libraries[i]);

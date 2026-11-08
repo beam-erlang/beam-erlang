@@ -55,7 +55,7 @@ their tools. Source ownership and relocation alone establish no execution.
 ### Installed OTP host for emulator suites
 
 The standalone Linux [Common Test project](vm/common_test/CMakeLists.txt) registers
-an initial selection from `vm/emulator/`. It consumes an explicitly selected
+an explicit selection from `vm/emulator/`. It consumes an explicitly selected
 installed OTP product and matching installed BEAM SDK, with producer provenance.
 Common Test supplies the test environment; the assertions cover shared VM
 behavior. Ordinary BEAM configure/build/CTest remains independent of OTP.
@@ -66,10 +66,29 @@ behavior. Ordinary BEAM configure/build/CTest remains independent of OTP.
 | `counters_SUITE` | Operations, limits, independence and write concurrency. |
 | `bs_bincomp_SUITE` | Byte/bit comprehensions and tracing. |
 | `bs_match_tail_SUITE` | Aligned, unaligned, empty and large bitstring tails. |
+| `guard_SUITE` | Guard BIFs, type tests, binary-part ranges and guard/body failures. |
+| `bif_SUITE` | Callable metadata, argument/error contracts, tracing and process primitives. |
+| `num_bif_SUITE`, `big_SUITE`, `float_SUITE`, `small_SUITE`, `op_SUITE` | Numeric conversions, arithmetic, limits and language operators. |
+| `exception_SUITE`, `fun_SUITE` | Exceptions, stack traces, fun identity and apply contracts. |
+| `process_SUITE`, `signal_SUITE` | Process creation, controls, distribution signals and priority messages. |
+| `dirty_bif_SUITE` | Dirty scheduling, exceptions, process state and continuation lifetime. |
+| `code_SUITE`, `code_parallel_load_SUITE` | Loading, purge, native entry lifetime and concurrent code replacement. |
+| `native_record_SUITE` | Native record creation, metadata, updates, encoding, GC and messages, including peers. |
+| `hibernate_SUITE` | Callable and instruction hibernation, wake-up, errors and heap behavior. |
+| `persistent_term_SUITE`, `match_spec_SUITE` | Persistent values, cleanup, match specifications and tracing. |
+| `trace_session_SUITE`, `tracer_SUITE`, `seq_trace_SUITE` | Complete session, custom tracer and sequential-token contracts, with original NIF/driver fixtures and peers. |
+| `time_SUITE` | Complete clock, conversion, time-warp and canonical calendar/legacy coverage. |
+| `timer_bif_SUITE` | Complete timer creation, expiry, read/cancel, ownership and scheduler coverage. |
 
-Each suite runs its complete `all/0` selection unchanged. The runner requires
+Each suite runs its complete `all/0` selection unchanged, including declared groups.
+Peer suites use a private owned EPMD and the selected installed commands. The runner requires
 the expected case identities and individual successful results; failed, skipped,
-missing or duplicate cases fail acceptance. Fixtures compile and execute in
+missing or duplicate cases fail acceptance. Suite and shared-hook inputs are
+checked against their recorded upstream source hashes before compilation.
+Numeric driver fixtures use the installed public SDK; the process suite's
+unchanged C-node fixture uses installed Erl_Interface headers and library.
+Declared parallel groups retain their original concurrency and case occurrences.
+Fixtures compile and execute in
 private scratch using the selected installation, without system Erlang or source
 runtime fallback. Selected SDK/OTP inputs remain read-only. Reports retain suite
 and helper hashes, runtime identities and bounded failure diagnostics; disposable
@@ -91,9 +110,20 @@ ctest --test-dir build/vm-common-test-emu --output-on-failure
 
 Repeat with the JIT pair, `BEAM_VM_TEST_FLAVOR=jit` and a separate build directory.
 There is no runtime discovery or automatic installation. CTest names are
-`vm-ct-<suite>`; each uses a fresh process with two schedulers, a 600-second
-deadline and serial execution. `results/<suite>/result.json`, bounded logs and
+`vm-ct-<suite>`; each uses a fresh process with two schedulers and serial
+execution. Most reports have a 600-second deadline; persistent terms use 14400
+seconds and match specifications use 3600. `results/<suite>/result.json`, bounded logs and
 `cleanup.json` remain under the selected harness build directory.
+
+The guard-suite runner also checks OTP byte-BIF call tracing through the
+selected host's explicitly composed preloaded `erl_tracer` provider. Its origin
+is attested through the selected static host. The supplemental helper calls
+`binary:match/2` without loading modern library code; the complete upstream guard
+selection remains unchanged. Direct modern byte-BIF tracing, including renamed
+search bindings and yielding calls, belongs to `installed-bare-beam` with its
+explicit test-owned tracer through the public NIF boundary. Installed base
+bytecode integrity remains covered by the base producer and SDK artifact tests.
+Minimal modern composition does not implicitly acquire a tracer.
 
 Both Linux integration targets require the separate `beam-vm` report in
 [release qualification](../release/README.md#candidate-production-and-qualification).
@@ -175,22 +205,22 @@ suite creates its own prefix using self-contained fixtures and no system Erlang.
 | `bytecode-verifier` | `checks/bytecode_verifier.c` | SHA-256 known answers, build identity, selected-module validation and altered-byte rejection without a VM lifecycle. |
 | `cli-smoke` | `checks/cli_smoke.cmake` | Modern command dispatch, obsolete-selector rejection, diagnostics and literal program arguments. |
 | `installed-sdk` | `installed/sdk/consumer/`, `installed/sdk/layout.py` | Required public assets and selected inventories; fresh/relocated C/C++ consumers through CMake and pkg-config; installed manuals and copied first-call example; runtime-only SDK; public codec C/C++ operations and shared/static system-zlib/PCRE coexistence; bytecode integrity before consumer configuration and after compilation. |
-| `installed-runtime-artifacts` | `installed/sdk/runtime_artifacts/` | Generic runtime, child-helper, public-header and core-inspection artifact selection, deployment, integrity and relocation. |
+| `installed-runtime-artifacts` | `installed/sdk/runtime_artifacts/` | Generic runtime, child-helper, public-header and core-inspection artifact selection, deployment, integrity and relocation; static process-owned execution of installed base APIs and driver load/echo/unload with the SDK unavailable. |
 | `installed-compile` | `installed/cli/compile/` | Modern compiler diagnostics, transforms, dependencies, Make/Ninja builds, literal paths, missing tooling and repeated compiler VM cleanup. |
-| `installed-run` | `installed/cli/run/`, `fixtures/hello_world.erl` | Fresh/relocated/minimal source execution; ordinary I/O, Unicode arguments, explicit services, missing assets and compiler/execution isolation. |
+| `installed-run` | `installed/cli/run/`, `fixtures/hello_world.erl` | Fresh/relocated/minimal source execution; ordinary I/O, Unicode arguments, explicit services, missing assets and compiler/execution isolation. The runner’s `--case stdlib` exercises all thirteen standard-library modules, both sets representations, graph ownership/cleanup, SOFS conversions, shell/eval and asset failure/recovery without the broader source-run cases. |
 | `installed-interactive` | `installed/cli/interactive/`, `installed/cli/scenarios/` | OTP-free shell/eval and minimal deployment; terminal editing/history/functions, term I/O, recovery/status, common CLI missing/malformed-asset rejection and repeated lifetimes. |
 | `native-artifacts-beam` | `checks/native_artifacts.cmake` | Modern native-wrapper source/artifact agreement through the owned bootstrap. |
-| `compiler-artifacts` | `checks/compiler_artifacts.py` | Owned compiler source/seed attestation, exact reproduction and rejection of invalid inputs. |
-| `native-library-boundary` | `checks/native_component_boundary.py` | Public SDK header/import boundaries for Host and native libraries, shared/static object ownership, ELF dependencies and exactly nine VM payloads; optional library and controller inventories stay outside both runtime images; one runtime-owned codec and public-only NIF imports. |
+| `compiler-artifacts` | `checks/compiler_artifacts.py` | Owned compiler source/seed integrity, direct-library input/native attestation and complete adopted base/standard-library exports and exported types, import closure, zero stdlib native slots, projection semantics and rejection of invalid inputs. |
+| `native-library-boundary` | `checks/native_component_boundary.py` | Public SDK header/import boundaries for Host and native libraries, shared/static object ownership, ELF dependencies and exactly six VM payloads; optional library and controller inventories stay outside both runtime images; PCRE absence in shared symbols and the complete static archive; one runtime-owned codec and public-only NIF imports. |
 | `installed-runtime-beam` | `installed/cli/baseline/`, `installed/cli/scenarios/` | Fresh/relocated modern shell/eval, module/native provenance and direct program execution. |
-| `installed-bare-beam` | `installed/runtime/bare/`, local `fixtures/` | Generic public SDK lifetimes, dedicated-thread ownership, asynchronous calls/pump/wake/stop, explicit base composition, copied results, module controls, callbacks, process/terminal state and real resource cleanup without runtime assets. |
-| `installed-returning` | `installed/boot/returning/`, local `fixtures/` | Installed Host archive with full/minimal relocated library selections; passive preparation, retained mappings, explicit startup, copied outcomes, code/output and repeated cleanup. |
+| `installed-bare-beam`, `installed-static-bare` | `installed/runtime/bare/`, local `fixtures/` | Generic public SDK lifetimes, dedicated-thread ownership, asynchronous calls/pump/wake/stop, explicit base composition, host-named optional BIF bindings, copied module/scheduler/process observations, PID-returning spawn and native input ownership, tracing, reload obligations, copied results, code publication/deletion/soft-purge, acknowledged scheduler controls, callbacks, process/terminal state and real resource cleanup without runtime assets. Linux static management injects owner-thread snapshot allocation failures, checking unchanged output and complete partial-copy cleanup. |
+| `installed-returning` | `installed/boot/returning/`, local `fixtures/` | Installed Host archive with full/minimal relocated library selections; complete six-module exports and canonical byte/list/map/text/record behavior; passive preparation, retained mappings, explicit startup, copied outcomes, code/output and repeated cleanup. |
 | `installed-deployment` | `installed/sdk/deployment/` | Generic bare and modern returning bundles; exact inventories, missing assets, Unicode relocation and execution with the SDK hidden. |
 | `installed-components` | `installed/runtime/components/` | Independent/combined file, network and zlib libraries in all three supported linkage combinations; passive preparation, explicit startup, deferred rollback, real owner failure, persistent resources and OS cleanup. |
 | `installed-process-owned` | `installed/runtime/process_owned/` | Suspended roots, synchronous setup with permissions denied, entry commit, recoverable cancellation, context and process policy through the public SDK. |
 | `test-support` | `support/`, `installed/boot/returning/etf{,_test}.c` | Process-group cleanup, environment/output isolation, asset restoration and bounded ETF decoding; no runtime substitute. |
-| `installed-pkg` | `installed/cli/pkg/` | Alias/command policy, literal arguments, builds, installed projects and project shell in fresh and relocated prefixes. |
-| `installed-nifs`, `installed-static-nifs` | `installed/runtime/nifs/` | Resident and explicit binding timing, conflicts, retained owners, resources and second-runtime rejection; independent fourth-library authoring with bytecode-only/mixed payloads using installed SDK inputs and shared/static hosts. |
+| `installed-pkg` | `installed/cli/pkg/` | Alias/command policy, literal arguments, builds, installed projects and project shell in fresh and relocated prefixes; canonical package collection names coexist with private shell algorithms, while actual host-provider conflicts fail. |
+| `installed-nifs`, `installed-static-nifs` | `installed/runtime/nifs/` | Resident and explicit binding timing, conflicts, retained owners, resources and second-runtime rejection; destructor-before-unload cleanup for live and erased persistent-term resources; native stack reserve checks on ordinary/dirty schedulers, recursive exhaustion and non-scheduler threads; independent fourth-library authoring with bytecode-only/mixed payloads using installed SDK inputs and shared/static hosts. |
 
 Core and base deterministic reproduction is mandatory in the build through
 `beam_verify_core_artifacts` and `beam_verify_base_artifacts`. CTest does not
@@ -219,6 +249,14 @@ suites retain exact selected inventories, missing-asset rejection and relocation
 without SDK fallback. Expected selected inventories remain independent of
 production manifests; changing a manifest must not silently redefine a contract.
 Use clean build/install trees rather than testing upgrades from obsolete layouts.
+
+The returning library fixture owns modern byte-library values, validation,
+argument diagnostics and call classification while ordinary `binary` is absent.
+The bare lifetime owner retains its minimal-core branch and adds a separate
+byte-library composition for compiled-pattern sharing, GC, abandoned search and
+live-pattern termination, with the same memory and OS resource observations.
+OTP owns the complete unchanged `binary_module_SUITE`; grouped/native-fixture
+`binary_SUITE` cases are not covered by the flat shared-VM runner.
 
 `support/bytecode_input.h` owns test acquisition of explicitly selected base,
 boot and services inventories. Native
@@ -326,3 +364,86 @@ Supplemental embedded-dependency reporting is covered by API validation and the
 existing installed native composition fixture with shared/static VMs. Synthetic
 included/excluded facts exercise copied inputs, retained preparation and isolation
 between fresh VM lifetimes; product-specific declarations remain product-owned.
+
+Optional collection/text bindings share the existing API/bare coverage owner.
+The returning library fixture owns modern semantics and observed continuations;
+component acceptance owns explicit file/network support bindings and local-path
+Unicode conversion. OTP owns unchanged complete collection/text suites and the
+UTF-16/32 fallback comparison. Core-only fixtures remain independent of these
+optional library bindings.
+
+The shared installed Common Test runner also owns the unchanged 22-case
+`persistent_term_SUITE`. It builds the original destructor NIF through the
+installed public SDK, stages the Erlang helper, and preserves restart subprocesses
+and case timetraps. Its outer limit is 14400 seconds (CTest 14520); suites run
+serially. Separate installed VM suite reports remain independent of general
+CTest. Returning acceptance owns modern arrays/store semantics and concurrency;
+bare composition owns arbitrary identities, tracing, selection and lifetime cleanup.
+
+Runtime contract coverage uses independent modern/canonical compositions and
+valid mixed contracts, since a shared descriptor has only one destination per
+VM. API validation rejects retired identifiers. Compiler-artifact checks own
+projection semantics, direct-library source attestation and canonical seed integrity;
+installed run/shell and native
+library fixtures own private support acquisition and facade absence. Preserve
+the two list reversal continuation-error contracts, resource observations and
+native tracing after consolidation.
+
+ETS binding coverage belongs to the existing API/bare fixture: optional ETS
+identifiers, arbitrary destinations, export/reload obligations, public identities,
+selection without `select/1`, private-table binary diagnostics without
+`safe_fixtable/2`, observed cancellation and table/match-program resource release.
+Native-only tracing is exercised across first ordinary loading, explicit
+`on_load` completion and unloading, preserving native exports and loader policy.
+The same bare owner exercises all twenty ordinary `beam_trace` APIs, separate
+backend activation, missing/default/custom delivery, the retained monitoring
+destination, copied worker/default selections and mandatory private cleaner
+execution across fresh lifetimes. Compiler-artifact acceptance owns the 33-export
+partition, ten native slots, separate delivery callbacks and qualified native
+dispatch. Component acceptance owns shared/shared, shared/static and
+static/static delivery and recovery, without repeating the full API inventory.
+Returning acceptance owns modern table semantics, ownership transfer, the 63-MFA
+public facade and its ordinary wrappers, including base-only fun rejection.
+Interactive acceptance owns interpreted `fun2ms` with captured bindings and
+recovery. Installed compiler acceptance owns the explicit header, literal
+transformation and diagnostic/publication failures. Compiler-artifact checks
+preserve the modern export partition, complete canonical copy, separate artifact
+inventories and semantic `ets` match-spec dialect argument. Core/base and
+compiler seed reproduction remain independent checks.
+
+OTP's upstream runner owns complete unchanged `ets_SUITE` (162 cases),
+`ets_tough_SUITE` (one case with original iteration defaults) and the four-property
+ETS suite. The property suite retains its original prerequisite skip when no
+verified framework is selected; those properties are unexecuted, not passing.
+ETS uses outer/CTest limits 43200/43320 seconds, tough/property 600/720.
+The separate VM runner owns all 46 `match_spec_SUITE` occurrences, including
+both trace-session groups. It verifies grouped declarations, paths and
+setup/teardown occurrences, with outer/CTest limits 3600/3720 seconds. Heavy
+suites run serially and raw failures/skips remain visible.
+The match-specification peer cases use the selected installation's owned private
+EPMD and a named parent node; the runner stops the helper on every outcome.
+The tracing suites preserve their complete pinned declarations, assertions,
+helpers and deadlines. Tracer coverage retains both session groups and both
+nested `basic` occurrences; report-integrity negatives reject missing, duplicate
+or reassigned occurrences and missing group closures. Sequential coverage builds
+the real echo driver and retains its external-command case. Native fixtures use
+the selected installed SDK, and peers execute the selected OTP product.
+
+Clock/timer binding and ordinary core-export selection are covered by the
+existing `installed-bare-beam` owner: canonical/modern/custom/partial/empty
+selections, copied selections, public introspection/error identities, unit
+conversion, timer replies and teardown. Base/component/returning tests retain
+their independent delivery and lifetime contracts. Native component deadline
+conversion uses mandatory private runtime support without acquiring base.
+
+### ETF coverage ownership
+
+`api-validation` owns focused host-memory codec semantics: UTF-8 atoms, scalar
+boundaries, containers and tails, iodata, borrowed bitstrings, serialized
+identities, fun ownership and buffer growth. `installed-sdk` owns C/C++ shared
+and static runtime usage before initialization and after termination, VM
+roundtrips, standalone object incorporation without a VM binary, relocation,
+and missing/corrupt/wrong-identity payload rejection. The native boundary check
+rejects `ei_*`, embedded and compatibility exports from `libbeam`. Independent
+test ETF readers remain separate. OTP owns its adapters, standalone archive
+linking, mixed runtime linkage and unchanged Erl_Interface suites.

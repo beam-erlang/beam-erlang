@@ -69,7 +69,8 @@ reclaimed. A static descriptor, its bytecode and native code must remain residen
 for every reference; linked executable storage satisfies this contract.
 
 Resident table accessors run during VM initialization. The owning Erlang module
-later calls ordinary `erlang:load_nif/2`, supplying its actual load information.
+later calls its selected native `load_nif/2` binding (`beam` in modern hosts,
+`erlang` in OTP hosts), supplying its actual load information.
 Opening a library or supplying its modules does not start its services. The host
 chooses startup calls independently of the descriptor.
 
@@ -107,3 +108,21 @@ inventories, each containing its corresponding `beam_` module. Startup needs onl
 policy module and ordinary base operations they invoke. The aggregate `services`
 inventory is a convenience selection above the VM. Supplying any inventory runs
 nothing and grants no native permission.
+
+Returning controllers require `beam_persistent_term:get/2` and `put/2`
+bindings (`persistent_value_get_2`, `persistent_value_put_2`), even when only a
+controller and entry are supplied. Startup requires `put/2`. Networking requires
+its seventeen public list/map contracts, public Unicode-to-UTF-8 conversion and
+modern persistent `get/1` / `put/2` (20 total). File support requires
+`list_reverse_2` at `beam_lists:reverse/2`. Generic Host, returning C
+orchestration and passive descriptors select no defaults.
+
+Modern library recipes and the full CLI select the same 558 bindings, including
+the four ETS implementation protocols and all 51 operations of the six public
+library modules. Networking and file-only
+hosts may select just their required subsets. These selections publish native
+exports; ordinary `beam_ets` helpers require the explicitly supplied base-library
+artifact. Native-only compositions do not acquire it implicitly.
+Hosts form explicit unions by implementation and destination, deduplicate identical
+selections and reject conflicts. Private runtime modules are implementation
+details, not additional public library APIs.

@@ -127,6 +127,9 @@ function(erts_add_make_tables FLAVOR)
     set(OUTDIR "${CMAKE_BINARY_DIR}/emulator/${FLAVOR}")
     file(MAKE_DIRECTORY "${OUTDIR}")
 
+    set(_bif_source "${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/bif.tab")
+    set(_bif_input "${_bif_source}")
+
     set(_jit_arg "no")
     if(FLAVOR STREQUAL "jit")
         set(_jit_arg "yes")
@@ -155,10 +158,11 @@ function(erts_add_make_tables FLAVOR)
                 -jit ${_jit_arg}
                 ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/atom.names
                 ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_dirty_bif.tab
-                ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/bif.tab
+                ${_bif_input}
         DEPENDS ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/atom.names
                 ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/bif.tab
                 ${CMAKE_SOURCE_DIR}/src/erts/emulator/beam/erl_dirty_bif.tab
+                ${_bif_input}
                 ${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/make_tables
         COMMENT "Generating atom and BIF tables for flavor ${FLAVOR}"
         VERBATIM

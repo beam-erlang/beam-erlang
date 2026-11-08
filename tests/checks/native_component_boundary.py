@@ -10,15 +10,17 @@ import sys
 import shutil
 
 from support.process import check, isolated_environment, run
+from support.bytecode import BASE_MODULES, STDLIB_MODULES
 
 
 CORE_MODULES = {"erlang", "erts_internal", "erts_code_purger",
                 "erts_dirty_process_signal_handler", "erts_literal_area_collector",
-                "erts_trace_cleaner", "atomics", "counters", "persistent_term"}
+                "beam_internal"}
 COMPONENTS = {"erl_tracer_nif": ("tracing", ["erl_tracer_nif.c"])}
 PRIVATE_IMPORTS = {}
 DRIVER_API = {"erl_errno_id", "set_busy_port", "set_port_control_flags"}
-NATIVE_API = {"beam_native_fail", "beam_native_stop_requested", "beam_native_report_cleanup", "beam_native_request_failure"}
+NATIVE_API = {"beam_native_fail", "beam_native_stop_requested", "beam_native_stack_has_space",
+              "beam_native_report_cleanup", "beam_native_request_failure"}
 
 
 def symbols(args, path, *options):
@@ -154,7 +156,7 @@ def main():
     parser.add_argument("--readelf", default="readelf")
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--compile-commands", type=Path, required=True)
-    parser.add_argument("--component", action="append", nargs=3, required=True,
+    parser.add_argument("--component", action="append", nargs=3, default=[],
                         metavar=("TARGET", "DIRECTORY", "LIBRARY"))
     parser.add_argument("--unit", action="append", nargs=3, required=True,
                         metavar=("TARGET", "DIRECTORY", "LIBRARY"))
@@ -164,6 +166,8 @@ def main():
     parser.add_argument("--base-inventory", type=Path, required=True)
     parser.add_argument("--runtime", action="append", nargs=3, required=True,
                         metavar=("TARGET", "LINK_RECORD", "LIBRARY"))
+    parser.add_argument("--runtime-static", type=Path, required=True)
+    parser.add_argument("--ar", required=True)
     parser.add_argument("--test-dir", type=Path, required=True)
     args = parser.parse_args()
     args.otool=shutil.which("otool")
@@ -176,10 +180,42 @@ def main():
     links = Path(link_record).read_text().splitlines()
     runtime = collections.Counter(symbols(args, runtime_path, "-g", "--defined-only"))
     runtime_exports = set(symbols(args, runtime_path, "-D", "-g", "--defined-only"))
+    check(not any(name.startswith(("ei_", "beam_etf_embed_", "beam_etf_compat_", "beam_etf_internal_")) for name in runtime_exports),
+          "runtime exports codec incorporation or ei symbols")
+    # Inspect the separate SDK payload's actual object dependency closure.
+    etf_list = list(args.compile_commands.parent.glob("ETFObjects-*.cmake"))
+    check(etf_list, "missing ETF object payload record")
+    etf_objects = re.search(r'set\(BEAM_ETF_BUILD_OBJECTS "([^"]+)"\)', etf_list[0].read_text())[1].split(";")
+    etf_defined, etf_undefined = set(), set()
+    for obj in etf_objects:
+        etf_defined.update(symbols(args, obj, "-g", "--defined-only"))
+        etf_undefined.update(symbols(args, obj, "-g", "-u"))
+    check(all(name.startswith(("beam_etf_embed_", "beam_etf_compat_")) for name in etf_defined),
+          "ETF payload defines an unqualified or VM symbol")
+    external = etf_undefined - etf_defined
+    check(not any(name.startswith(("ei_", "beam_", "erts_", "enif_", "pthread_")) or
+                  name in {"socket", "getaddrinfo", "gethostbyname", "connect"} for name in external),
+          f"ETF payload has a VM, thread or network dependency: {external}")
     codec_header = (args.source_dir / "include/beam/zlib.h").read_text()
     NATIVE_API.update(re.findall(r"\b(beam_zlib_\w+)\s*\([^;]*?\);", codec_header))
-    check(not any(name.startswith(("pcre2_", "_pcre2_")) for name in runtime_exports),
-          "libbeam exposes its ABI-incompatible private PCRE to host libraries")
+    # Inspect every symbol and archive member, including unexported and unlinked
+    # objects. A stripped export table alone cannot prove physical removal.
+    regex_prefixes = ("pcre2_", "_pcre2_", "beam_private_pcre_", "erts_dbg_pcre_",
+                      "erts_init_bif_re", "erts_re_set_loop_limit", "re_run_",
+                      "re_internal_run_", "re_compile_", "re_export_", "re_import_",
+                      "re_inspect_", "re_version_")
+    for image in (Path(runtime_path), args.runtime_static):
+        retained = {name for name in symbols(args, image, "--defined-only")
+                    if name.startswith(regex_prefixes)}
+        check(not retained, f"VM retains regex symbols in {image}: {retained}")
+    members = run([args.ar, "t", str(args.runtime_static)], cwd=args.test_dir,
+                  env=args.environment, timeout=10, text=True).stdout.splitlines()
+    check(not any("pcre" in name.lower() or "erl_bif_re." in name for name in members),
+          "VM archive retains PCRE or legacy regex objects")
+    needed, _ = dynamic_links(args, runtime_path)
+    check(not any("pcre" in name.lower() for name in needed), "VM links a PCRE library")
+    check(not (args.source_dir / "src/erts/emulator/pcre").exists(),
+          "VM retains the PCRE source tree")
     compression_header = (args.source_dir / "src/erts/emulator/zlib/zlib.h").read_text()
     compression_exports = set(re.findall(r"\bZEXPORT(?:VA)?\s+(\w+)\s*\(", compression_header))
     check("inflate" in compression_exports and "crc32" in compression_exports,
@@ -187,7 +223,7 @@ def main():
     check(not runtime_exports & compression_exports,
           "libbeam exposes private compression symbols to host libraries")
     targets = [component[0] for component in args.component]
-    check(targets == ["beam_erl_tracer_nif"],
+    check(targets == [],
           f"unexpected dynamic targets: {targets}")
     # Registry/loader dispatch functions are VM mechanisms, not NIF implementations.
     nif_dispatch = {"erl_nif_init", "erts_sys_ddll_load_nif_init", "erts_sys_ddll_call_nif_init"}
@@ -247,7 +283,7 @@ def main():
         public_symbols.update(re.findall(r"\b(beam_[A-Za-z0-9_]+)\s*\(", header.read_text()))
     public_symbols.update(name for name in runtime_exports if public_api(name))
     isolated_targets = {"beam_host_support.dir", "beam_file_component.dir",
-                        "beam_network_component.dir", "beam_zlib_component.dir"}
+                        "beam_network_component.dir", "beam_zlib_component.dir", "beam_tracing_component.dir"}
     for command in json.loads(args.compile_commands.read_text()):
         source, obj = command_paths(command)
         if not isolated_targets.intersection(obj.parts):
@@ -278,12 +314,14 @@ def main():
         check_extension_sources(args, commands, target, directory, owned_sources, owned_objects)
         check_extension_linkage(args, target, library, links, runtime_exports)
     unit_sources = {
+        "tracing": ["beam_trace_nif.c"],
         "zlib": ["zlib_nif.c"],
         "file": ["prim_buffer_nif.c", "prim_file_nif.c", "unix/unix_prim_file.c"],
         "network": ["prim_socket_nif.c", "socket_dbg.c", "socket_tarray.c",
                     "socket_util.c", "unix/unix_socket_syncio.c"],
     }
     unit_exports = {
+        "tracing": {"beam_library_descriptor_v1"},
         "zlib": {"beam_library_descriptor_v1", "beam_zlib_stream_count"},
         "file": {"beam_library_descriptor_v1", "beam_file_descriptor_count"},
         "network": {"beam_library_descriptor_v1", "beam_socket_count"},
@@ -370,7 +408,8 @@ def main():
     check(core.count("core_pre_loaded") == runtime["core_pre_loaded"] == 1,
           "runtime must contain one shared core preload table")
     inventories = {
-        "library": ["beam", "beam_list", "beam_map", "beam_bytes", "beam_text", "beam_format", "beam_time"],
+        "library": BASE_MODULES,
+        "stdlib": STDLIB_MODULES,
         "boot": ["beam_return_boot", "beam_boot"],
         "services": ["beam_startup", "beam_host", "beam_output", "beam_code"],
     }

@@ -2,6 +2,7 @@
 #ifndef BYTECODE_INPUT_H
 #define BYTECODE_INPUT_H
 #include <beam/sdk/inventories.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,15 +12,31 @@ enum { INPUT_BASE = 1, INPUT_BOOT = 2, INPUT_SERVICES = 4,
 
 /* Test-owned acquisition. Composition receives exactly the verified buffers. */
 typedef struct bytecode_input {
-    beam_module_spec modules[13];
-    char paths[13][4096];
+    beam_module_spec *modules;
+    char (*paths)[4096];
     size_t count;
 } bytecode_input;
 
 static void bytecode_input_release(bytecode_input *input)
 {
     for (size_t i = 0; i < input->count; ++i) free((void *)input->modules[i].bytes.data);
+    free(input->modules);
+    free(input->paths);
     memset(input, 0, sizeof(*input));
+}
+
+/* Explicit host policy after complete base verification: NETWORK owns these
+ * same producer artifacts in a combined composition. */
+static inline void bytecode_input_partition_network(bytecode_input *input)
+{
+    size_t kept = 0;
+    for (size_t i=0; i<input->count; ++i) {
+        if (!strcmp(input->modules[i].name,"beam_lists") ||
+            !strcmp(input->modules[i].name,"beam_maps"))
+            free((void *)input->modules[i].bytes.data);
+        else input->modules[kept++] = input->modules[i];
+    }
+    input->count = kept;
 }
 
 static beam_status bytecode_input_read(bytecode_input *input, const char *prefix,
@@ -35,6 +52,19 @@ static beam_status bytecode_input_read(bytecode_input *input, const char *prefix
     beam_status status = BEAM_RUNTIME_NOT_FOUND;
     memset(input, 0, sizeof(*input));
     if (!selection || (selection & ~INPUT_RETURNING)) return BEAM_INVALID_ARGUMENT;
+    size_t capacity = 0;
+    for (size_t inventory = 0; inventory < 3; ++inventory) {
+        if (!(selection & (1u << inventory))) continue;
+        size_t count = inventories[inventory]->bytecode->count;
+        if (count > SIZE_MAX - capacity) return BEAM_OUT_OF_MEMORY;
+        capacity += count;
+    }
+    input->modules = (beam_module_spec *)calloc(capacity, sizeof(*input->modules));
+    input->paths = (char (*)[4096])calloc(capacity, sizeof(*input->paths));
+    if (!input->modules || !input->paths) {
+        status = BEAM_OUT_OF_MEMORY;
+        goto failed;
+    }
     for (size_t inventory = 0; inventory < 3; ++inventory) {
         if (!(selection & (1u << inventory))) continue;
         if (snprintf(path, sizeof(path), "%s/%s", prefix, inventories[inventory]->manifest_path) >= (int)sizeof(path)) goto failed;

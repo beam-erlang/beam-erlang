@@ -4,15 +4,15 @@
 
 start() ->
     Parent = self(),
-    spawn(fun() -> coordinator(Parent) end),
+    erlang:spawn(fun() -> coordinator(Parent) end),
     receive ready -> ok end.
 
 coordinator(Parent) ->
     true = register(scheduler_changers, self()),
     Owner = self(),
-    Workers = [spawn_monitor(fun() -> normal_start(Owner) end),
-               spawn_monitor(fun() -> dirty_start(Owner) end),
-               spawn_monitor(fun() -> dirty_start(Owner) end)],
+    Workers = [erlang:spawn_monitor(fun() -> normal_start(Owner) end),
+               erlang:spawn_monitor(fun() -> dirty_start(Owner) end),
+               erlang:spawn_monitor(fun() -> dirty_start(Owner) end)],
     ready(3),
     Parent ! ready,
     receive {stop, Caller} ->
@@ -30,23 +30,23 @@ down([{Pid, Ref} | Rest]) ->
     receive {'DOWN', Ref, process, Pid, killed} -> down(Rest) end.
 
 normal_start(Owner) ->
-    erlang:system_flag(schedulers_online, 4),
+    beam:system_flag(schedulers_online, 4),
     Owner ! ready,
     normal_changes().
 
 normal_changes() ->
-    erlang:system_flag(schedulers_online, 8),
-    erlang:system_flag(schedulers_online, 4),
+    beam:system_flag(schedulers_online, 8),
+    beam:system_flag(schedulers_online, 4),
     normal_changes().
 
 dirty_start(Owner) ->
-    erlang:system_flag(dirty_cpu_schedulers_online, 1),
+    beam:system_flag(dirty_cpu_schedulers_online, 1),
     Owner ! ready,
     dirty_changes().
 
 dirty_changes() ->
-    erlang:system_flag(dirty_cpu_schedulers_online, 2),
-    erlang:system_flag(dirty_cpu_schedulers_online, 1),
+    beam:system_flag(dirty_cpu_schedulers_online, 2),
+    beam:system_flag(dirty_cpu_schedulers_online, 1),
     dirty_changes().
 
 stop() ->
@@ -57,6 +57,6 @@ stop() ->
     receive {'DOWN', Ref, process, Pid, normal} -> ok end.
 
 check() ->
-    4 = erlang:system_info(schedulers_online),
-    3 = erlang:system_info(dirty_cpu_schedulers_online),
+    4 = beam:system_info(schedulers_online),
+    3 = beam:system_info(dirty_cpu_schedulers_online),
     ok.

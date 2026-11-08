@@ -36,6 +36,7 @@
 #include "erl_process.h"
 #include "error.h"
 #include "bif.h"
+#include "beam_builtin_catalog.h"
 #include "big.h"
 #include "dist.h"
 #include "erl_version.h"
@@ -5561,9 +5562,11 @@ void erts_init_bif(void)
 						  am_flush_monitor_messages,
 						  3);
 
-    erts_convert_time_unit_trap = erts_export_put(am_erlang,
-						  am_convert_time_unit,
-						  3);
+    if (beam_core_export_selected("erlang", "convert_time_unit", 3))
+        erts_convert_time_unit_trap = erts_export_put(am_erlang, am_convert_time_unit, 3);
+    else
+        erts_convert_time_unit_trap = erts_export_put(am_erts_internal,
+            erts_atom_put((const byte *)"clock_convert_time_unit", 23, ERTS_ATOM_ENC_UTF8, 0), 3);
 
     set_cpu_topology_trap = erts_export_put(am_erlang,
 					    am_set_cpu_topology,

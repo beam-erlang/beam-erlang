@@ -162,7 +162,7 @@ operation(Action, Args, Deadline) ->
     NativeDeadline = case Deadline of
         infinity -> infinity;
         _ -> max(-9223372036854775808, min(9223372036854775807,
-                 erlang:convert_time_unit(Deadline, native, nanosecond)))
+                 erts_internal:clock_convert_time_unit(Deadline, native, nanosecond)))
     end,
     case prim_file:beam_operation(Action, Args, NativeDeadline) of
         {error, Reason, Count} -> {error, (file_error(Reason))#{bytes_written => Count, progress_unknown => false}};

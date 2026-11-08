@@ -21,6 +21,10 @@
 // %CopyrightEnd%
 //
 
+pred.is_mfa_instruction(M, F, A) {
+    return beam_builtin_selected_instruction(M.val,F.val,A.val) >= 0;
+}
+
 pred.is_mfa_bif(M, F, A) {
     const Export *e;
 
@@ -34,132 +38,43 @@ pred.is_mfa_bif(M, F, A) {
     return 0;
 }
 
-pred.never_fails(Bif) {
-    static Eterm nofail_bifs[] =
-	{am_Neqeq,
-	 am_Lt,
-	 am_Neq,
-	 am_Eq,
-	 am_Le,
-	 am_Eqeq,
-	 am_Gt,
-	 am_Ge,
-	 am_is_atom,
-	 am_is_boolean,
-	 am_is_binary,
-	 am_is_bitstring,
-	 am_is_float,
-	 am_is_integer,
-	 am_is_list,
-	 am_is_map,
-	 am_is_number,
-	 am_is_pid,
-	 am_is_port,
-	 am_is_reference,
-	 am_is_tuple,
-	};
-
-    Uint index = Bif.val;
-
-    if (Bif.type == TAG_u && index < S->beam.imports.count) {
-	BeamFile_ImportEntry *entry = &S->beam.imports.entries[index];
-	int i;
-
-	if (entry->module != am_erlang) {
-	    return 0;
-	}
-
-	if (entry->function == am_is_function) {
-	    /* Note that is_function/2 may fail. */
-	    return entry->arity == 1;
-	}
-
-	for (i = 0; i < sizeof(nofail_bifs) / sizeof(nofail_bifs[0]); i++) {
-	    if (entry->function == nofail_bifs[i]) {
-		return 1;
-	    }
-	}
-    }
-    return 0;
-}
-
-pred.is_eq_exact_bif(Bif) {
-    Uint index = Bif.val;
-
-    if (Bif.type == TAG_u && index < S->beam.imports.count) {
-	BeamFile_ImportEntry *entry = &S->beam.imports.entries[index];
-
-	return entry->module == am_erlang && entry->function == am_Eq && entry->arity == 2;
-    }
-    return 0;
-}
-
-pred.is_ne_exact_bif(Bif) {
-    Uint index = Bif.val;
-
-    if (Bif.type == TAG_u && index < S->beam.imports.count) {
-	BeamFile_ImportEntry *entry = &S->beam.imports.entries[index];
-
-	return entry->module == am_erlang && entry->function == am_Neq && entry->arity == 2;
-    }
-    return 0;
-}
-
 pred.consecutive_words(S1, D1, S2, D2) {
     return S1.type == S2.type && S1.val + 1 == S2.val &&
 	D1.type == D2.type && D1.val + 1 == D2.val;
-}
-
-pred.is_ge_bif(Bif) {
-    Uint index = Bif.val;
-
-    if (Bif.type == TAG_u && index < S->beam.imports.count) {
-	BeamFile_ImportEntry *entry = &S->beam.imports.entries[index];
-
-	return entry->module == am_erlang && entry->function == am_Ge && entry->arity == 2;
-    }
-    return 0;
-}
-
-pred.is_lt_bif(Bif) {
-    Uint index = Bif.val;
-
-    if (Bif.type == TAG_u && index < S->beam.imports.count) {
-	BeamFile_ImportEntry *entry = &S->beam.imports.entries[index];
-
-	return entry->module == am_erlang && entry->function == am_Lt && entry->arity == 2;
-    }
-    return 0;
-}
-
-pred.is_exit_bif(Bif) {
-    BeamFile_ImportEntry *import;
-
-    if (Bif.type != TAG_u || Bif.val >= S->beam.imports.count) {
-        return 0;
-    }
-
-    import = &S->beam.imports.entries[Bif.val];
-    if (import->module != am_erlang) {
-        return 0;
-    } else {
-        switch (import->function) {
-        case am_error:
-            return 1 <= import->arity && import->arity <= 3;
-        case am_exit:
-            return import->arity == 1;
-        case am_throw:
-            return import->arity == 1;
-        case am_nif_error:
-            return import->arity == 1 || import->arity == 2;
-        default:
-            return 0;
-        }
-    }
 }
 
 // Test whether we are loading a module with line-breakpoint support
 pred.instrumenting_line_breakpoints() {
     return ERTS_DEBUGGER_IS_ENABLED_IN(S->load_hdr->debugger_flags,
                                        ERTS_DEBUGGER_LINE_BREAKPOINTS);
+}
+
+pred.never_fails(Bif) {
+    if (Bif.type != TAG_u || Bif.val >= S->beam.imports.count) return 0;
+    return (beam_builtin_entry_traits(S->primitive_imports[Bif.val]) & BEAM_NATIVE_NOFAIL) != 0;
+}
+
+pred.is_eq_exact_bif(Bif) {
+    if (Bif.type != TAG_u || Bif.val >= S->beam.imports.count) return 0;
+    return (beam_builtin_entry_traits(S->primitive_imports[Bif.val]) & BEAM_NATIVE_EQ_EXACT) != 0;
+}
+
+pred.is_ne_exact_bif(Bif) {
+    if (Bif.type != TAG_u || Bif.val >= S->beam.imports.count) return 0;
+    return (beam_builtin_entry_traits(S->primitive_imports[Bif.val]) & BEAM_NATIVE_NE_EXACT) != 0;
+}
+
+pred.is_ge_bif(Bif) {
+    if (Bif.type != TAG_u || Bif.val >= S->beam.imports.count) return 0;
+    return (beam_builtin_entry_traits(S->primitive_imports[Bif.val]) & BEAM_NATIVE_GE) != 0;
+}
+
+pred.is_lt_bif(Bif) {
+    if (Bif.type != TAG_u || Bif.val >= S->beam.imports.count) return 0;
+    return (beam_builtin_entry_traits(S->primitive_imports[Bif.val]) & BEAM_NATIVE_LT) != 0;
+}
+
+pred.is_exit_bif(Bif) {
+    if (Bif.type != TAG_u || Bif.val >= S->beam.imports.count) return 0;
+    return (beam_builtin_entry_traits(S->bif_imports[Bif.val]) & BEAM_NATIVE_NO_RETURN) != 0;
 }

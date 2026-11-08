@@ -24,7 +24,9 @@ int beam_test_host_state(pid_t pid, int *alive, int *zombie);
 #ifdef BEAM_TEST_FILE_RELATIVE
 static inline const char *beam_test_component(const char *name) {
     return !strcmp(name,"file") ? BEAM_TEST_FILE_RELATIVE :
-        !strcmp(name,"network") ? BEAM_TEST_NETWORK_RELATIVE : BEAM_TEST_ZLIB_RELATIVE;
+        !strcmp(name,"network") ? BEAM_TEST_NETWORK_RELATIVE :
+        !strcmp(name,"zlib") ? BEAM_TEST_ZLIB_RELATIVE :
+        !strcmp(name,"tracing") ? BEAM_TEST_TRACING_RELATIVE : NULL;
 }
 #endif
 #endif

@@ -4,6 +4,7 @@ import json
 import os
 import re
 
+from support.bytecode import STDLIB_MODULES
 from support.process import check
 from support.artifacts import relative as artifact_relative
 
@@ -11,7 +12,7 @@ from support.artifacts import relative as artifact_relative
 def check_installation(prefix, bundled=True):
     required = (
         "bin/beam", "bin/beam-launch", artifact_relative(prefix,"runtime"), artifact_relative(prefix,"runtime.static"), "libexec/beam/erl_child_setup",
-        "include/beam/beam.h", "include/beam/runtime.h", "include/beam/boot.h",
+        "include/beam/beam.h", "include/beam/runtime.h", "include/beam/process.h", "include/beam/beam_enif.h", "include/beam/boot.h",
         "include/beam/native.h", "include/beam/zlib.h", "include/beam/sdk/bytecode.h", "include/beam/sdk/inventories.h",
         "share/beam/sdk/beam_bytecode_verify.c", "lib/cmake/BEAM/BEAMConfig.cmake",
     )
@@ -53,7 +54,8 @@ def check_installation(prefix, bundled=True):
           {"beam_host.beam"},
           "installation contains duplicated component module artifacts")
     inventories = {
-        "library": ["beam", "beam_list", "beam_map", "beam_bytes", "beam_text", "beam_format", "beam_time"],
+        "library": ["beam", "beam_format", "beam_time", "beam_atomics", "beam_counters", "beam_persistent_term", "beam_binary", "beam_lists", "beam_maps", "beam_records", "beam_ets", "beam_string", "beam_unicode", "beam_runtime_unicode_util", "beam_math", "beam_ddll", "beam_debugger"],
+        "stdlib": list(STDLIB_MODULES),
         "boot": ["beam_return_boot", "beam_boot"],
         "services": ["beam_startup", "beam_host", "beam_output", "beam_code"],
         "startup": ["beam_startup"], "host": ["beam_host"],
@@ -65,24 +67,22 @@ def check_installation(prefix, bundled=True):
               f"wrong ordinary {name} manifest")
         check({p.relative_to(inventory).as_posix() for p in inventory.rglob("*") if p.is_file()} ==
               {"modules.txt"} | {f"ebin/{module}.beam" for module in modules}, f"wrong ordinary {name} files")
-    for name in ("base", "boot", "services"):
+    for name in ("base", "boot", "services", "stdlib"):
         check(not (prefix / f"lib/libbeam-{name}.so").exists(), f"ordinary {name} has a native wrapper")
     root = prefix / "lib/beam/runtime/beam"
-    modules = {"prim_zip", "erl_tracer"}
+    modules = {"prim_zip"}
     inventories = {
         "run": {"beam_source_run"},
         "application": {"beam_application_run"},
         "cli": {"beam_run_io", "error_handler", "io", "io_lib", "io_lib_pretty", "erl_scan",
-                "binary", "io_lib_format", "io_lib_fread", "records", "string", "unicode",
-                "unicode_util", "lists", "maps"},
+                "io_lib_format", "io_lib_fread", "beam_runtime_string_legacy"},
         "interactive": {"beam_interactive", "shell", "shell_default", "erl_eval", "erl_parse",
-            "erl_pp", "erl_features", "erl_lint", "erl_expand_records", "dict", "digraph",
-            "digraph_utils", "erl_anno", "erl_bits", "erl_error", "erl_internal", "erl_stdlib_errors",
-            "erl_posix_msg", "ets", "eval_bits", "math", "gb_sets", "gb_trees", "orddict", "ordsets",
-            "otp_internal", "proplists", "queue", "sets", "sofs", "prim_eval"},
+            "erl_pp", "erl_features", "erl_lint", "erl_expand_records",
+             "erl_anno", "erl_bits", "erl_error", "erl_internal", "erl_stdlib_errors",
+            "erl_posix_msg", "ms_transform", "eval_bits",  "beam_runtime_orddict",
+            "otp_internal", "beam_runtime_proplists", "beam_runtime_queue", "beam_runtime_sets",  "prim_eval"},
     }
-    expected = ({"modules.txt"} | {f"ebin/{m}.beam" for m in modules} |
-                {"priv/erl_tracer.so"})
+    expected = {"modules.txt"} | {f"ebin/{m}.beam" for m in modules}
     for name, module_names in inventories.items():
         inventory = (root / name / "modules.txt").read_text().splitlines()
         check(len(inventory) == len(module_names) and set(inventory) == module_names,
@@ -91,11 +91,13 @@ def check_installation(prefix, bundled=True):
     accepted = (expected,)
     actual = {path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()}
     check(actual in accepted, f"unexpected installed BEAM component artifacts: {sorted(actual)}")
-    # check_runtime_artifacts has already verified the exact nine source IDs and hashes.
+    # check_runtime_artifacts has already verified the exact six source IDs and hashes.
     artifacts = json.loads((prefix / "lib/beam/runtime-artifacts.json").read_text())["artifacts"]
     inspection_sources = {entry["path"] for entry in artifacts.values() if entry["kind"] == "core-source"}
+    codec_objects = {entry["path"] for entry in artifacts.values() if entry["kind"] == "codec-object"}
     for path in prefix.rglob("*"):
-        check(path in {prefix / artifact_relative(prefix, name) for name in ("runtime.static", "host.static", "library.file.static", "library.network.static", "library.zlib.static")}
+        check(path in {prefix / artifact_relative(prefix, name) for name in ("runtime.static", "host.static", "library.file.static", "library.network.static", "library.zlib.static", "library.tracing.static")}
+              or path.relative_to(prefix).as_posix() in codec_objects
               or path.suffix not in {".o", ".obj", ".a"},
               f"installation contains development native objects: {path}")
         relative = path.relative_to(prefix)
@@ -130,8 +132,10 @@ def check_runtime_artifacts(prefix):
     expected = {
         "sdk.pkgconfig": ("consumer-metadata", "lib/pkgconfig/beam.pc", []),
         "api.beam": ("embedding-header", "include/beam/beam.h", ["api.runtime"]),
+        "api.beam_enif": ("embedding-header", "include/beam/beam_enif.h", ["header.erl_nif"]),
         "api.zlib": ("embedding-header", "include/beam/zlib.h", []),
         "api.runtime": ("embedding-header", "include/beam/runtime.h", []),
+        "api.process": ("embedding-header", "include/beam/process.h", ["api.runtime", "api.beam_enif"]),
         "api.boot": ("embedding-header", "include/beam/boot.h", ["api.host"]),
         "api.host": ("embedding-header", "include/beam/host.h", ["api.library", "api.native_image"]),
         "api.library": ("embedding-header", "include/beam/library.h", ["api.runtime"]),
@@ -165,9 +169,28 @@ def check_runtime_artifacts(prefix):
         "link.host.configuration": ("link-support", host_configurations[0].relative_to(prefix).as_posix(), []),
         "helper.child_setup": ("executable-helper", "libexec/beam/erl_child_setup", []),
     }
+    expected["api.beam_etf"] = ("embedding-header", "include/beam/beam_etf.h", [])
+    expected["api.etf"] = ("embedding-header", "include/beam/sdk/etf.h", ["api.beam_etf"])
+    expected["sdk.etf"] = ("consumer-metadata", "lib/cmake/BEAM/support/BEAMETF.cmake", [])
+    expected["link.etf"] = ("link-support", "lib/cmake/BEAM/BEAMETFTargets.cmake", ["api.etf", "api.beam_etf", "sdk.etf"])
+    if "sdk.etf.crt" in manifest["artifacts"]:
+        expected["sdk.etf.crt"] = ("consumer-metadata", f"lib/beam/etf/{manifest['build-id']}/BEAMETFCRT.h", [])
+        expected["link.etf"][2].append("sdk.etf.crt")
+    configs = list((prefix / "lib/cmake/BEAM").glob("BEAMETFTargets-*.cmake"))
+    check(len(configs) == 1, "expected one ETF object configuration")
+    expected["link.etf.configuration"] = ("link-support", configs[0].relative_to(prefix).as_posix(), ["link.etf"])
+    objects = {name: entry for name, entry in manifest["artifacts"].items() if name.startswith("etf.object.")}
+    check(objects, "missing codec object payload")
+    for name, entry in objects.items():
+        check(entry["path"].startswith(f"lib/beam/etf/{manifest['build-id']}/"), "codec object outside selected SDK payload")
+        expected[name] = ("codec-object", entry["path"], [])
+    expected["etf.objects"] = ("codec-manifest", "lib/cmake/BEAM/support/BEAMETF.cmake", ["link.etf.configuration", *objects])
+    for module in STDLIB_MODULES:
+        expected[f"library.stdlib.{module}"] = ("bytecode", f"lib/beam/stdlib/ebin/{module}.beam", [])
+    expected["library.stdlib.manifest"] = ("bytecode-manifest", "lib/beam/stdlib/modules.txt", [])
+    expected["link.library.stdlib.expectations"] = ("consumer-metadata", "lib/cmake/BEAM/support/BEAMStdlibInventory.cmake", [])
     core = {"erts_code_purger", "erlang", "erts_internal", "erts_literal_area_collector",
-            "erts_trace_cleaner", "erts_dirty_process_signal_handler",
-            "atomics", "counters", "persistent_term"}
+            "beam_internal", "erts_dirty_process_signal_handler"}
     check({p.relative_to(prefix / "lib/beam/core").as_posix()
            for p in (prefix / "lib/beam/core").rglob("*") if p.is_file()} ==
           {f"ebin/{name}.beam" for name in core} | {f"src/{name}.erl" for name in core}, "unexpected embedded-core inventory")
@@ -182,7 +205,7 @@ def check_runtime_artifacts(prefix):
     }.items():
         expected[f"header.{name}"] = ("native-header", f"include/beam/nif/{name}.h", dependencies)
     expected["header.beam_native"] = ("native-header", "include/beam/native.h", [])
-    for name in ("file", "network", "zlib"):
+    for name in ("file", "network", "zlib", "tracing"):
         expected[f"library.{name}.shared"] = ("native-library", artifact_relative(prefix,f"library.{name}.shared"), ["runtime"])
         expected[f"library.{name}.static"] = ("native-library-static", f"lib/libbeam-{name}.a",
             [f"library.{name}.header", f"link.library.{name}.static", f"link.library.{name}.static.configuration"])
@@ -194,7 +217,7 @@ def check_runtime_artifacts(prefix):
             expected[f"link.library.{name}.{form}"] = ("link-support", f"lib/cmake/BEAM/{stem}.cmake", [])
             expected[f"link.library.{name}.{form}.configuration"] = ("link-support", configs[0].relative_to(prefix).as_posix(), [])
     licenses = {"license.BEAM": "LICENSE.txt", "license.authors": "AUTHORS", "license.zlib": "zlib/LICENSE.txt"}
-    for name in ("asmjit/LICENSE.md", "ryu/LICENSE-Apache2", "ryu/LICENSE-Boost", "ryu/xcharconv_ryu.h.sha.license", "pcre/LICENCE"):
+    for name in ("asmjit/LICENSE.md", "ryu/LICENSE-Apache2", "ryu/LICENSE-Boost", "ryu/xcharconv_ryu.h.sha.license"):
         licenses["license."+name] = name
     root_notices = ['BSD-2-Clause.txt', 'BSD-3-Clause.txt', 'LicenseRef-IETF-MIB.txt', 'LicenseRef-RSA-PKCS3.txt', 'LicenseRef-RSA-PKCS5v2-0.txt', 'LicenseRef-scancode-ietf-trust.txt', 'LicenseRef-scancode-ietf.txt', 'LicenseRef-scancode-w3c-docs-19990405.txt', 'LicenseRef-scancode-wxwindows-free-doc-3.txt', 'MIT.txt', 'SGI-B-2.0.txt', 'W3C-19980720.txt']
     for name in root_notices:

@@ -4217,3 +4217,27 @@ erts_ihash_t hashmap_bitcount(erts_ihash_t x) {
     return x >> (sizeof(erts_ihash_t) - 1) * CHAR_BIT;
 }
 #endif
+
+/* Modern public adapters retain map-first arguments and badarg errors. */
+BIF_RETTYPE map_find_modern_2(BIF_ALIST_2)
+{
+    const Eterm *value;
+    Eterm *hp;
+    if (!is_map(BIF_ARG_1)) {
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    value = erts_maps_get(BIF_ARG_2, BIF_ARG_1);
+    if (!value) {
+        BIF_RET(am_not_found);
+    }
+    hp = HAlloc(BIF_P, 3);
+    BIF_RET(TUPLE2(hp, am_ok, *value));
+}
+
+BIF_RETTYPE map_put_modern_3(BIF_ALIST_3)
+{
+    if (!is_map(BIF_ARG_1)) {
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    BIF_RET(erts_maps_put(BIF_P, BIF_ARG_2, BIF_ARG_3, BIF_ARG_1));
+}

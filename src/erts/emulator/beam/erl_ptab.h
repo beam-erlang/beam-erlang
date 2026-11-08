@@ -51,7 +51,9 @@ typedef struct ErtsTracee_ {
     ErtsTracerRef *first_ref;
 } ErtsTracee;
 
-#define ERTS_TRACER_MODULE(T) 	(is_internal_pid(T) ? am_erl_tracer : CAR(list_val(T)))
+extern Eterm erts_default_tracer_module;
+
+#define ERTS_TRACER_MODULE(T) 	(is_internal_pid(T) ? erts_default_tracer_module : CAR(list_val(T)))
 #define ERTS_TRACER_STATE(T) 	(is_internal_pid(T) ? T : CDR(list_val(T)))
 
 #define ERTS_P_LINKS(P)		((P)->common.u.alive.links)

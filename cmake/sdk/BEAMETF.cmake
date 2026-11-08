@@ -1,0 +1,26 @@
+# Embed the verified codec in an archive; this adds no VM linkage.
+function(beam_target_etf_objects target)
+    if(NOT TARGET "${target}" OR NOT TARGET BEAM::ETFObjects)
+        message(FATAL_ERROR "beam_target_etf_objects requires a target and the ETF component")
+    endif()
+    get_target_property(_type "${target}" TYPE)
+    if(NOT _type STREQUAL "STATIC_LIBRARY")
+        message(FATAL_ERROR "ETF objects must be incorporated in a static archive")
+    endif()
+    get_target_property(_already "${target}" BEAM_ETF_OBJECTS_ADDED)
+    if(_already)
+        return()
+    endif()
+    beam_get_runtime_artifact(_verified NAME etf.objects)
+    # An SDK replaced in place may preserve object/header timestamps older than
+    # the archive. Bind adapter recompilation to the verified identity too; the
+    # installed object paths themselves contain that identity for relinking.
+    target_compile_definitions("${target}" PRIVATE "BEAM_ETF_SDK_BUILD_ID=\"${BEAM_SDK_BUILD_ID}\"")
+    if(MSVC)
+        beam_get_runtime_artifact(_crt_check NAME sdk.etf.crt)
+        target_compile_options("${target}" PRIVATE "/FI${_crt_check}")
+    endif()
+    target_sources("${target}" PRIVATE $<TARGET_OBJECTS:BEAM::ETFObjects>)
+    target_link_libraries("${target}" PRIVATE BEAM::ETFObjects)
+    set_property(TARGET "${target}" PROPERTY BEAM_ETF_OBJECTS_ADDED TRUE)
+endfunction()

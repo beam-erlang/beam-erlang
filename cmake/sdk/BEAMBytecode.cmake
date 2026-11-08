@@ -3,7 +3,7 @@
 include_guard(GLOBAL)
 
 function(beam_check_bytecode_inventory inventory)
-    if(NOT inventory MATCHES "^(base|boot|services|startup|host|output|code)$")
+    if(NOT inventory MATCHES "^(base|boot|services|startup|host|output|code|stdlib)$")
         message(FATAL_ERROR "Unknown ordinary bytecode inventory: ${inventory}")
     endif()
     get_filename_component(_prefix "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../../.." ABSOLUTE)
@@ -42,7 +42,7 @@ function(beam_target_bytecode_verifier target)
     cmake_parse_arguments(PARSE_ARGV 1 VERIFY "" "" "INVENTORIES")
     if(NOT TARGET "${target}" OR VERIFY_UNPARSED_ARGUMENTS OR
        VERIFY_KEYWORDS_MISSING_VALUES OR NOT VERIFY_INVENTORIES)
-        message(FATAL_ERROR "beam_target_bytecode_verifier requires a target and INVENTORIES base, boot and/or services")
+        message(FATAL_ERROR "beam_target_bytecode_verifier requires a target and INVENTORIES with explicit ordinary inventory names")
     endif()
     foreach(_inventory IN LISTS VERIFY_INVENTORIES)
         beam_check_bytecode_inventory("${_inventory}")

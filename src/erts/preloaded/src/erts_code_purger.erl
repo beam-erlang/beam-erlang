@@ -44,27 +44,44 @@ wait_for_request() ->
               erlang:hibernate(?MODULE,wait_for_request,[])
       end, []).
 
-handle_request({purge, Mod, From, Ref}, Reqs) when is_atom(Mod), is_pid(From) ->
+handle_request(Msg, Reqs) ->
+    case erts_internal:purge_module(false, beam_host_begin) of
+        false ->
+            NewReqs = handle_request_1(Msg, Reqs),
+            true = erts_internal:purge_module(false, beam_host_finish),
+            check_requests(NewReqs);
+        {Mod, From} ->
+            {Res, NewReqs} = do_soft_purge_host(Mod, Reqs),
+            %% Transfer admission to the selected ordinary request before
+            %% publishing the host result, preserving its place in the queue.
+            true = erts_internal:purge_module(Res, beam_host_reply),
+            From ! beam_host_purge,
+            NewerReqs = handle_request_1(Msg, NewReqs),
+            true = erts_internal:purge_module(false, beam_host_finish),
+            check_requests(NewerReqs)
+    end.
+
+handle_request_1({purge, Mod, From, Ref}, Reqs) when is_atom(Mod), is_pid(From) ->
     {Res, NewReqs} = do_purge(Mod, Reqs),
     From ! {reply, purge, Res, Ref},
-    check_requests(NewReqs);
-handle_request({soft_purge, Mod, From, Ref}, Reqs) when is_atom(Mod), is_pid(From) ->
+    NewReqs;
+handle_request_1({soft_purge, Mod, From, Ref}, Reqs) when is_atom(Mod), is_pid(From) ->
     {Res, NewReqs} = do_soft_purge(Mod, Reqs),
     From ! {reply, soft_purge, Res, Ref},
-    check_requests(NewReqs);
-handle_request({finish_after_on_load, {Mod,Keep}, From, Ref}, Reqs)
+    NewReqs;
+handle_request_1({finish_after_on_load, {Mod,Keep}, From, Ref}, Reqs)
   when is_atom(Mod), is_boolean(Keep), is_pid(From) ->
     NewReqs = do_finish_after_on_load(Mod, Keep, Reqs),
     From ! {reply, finish_after_on_load, ok, Ref},
-    check_requests(NewReqs);
-handle_request({test_purge, Mod, From, Type, Ref}, Reqs) when is_atom(Mod), is_pid(From) ->
+    NewReqs;
+handle_request_1({test_purge, Mod, From, Type, Ref}, Reqs) when is_atom(Mod), is_pid(From) ->
     NewReqs = do_test_purge(Mod, From, Type, Ref, Reqs),
-    check_requests(NewReqs);
-handle_request({change_prio, From, Ref, Prio}, Reqs) ->
+    NewReqs;
+handle_request_1({change_prio, From, Ref, Prio}, Reqs) ->
     change_prio(From, Ref, Prio),
-    check_requests(Reqs);    
-handle_request(_Garbage, Reqs) ->
-    check_requests(Reqs).
+    Reqs;
+handle_request_1(_Garbage, Reqs) ->
+    Reqs.
 
 check_requests([]) ->
     wait_for_request();
@@ -149,6 +166,21 @@ do_soft_purge(Mod, Reqs) ->
 	    {PurgeOp, NewReqs} = check_proc_code(erlang:processes_iterator(),
 						 Mod, false, Reqs),
 	    {erts_internal:purge_module(Mod, PurgeOp), NewReqs}
+    end.
+
+%% A host request has already reserved the native admission gate. Unlike the
+%% ordinary OTP request, it must not queue for staging permission that could
+%% depend on a later action by the blocked host owner.
+do_soft_purge_host(Mod, Reqs) ->
+    case erts_internal:purge_module(Mod, beam_host_prepare) of
+        false ->
+            {true, Reqs};
+        true ->
+            {PurgeOp, NewReqs} = check_proc_code(erlang:processes_iterator(),
+                                                Mod, false, Reqs),
+            {erts_internal:purge_module(Mod, PurgeOp), NewReqs};
+        Status ->
+            {Status, Reqs}
     end.
 
 %% finish_after_on_load(Module, Keep)

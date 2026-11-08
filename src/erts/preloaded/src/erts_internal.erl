@@ -32,7 +32,7 @@
 -module(erts_internal).
 -moduledoc false.
 
--export([await_port_send_result/3]).
+-export([await_port_send_result/3, clock_convert_time_unit/3]).
 -export([vm_context/0, filename_to_native/1, filename_from_native/1,
          filename_normalize_utf8/1, filename_is_translatable/1]).
 -export([cmp_term/2]).
@@ -390,9 +390,12 @@ wait_release_literal_area_switch(WaitMsg) ->
     receive WaitMsg -> ok end,
     erts_literal_area_collector:release_area_switch().
 
--spec purge_module(Module, Op) -> boolean() when
+-spec purge_module(Module, Op) -> boolean() | busy | unsupported | undefined |
+                                   {module(), pid()} when
       Module :: module(),
-      Op :: 'prepare' | 'prepare_on_load' | 'abort' | 'complete'.
+      Op :: 'prepare' | 'prepare_on_load' | 'abort' | 'complete' |
+            'beam_host_admit' | 'beam_host_begin' | 'beam_host_finish' |
+            'beam_host_prepare' | 'beam_host_reply' | 'beam_host_result'.
 purge_module(_Module, _Op) ->
     erlang:nif_error(undefined).
 
@@ -957,37 +960,8 @@ ets_raw_next(_Tab, _Key) ->
       Tab :: ets:table(),
       BinInfo :: [{non_neg_integer(), non_neg_integer(), non_neg_integer()}].
 
-ets_info_binary(Tab) ->
-    try
-        erts_internal:ets_super_user(true),
-        ets:safe_fixtable(Tab, true),
-        ets_info_binary_iter(Tab, erts_internal:ets_raw_first(Tab), [])
-    catch
-        C:R:S ->
-            ets_info_binary_error(Tab, C, R, S)
-    after
-        ets:safe_fixtable(Tab, false),
-        erts_internal:ets_super_user(false)
-    end.
-    
-ets_info_binary_error(Tab, C, R, []) ->
-    erlang:raise(C, R, [{ets, info, [Tab, binary], []}]);
-ets_info_binary_error(Tab, C, R, [SF|SFs]) when
-      element(1, SF) == erts_internal,
-      element(2, SF) == ets_info_binary ->
-    erlang:raise(C, R, [{ets, info, [Tab, binary], []}|SFs]);
-ets_info_binary_error(Tab, C, R, [_SF|SFs]) ->
-    ets_info_binary_error(Tab, C, R, SFs).
-
-ets_info_binary_iter(_Tab, '$end_of_table', Acc) ->
-    Acc;
-ets_info_binary_iter(Tab, Key, Acc) ->
-    NewAcc = case erts_internal:ets_lookup_binary_info(Tab, Key) of
-                 [] -> Acc;
-                 [BI] -> [BI|Acc];
-                 [_|_] = BIL -> BIL ++ Acc
-             end,
-    ets_info_binary_iter(Tab, erts_internal:ets_raw_next(Tab, Key), NewAcc).
+ets_info_binary(_Tab) ->
+    erlang:nif_error(undef).
 
 -spec get_internal_state_blocked(Arg :: term()) -> term().
 
@@ -1011,12 +985,16 @@ get_internal_state_blocked(Arg) ->
 spawn_request(_Module, _Function, _Args, _Opts) ->
     erlang:nif_error(undef).
 
--spec spawn_init({Module, Function, Args}) -> Res when
+-spec spawn_init({Module, Function, Args} | {Fun, Args}) -> Res when
       Module :: module(),
       Function :: atom(),
       Args :: [term()],
+      Fun :: function() | {module(), atom()},
       Res :: term().
 
+%% Internal fun entry when the host has not published canonical apply/2.
+spawn_init({Fun, Args}) ->
+    apply(Fun, Args);
 spawn_init({M, F, A}) ->
     apply(M, F, A).
 
@@ -1140,23 +1118,15 @@ list_to_integer(_List, _Base) ->
 -spec dynamic_node_name() -> boolean().
 
 dynamic_node_name() ->
-    case persistent_term:get({?MODULE, dynamic_node_name}, false) of
-        false -> false;
-        _ -> true
-    end.
+    erlang:nif_error(undef).
 
 %%
 %% Save whether dynamic node name is enabled or not.
 %%
 -spec dynamic_node_name(boolean()) -> ok.
 
-dynamic_node_name(true) ->
-    persistent_term:put({?MODULE, dynamic_node_name}, true);
-dynamic_node_name(false) ->
-    case dynamic_node_name() of
-        false -> ok;
-        _ -> _ = persistent_term:erase({?MODULE, dynamic_node_name}), ok
-    end.
+dynamic_node_name(_Enabled) ->
+    erlang:nif_error(undef).
 
 -spec term_to_string(T :: term()) -> string().
 
@@ -1227,3 +1197,8 @@ filename_from_native(_) -> erlang:nif_error(undefined).
 filename_normalize_utf8(_) -> erlang:nif_error(undefined).
 -spec filename_is_translatable(binary()) -> boolean().
 filename_is_translatable(_) -> erlang:nif_error(undefined).
+
+%% Mandatory continuation support, independent of selected public time APIs.
+-define(BEAM_TIME_CONVERT(Time, From, To), clock_convert_time_unit(Time, From, To)).
+-define(BEAM_TIME_CONVERT_ERROR(Args), erlang:error(badarg, Args)).
+-include("../../../beam/support/include/beam_time_conversion.hrl").

@@ -25,6 +25,7 @@
 #endif
 
 #include "sys.h"
+#include "beam_builtin_catalog.h"
 #include <ctype.h>
 #include <fenv.h>
 #include "erl_vm.h"
@@ -290,6 +291,7 @@ erl_init(int ncpu,
     erts_code_ix_init();
     erts_init_fun_table();
     init_atom_table();
+    beam_builtin_install_names();
     init_export_table();
     erts_record_init_table();
     init_module_table();
@@ -318,8 +320,7 @@ erl_init(int ncpu,
     erts_init_bif_binary();
     erts_init_bif_guard();
     erts_init_bif_persistent_term();
-    erts_init_bif_re();
-    erts_init_unicode(); /* after RE to get access to PCRE unicode */
+    erts_init_unicode();
     erts_init_external();
     erts_init_map();
     erts_beam_bif_load_init(sys_proc_outst_req_lim);
@@ -399,6 +400,29 @@ erts_bare_is_core_module(const char *name)
     return 0;
 }
 
+int
+erts_bare_is_private_core_module(Eterm module)
+{
+    if (is_atom(module)) {
+        const Atom *atom = atom_tab(atom_val(module));
+        const byte *name = erts_atom_get_name(atom);
+        for (size_t i = 0; i < sizeof(beam_private_core_module_names) / sizeof(*beam_private_core_module_names); ++i) {
+            const char *selected = beam_private_core_module_names[i];
+            if (atom->len == strlen(selected) && !memcmp(name, selected, atom->len))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+static int
+preload_reported(const char *name)
+{
+    for (size_t i = 0; i < sizeof(beam_private_core_module_names) / sizeof(*beam_private_core_module_names); ++i)
+        if (!strcmp(name, beam_private_core_module_names[i])) return 0;
+    return 1;
+}
+
 static int
 preload_enabled(const char *name)
 {
@@ -406,15 +430,16 @@ preload_enabled(const char *name)
 }
 
 static Eterm
-erl_system_process_otp(Eterm parent_pid, char* modname, int off_heap_msgq, int prio)
+erl_system_process_otp(Eterm parent_pid, const char *modname, const char *function, int off_heap_msgq, int prio)
 { 
     Process *parent;
     ErlSpawnOpts so;
-    Eterm mod, res;
+    Eterm mod, fun, res;
 
     parent = erts_pid2proc(NULL, 0, parent_pid, ERTS_PROC_LOCK_MAIN);
     mod = erts_atom_put((byte *) modname, sys_strlen(modname),
-                        ERTS_ATOM_ENC_LATIN1, 1);
+                        ERTS_ATOM_ENC_UTF8, 1);
+    fun = erts_atom_put((const byte *)function, strlen(function), ERTS_ATOM_ENC_UTF8, 1);
 
     ERTS_SET_DEFAULT_SPAWN_OPTS(&so);
 
@@ -432,7 +457,7 @@ erl_system_process_otp(Eterm parent_pid, char* modname, int off_heap_msgq, int p
     so.max_gen_gcs    = (Uint16) erts_atomic32_read_nob(&erts_max_gen_gcs);
     so.scheduler      = 0;
 
-    res = erl_spawn_system_process(parent, mod, am_start, NIL, &so);
+    res = erl_spawn_system_process(parent, mod, fun, NIL, &so);
     ASSERT(is_internal_pid(res));
 
     erts_proc_unlock(parent, ERTS_PROC_LOCK_MAIN);
@@ -478,7 +503,7 @@ erts_preloaded(Process* p)
     j = 0;
     need = (int)selected_count * 2;
     while (preload[j].name != NULL) {
-	if (preload_enabled(preload[j].name))
+	if (preload_enabled(preload[j].name) && preload_reported(preload[j].name))
 	    need += 2;
 	j++;
     }
@@ -486,7 +511,7 @@ erts_preloaded(Process* p)
     hp = HAlloc(p, need);
     j = 0;
     while ((name = preload[j].name) != NULL)  {
-	if (preload_enabled(name)) {
+	if (preload_enabled(name) && preload_reported(name)) {
 	    mod = am_atom_put(name, sys_strlen(name));
 	    previous = CONS(hp, mod, previous);
 	    hp += 2;
@@ -1291,7 +1316,7 @@ start_system_processes(void)
 	Eterm pid;
 
 	pid = erl_system_process_otp(erts_init_process_id,
-                                     "erts_code_purger", !0,
+                                     "erts_code_purger", "start", !0,
                                      PRIORITY_HIGH);
 	erts_code_purger
 	    = (Process *) erts_ptab_pix2intptr_ddrb(&erts_proc,
@@ -1300,7 +1325,7 @@ start_system_processes(void)
 	erts_proc_inc_refc(erts_code_purger);
 
 	pid = erl_system_process_otp(erts_init_process_id,
-                                     "erts_literal_area_collector",
+                                     "erts_literal_area_collector", "start",
                                      !0, PRIORITY_HIGH);
 	erts_literal_area_collector
 	    = (Process *) erts_ptab_pix2intptr_ddrb(&erts_proc,
@@ -1310,7 +1335,7 @@ start_system_processes(void)
 	erts_proc_inc_refc(erts_literal_area_collector);
 
 	pid = erl_system_process_otp(erts_init_process_id,
-                                     "erts_dirty_process_signal_handler",
+                                     "erts_dirty_process_signal_handler", "start",
                                      !0, PRIORITY_NORMAL);
         erts_dirty_process_signal_handler
 	    = (Process *) erts_ptab_pix2intptr_ddrb(&erts_proc,
@@ -1320,7 +1345,7 @@ start_system_processes(void)
 	erts_proc_inc_refc(erts_dirty_process_signal_handler);
 
 	pid = erl_system_process_otp(erts_init_process_id,
-                                     "erts_dirty_process_signal_handler",
+                                     "erts_dirty_process_signal_handler", "start",
                                      !0, PRIORITY_HIGH);
         erts_dirty_process_signal_handler_high
 	    = (Process *) erts_ptab_pix2intptr_ddrb(&erts_proc,
@@ -1330,7 +1355,7 @@ start_system_processes(void)
 	erts_proc_inc_refc(erts_dirty_process_signal_handler_high);
 
 	pid = erl_system_process_otp(erts_init_process_id,
-                                     "erts_dirty_process_signal_handler",
+                                     "erts_dirty_process_signal_handler", "start",
                                      !0, PRIORITY_MAX);
         erts_dirty_process_signal_handler_max
 	    = (Process *) erts_ptab_pix2intptr_ddrb(&erts_proc,
@@ -1339,9 +1364,12 @@ start_system_processes(void)
 	       && erts_dirty_process_signal_handler_max->common.id == pid);
 	erts_proc_inc_refc(erts_dirty_process_signal_handler_max);
 
+        const beam_system_worker_entry *cleaner =
+            erts_vm_system_worker_entry(BEAM_SYSTEM_WORKER_TRACE_CLEANER);
         pid = erl_system_process_otp(erts_init_process_id,
-                                     "erts_trace_cleaner", !0,
-                                     PRIORITY_NORMAL);
+                                     cleaner ? cleaner->module : "beam_internal",
+                                     cleaner ? cleaner->function : "trace_cleaner_start",
+                                     !0, PRIORITY_NORMAL);
         erts_trace_cleaner
             = (Process *) erts_ptab_pix2intptr_ddrb(&erts_proc,
                                                     internal_pid_index(pid));
@@ -1442,6 +1470,21 @@ done:
 }
 
 beam_status
+erts_bare_validate_system_workers(void)
+{
+    const beam_system_worker_entry *entry =
+        erts_vm_system_worker_entry(BEAM_SYSTEM_WORKER_TRACE_CLEANER);
+    if (entry) {
+        Eterm module = erts_atom_put((const byte *)entry->module, strlen(entry->module), ERTS_ATOM_ENC_UTF8, 0);
+        Eterm function = erts_atom_put((const byte *)entry->function, strlen(entry->function), ERTS_ATOM_ENC_UTF8, 0);
+        if (is_non_value(module) || is_non_value(function) ||
+            !erts_find_function(module, function, 0, erts_staging_code_ix()))
+            return BEAM_NOT_FOUND;
+    }
+    return BEAM_OK;
+}
+
+beam_status
 erts_bare_start(const beam_entry *entry)
 {
     fenv_t host_fenv;
@@ -1452,6 +1495,8 @@ erts_bare_start(const beam_entry *entry)
 
     ASSERT(erts_bare_mode && !erts_initialized);
     bare_enter_native(&host_fenv);
+    status = erts_bare_validate_system_workers();
+    if (status != BEAM_OK) goto done;
     if (entry) {
         ErtsHeapFactory factory;
         const byte *cursor = entry->arguments.data;

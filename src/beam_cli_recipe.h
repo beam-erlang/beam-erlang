@@ -24,12 +24,16 @@ typedef struct beam_cli_nif {
  * file, network and zlib components follow the service bits. Only the CLI
  * composition acquires compiler/shell adapters.
  * Installed path policy belongs to this helper, not to the VM library. */
-typedef enum beam_cli_profile { BEAM_CLI_NONE, BEAM_CLI_RUN, BEAM_CLI_INTERACTIVE, BEAM_CLI_APPLICATION } beam_cli_profile;
+typedef enum beam_cli_profile {
+    BEAM_CLI_NONE, BEAM_CLI_RUN, BEAM_CLI_INTERACTIVE,
+    BEAM_CLI_APPLICATION, BEAM_CLI_COMMAND
+} beam_cli_profile;
 
 typedef struct beam_cli_recipe_return_options {
     beam_cli_profile profile;
     size_t struct_size;
     unsigned services;
+    int tracing;
     const char *runtime_root;
     const char *entry_module;
     const char *entry_function;

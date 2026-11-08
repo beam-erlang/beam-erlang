@@ -1105,161 +1105,202 @@ BIF_RETTYPE subtract_2(BIF_ALIST_2) {
 }
 
 
+/* Shared steps return -1 for badarg, 0 for yield, 1 for completion. */
+static int member_step(Process *p, Eterm term, Eterm *cursor, Eterm *result)
+{
+    Eterm list = *cursor;
+    int reds_left = ERTS_BIF_REDS_LEFT(p);
+    int max_iter = 16 * reds_left;
+    int non_immed_key = is_not_immed(term);
+    while (is_list(list)) {
+        Eterm item;
+        if (--max_iter < 0) {
+            *cursor = list;
+            BUMP_ALL_REDS(p);
+            return 0;
+        }
+        item = CAR(list_val(list));
+        if (item == term || (non_immed_key && eq(item, term))) {
+            BUMP_REDS(p, reds_left - max_iter / 16);
+            *result = am_true;
+            return 1;
+        }
+        list = CDR(list_val(list));
+    }
+    BUMP_REDS(p, reds_left - max_iter / 16);
+    *result = am_false;
+    return is_nil(list) ? 1 : -1;
+}
+
 BIF_RETTYPE lists_member_2(BIF_ALIST_2)
 {
-    Eterm term;
+    Eterm cursor = BIF_ARG_2, result;
+    int status = member_step(BIF_P, BIF_ARG_1, &cursor, &result);
+    if (!status) {
+        BIF_TRAP2(BIF_TRAP_EXPORT(BIF_lists_member_2), BIF_P, BIF_ARG_1, cursor);
+    }
+    if (status < 0) {
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    BIF_RET(result);
+}
+
+typedef struct {
     Eterm list;
-    Eterm item;
-    int non_immed_key;
-    int reds_left = ERTS_BIF_REDS_LEFT(BIF_P);
-    int max_iter = 16 * reds_left;
+    Eterm tail;
+} ListReverseState;
 
-    if (is_nil(BIF_ARG_2)) {
-	BIF_RET(am_false);
-    } else if (is_not_list(BIF_ARG_2)) {
-	BIF_ERROR(BIF_P, BADARG);
-    }
-    
-    term = BIF_ARG_1;
-    non_immed_key = is_not_immed(term);
-    list = BIF_ARG_2;
-    while (is_list(list)) {
-	if (--max_iter < 0) {
-	    BUMP_ALL_REDS(BIF_P);
-	    BIF_TRAP2(BIF_TRAP_EXPORT(BIF_lists_member_2), BIF_P, term, list);
-	}
-	item = CAR(list_val(list));
-	if ((item == term) || (non_immed_key && eq(item, term))) {
-	    BIF_RET2(am_true, reds_left - max_iter/16);
-	}
-	list = CDR(list_val(list));
-    }
-    if (is_not_nil(list))  {
-        BUMP_REDS(BIF_P, reds_left - max_iter/16);
-	BIF_ERROR(BIF_P, BADARG);
-    }
-    BIF_RET2(am_false, reds_left - max_iter/16);
-}
-
-static BIF_RETTYPE lists_reverse_alloc(Process *c_p,
-                                       Eterm list_in,
-                                       Eterm tail_in)
+static int reverse_alloc_step(Process *p, ListReverseState *state)
 {
-    static const Uint CELLS_PER_RED = 40;
-
-    Eterm *alloc_top, *alloc_end;
-    Uint cells_left, max_cells;
-    Eterm list, tail;
-    Eterm lookahead;
-
-    list = list_in;
-    tail = tail_in;
-
-    cells_left = max_cells = CELLS_PER_RED * ERTS_BIF_REDS_LEFT(c_p);
-    lookahead = list;
-
-    while (cells_left != 0 && is_list(lookahead)) {
+    const Uint cells_per_red = 40;
+    Uint left, max_cells;
+    Eterm lookahead = state->list;
+    Eterm *hp, *end;
+    left = max_cells = cells_per_red * ERTS_BIF_REDS_LEFT(p);
+    while (left && is_list(lookahead)) {
         lookahead = CDR(list_val(lookahead));
-        cells_left--;
+        left--;
     }
-
-    BUMP_REDS(c_p, (max_cells - cells_left) / CELLS_PER_RED);
-
-    if (is_not_list(lookahead) && is_not_nil(lookahead)) {
-        BIF_ERROR(c_p, BADARG);
+    BUMP_REDS(p, (max_cells - left) / cells_per_red);
+    if (!is_list(lookahead) && !is_nil(lookahead)) {
+        return -1;
     }
-
-    alloc_top = HAlloc(c_p, 2 * (max_cells - cells_left));
-    alloc_end = alloc_top + 2 * (max_cells - cells_left);
-
-    while (alloc_top < alloc_end) {
-        Eterm *pair = list_val(list);
-
-        tail = CONS(alloc_top, CAR(pair), tail);
-        list = CDR(pair);
-
-        ASSERT(is_list(list) || is_nil(list));
-
-        alloc_top += 2;
+    hp = HAlloc(p, 2 * (max_cells - left));
+    end = hp + 2 * (max_cells - left);
+    while (hp < end) {
+        Eterm *pair = list_val(state->list);
+        state->tail = CONS(hp, CAR(pair), state->tail);
+        state->list = CDR(pair);
+        hp += 2;
     }
-
-    if (is_nil(list)) {
-        BIF_RET(tail);
-    }
-
-    ASSERT(is_list(tail) && cells_left == 0);
-    BIF_TRAP2(BIF_TRAP_EXPORT(BIF_lists_reverse_2), c_p, list, tail);
+    return is_nil(state->list) ? 1 : 0;
 }
 
-static BIF_RETTYPE lists_reverse_onheap(Process *c_p,
-                                        Eterm list_in,
-                                        Eterm tail_in)
+static int reverse_step(Process *p, ListReverseState *state)
 {
-    static const Uint CELLS_PER_RED = 60;
-
-    Eterm *alloc_start, *alloc_top, *alloc_end;
-    Uint cells_left, max_cells;
-    Eterm list, tail;
-
-    list = list_in;
-    tail = tail_in;
-
-    cells_left = max_cells = CELLS_PER_RED * ERTS_BIF_REDS_LEFT(c_p);
-
-    ASSERT(HEAP_LIMIT(c_p) >= HEAP_TOP(c_p) + 2);
-    alloc_start = HEAP_TOP(c_p);
-    alloc_end = HEAP_LIMIT(c_p) - 2;
-    alloc_top = alloc_start;
-
-    /* Don't process more cells than we have reductions for. */
-    alloc_end = MIN(alloc_top + (cells_left * 2), alloc_end);
-
-    while (alloc_top < alloc_end && is_list(list)) {
-        Eterm *pair = list_val(list);
-
-        tail = CONS(alloc_top, CAR(pair), tail);
-        list = CDR(pair);
-
-        alloc_top += 2;
+    const Uint cells_per_red = 60;
+    Eterm *start, *hp, *end;
+    Uint left, max_cells;
+    if (is_nil(state->list)) {
+        return 1;
     }
-
-    cells_left -= (alloc_top - alloc_start) / 2;
-    HEAP_TOP(c_p) = alloc_top;
-
-    ASSERT(cells_left >= 0 && cells_left <= max_cells);
-    BUMP_REDS(c_p, (max_cells - cells_left) / CELLS_PER_RED);
-
-    if (is_nil(list)) {
-        BIF_RET(tail);
-    } else if (is_list(list)) {
-        if (cells_left > CELLS_PER_RED) {
-            return lists_reverse_alloc(c_p, list, tail);
-        }
-
-        BUMP_ALL_REDS(c_p);
-        BIF_TRAP2(BIF_TRAP_EXPORT(BIF_lists_reverse_2), c_p, list, tail);
+    if (!is_list(state->list)) {
+        return -1;
     }
-
-    BIF_ERROR(c_p, BADARG);
+    if (HeapWordsLeft(p) <= 8) {
+        return reverse_alloc_step(p, state);
+    }
+    left = max_cells = cells_per_red * ERTS_BIF_REDS_LEFT(p);
+    start = hp = HEAP_TOP(p);
+    end = MIN(hp + left * 2, HEAP_LIMIT(p) - 2);
+    while (hp < end && is_list(state->list)) {
+        Eterm *pair = list_val(state->list);
+        state->tail = CONS(hp, CAR(pair), state->tail);
+        state->list = CDR(pair);
+        hp += 2;
+    }
+    left -= (hp - start) / 2;
+    HEAP_TOP(p) = hp;
+    BUMP_REDS(p, (max_cells - left) / cells_per_red);
+    if (is_nil(state->list)) {
+        return 1;
+    }
+    if (!is_list(state->list)) {
+        return -1;
+    }
+    if (left > cells_per_red) {
+        return reverse_alloc_step(p, state);
+    }
+    BUMP_ALL_REDS(p);
+    return 0;
 }
 
 BIF_RETTYPE lists_reverse_2(BIF_ALIST_2)
 {
-    /* Handle legal and illegal non-lists quickly. */
-    if (is_nil(BIF_ARG_1)) {
-        BIF_RET(BIF_ARG_2);
-    } else if (is_not_list(BIF_ARG_1)) {
+    ListReverseState state = {BIF_ARG_1, BIF_ARG_2};
+    int status = reverse_step(BIF_P, &state);
+    if (!status) {
+        BIF_TRAP2(BIF_TRAP_EXPORT(BIF_lists_reverse_2), BIF_P, state.list, state.tail);
+    }
+    if (status < 0) {
         BIF_ERROR(BIF_P, BADARG);
     }
+    BIF_RET(state.tail);
+}
 
-    /* We build the reversal on the unused part of the heap if possible to save
-     * us the trouble of having to figure out the list size. We fall back to
-     * lists_reverse_alloc when we run out of space. */
-    if (HeapWordsLeft(BIF_P) > 8) {
-        return lists_reverse_onheap(BIF_P, BIF_ARG_1, BIF_ARG_2);
+/* Original arguments remain live while a modern traversal is suspended. */
+typedef struct {
+    Eterm original_list;
+    Eterm original_other;
+    ListReverseState state;
+    int reverse;
+} ModernListContext;
+
+static int modern_list_context_dtor(Binary *bin)
+{
+    return 1;
+}
+
+static Eterm modern_list(Export *entry, int reverse, BIF_ALIST_2)
+{
+    ModernListContext local, *ctx = &local;
+    int resumed = 0, status;
+    Eterm result = NIL;
+    if (is_internal_magic_ref(BIF_ARG_1)) {
+        Binary *bin = erts_magic_ref2bin(BIF_ARG_1);
+        if (ERTS_MAGIC_BIN_DESTRUCTOR(bin) != modern_list_context_dtor ||
+            !(BIF_P->flags & F_DISABLE_GC) || BIF_ARG_2 != NIL) {
+            BIF_ERROR(BIF_P, BADARG);
+        }
+        ctx = ERTS_MAGIC_BIN_DATA(bin);
+        if (ctx->reverse != reverse) {
+            BIF_ERROR(BIF_P, BADARG);
+        }
+        resumed = 1;
+    } else {
+        ctx->original_list = ctx->state.list = BIF_ARG_1;
+        ctx->original_other = ctx->state.tail = BIF_ARG_2;
+        ctx->reverse = reverse;
     }
+    if (reverse) {
+        status = reverse_step(BIF_P, &ctx->state);
+        result = ctx->state.tail;
+    } else {
+        status = member_step(BIF_P, ctx->original_other, &ctx->state.list, &result);
+    }
+    if (!status) {
+        Eterm ref = BIF_ARG_1;
+        if (!resumed) {
+            Binary *bin = erts_create_magic_binary(sizeof(*ctx), modern_list_context_dtor);
+            Eterm *hp;
+            *(ModernListContext *)ERTS_MAGIC_BIN_DATA(bin) = *ctx;
+            hp = HAlloc(BIF_P, ERTS_MAGIC_REF_THING_SIZE);
+            ref = erts_mk_magic_ref(&hp, &MSO(BIF_P), bin);
+            erts_set_gc_state(BIF_P, 0);
+        }
+        BIF_TRAP2(entry, BIF_P, ref, NIL);
+    }
+    if (resumed) {
+        erts_set_gc_state(BIF_P, 1);
+        if (status < 0) {
+            ERTS_BIF_ERROR_TRAPPED2(BIF_P, BADARG, entry,
+                                  ctx->original_list, ctx->original_other);
+        }
+    }
+    if (status < 0) {
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    BIF_RET(result);
+}
 
-    return lists_reverse_alloc(BIF_P, BIF_ARG_1, BIF_ARG_2);
+BIF_RETTYPE list_contains_modern_2(BIF_ALIST_2)
+{
+    return modern_list(BIF_TRAP_EXPORT(BIF_list_contains_modern_2), 0, BIF_CALL_ARGS);
+}
+
+BIF_RETTYPE list_reverse_modern_2(BIF_ALIST_2)
+{
+    return modern_list(BIF_TRAP_EXPORT(BIF_list_reverse_modern_2), 1, BIF_CALL_ARGS);
 }
 
 BIF_RETTYPE

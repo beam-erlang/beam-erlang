@@ -767,16 +767,9 @@ lexpr({named_fun,_,Name,Cs,Extra}, _Prec, Opts) ->
     {force_nl,fun_info(Extra),
      {list,[{first,['fun', " "],fun_clauses(Cs, Opts, {named, Name})},
             {reserved,'end'}]}};
-lexpr({call,_,{remote,_,{atom,_,M},{atom,_,F}=N}=Name,Args}, Prec, Opts) ->
-    case erl_internal:bif(M, F, length(Args)) of
-        true when F =/= float ->
-            call(N, Args, Prec, Opts);
-        true ->
-            call(Name, Args, Prec, Opts);
-        false ->
-            call(Name, Args, Prec, Opts)
-    end;
 lexpr({call,_,Name,Args}, Prec, Opts) ->
+    %% Shell definitions are parsed again after printing. An explicit public
+    %% qualification must not turn into a target-profile auto-import.
     call(Name, Args, Prec, Opts);
 lexpr({'try',_,Es,Scs,Ccs,As}, _, Opts) ->
     {list,[if

@@ -4,7 +4,7 @@ import shutil
 
 TEST_SUPPORT_DIR = Path(__file__).resolve().parent
 
-BASE_MODULES = ("beam", "beam_list", "beam_map", "beam_bytes", "beam_text", "beam_format", "beam_time")
+BASE_MODULES = ("beam", "beam_format", "beam_time", "beam_atomics", "beam_counters", "beam_persistent_term", "beam_binary", "beam_lists", "beam_maps", "beam_records", "beam_ets", "beam_string", "beam_unicode", "beam_runtime_unicode_util", "beam_math", "beam_ddll", "beam_debugger")
 BASE_ASSETS = ("lib/beam/library/modules.txt",) + tuple(
     f"lib/beam/library/ebin/{name}.beam" for name in BASE_MODULES)
 
@@ -14,6 +14,11 @@ SERVICES_MODULES = ("beam_startup", "beam_host", "beam_output", "beam_code")
 BOOT_ASSETS = ("lib/beam/boot/modules.txt",) + tuple(f"lib/beam/boot/ebin/{name}.beam" for name in BOOT_MODULES)
 SERVICES_ASSETS = ("lib/beam/services/modules.txt",) + tuple(f"lib/beam/services/ebin/{name}.beam" for name in SERVICES_MODULES)
 RETURNING_ASSETS = BASE_ASSETS + BOOT_ASSETS + SERVICES_ASSETS
+
+STDLIB_MODULES = ("array", "dict", "graph", "gb_sets", "gb_trees", "orddict", "ordsets",
+                  "proplists", "queue", "sets", "sofs", "digraph", "digraph_utils")
+STDLIB_ASSETS = ("lib/beam/stdlib/modules.txt",) + tuple(
+    f"lib/beam/stdlib/ebin/{name}.beam" for name in STDLIB_MODULES)
 
 
 def copy_bytecode(source, destination, assets=RETURNING_ASSETS):

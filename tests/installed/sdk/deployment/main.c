@@ -4,6 +4,7 @@
 #include <beam/boot.h>
 #ifdef DEPLOY_RETURNING
 #include "bytecode_input.h"
+#include "builtin_bindings.h"
 #include "host_observe.h"
 #endif
 #include "deployment_host_deployment.h"
@@ -42,6 +43,7 @@ int main(int argc, char **argv)
     unsigned char *provider = NULL;
 #ifdef DEPLOY_RETURNING
     bytecode_input base = {0};
+    beam_return_module *modules = NULL;
 #endif
 #ifdef BEAM_TARGET_ACCEPTANCE
     CHECK(argc == 3);
@@ -61,17 +63,29 @@ int main(int argc, char **argv)
     beam_return_options options = {0};
     beam_library *library=NULL;
     beam_startup_action startup[2]={{"beam_output","start",{0}}};
-    beam_composition_options generic={.struct_size=sizeof(generic)};
+    beam_builtin_binding selected[BEAM_TEST_NETWORK_BINDING_COUNT+BEAM_TEST_FILE_BINDING_COUNT+
+        BEAM_TEST_DEPLOYMENT_BINDING_COUNT];
+    size_t selected_count = 0;
+    CHECK(beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+        beam_test_network_bindings,BEAM_TEST_NETWORK_BINDING_COUNT));
+    CHECK(beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+        beam_test_file_bindings,BEAM_TEST_FILE_BINDING_COUNT));
+    CHECK(beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+        beam_test_deployment_bindings,BEAM_TEST_DEPLOYMENT_BINDING_COUNT));
+    beam_composition_options generic={.struct_size=sizeof(generic),
+        .builtin_bindings=selected,.builtin_binding_count=selected_count};
     beam_host_options plan={.struct_size=sizeof(plan),.composition=&generic,.startup_count=1,.startup=startup};
-    beam_return_module modules[14] = {{0}};
     options.struct_size = sizeof options;
     options.entry_module = "entry"; options.entry_function = argv[1];
     CHECK(bytecode_input_read(&base, root, INPUT_RETURNING, &error) == BEAM_OK);
+    if (!strcmp(argv[1], "network")) bytecode_input_partition_network(&base);
+    modules = calloc(base.count + 1, sizeof(*modules));
+    CHECK(modules != NULL);
     for (size_t i = 0; i < base.count; ++i) {
         modules[i+1].name = base.modules[i].name; modules[i+1].bytes = base.modules[i].bytes;
         modules[i+1].origin = base.modules[i].origin;
     }
-    options.modules = modules; options.module_count = 14;
+    options.modules = modules; options.module_count = base.count + 1;
     modules[0].name = "entry"; modules[0].bytes = (beam_bytes){entry_bytes, sizeof entry_bytes};
     options.host=&plan;
     if (!strcmp(argv[1], "file") || !strcmp(argv[1], "network") || !strcmp(argv[1], "zlib")) {
@@ -107,7 +121,7 @@ int main(int argc, char **argv)
 #else
     beam_vm_options_init(&vm_options);
     CHECK(beam_vm_init(system, &vm_options, &vm, &error) == BEAM_OK);
-    CHECK(beam_vm_load(vm, (beam_bytes){entry_bytes, sizeof entry_bytes}) == BEAM_OK);
+    CHECK(beam_module_load(vm, (beam_bytes){entry_bytes, sizeof entry_bytes}) == BEAM_OK);
     CHECK(beam_vm_start(vm, &error) == BEAM_OK);
     CHECK(beam_vm_call(vm, "entry", "bare", (beam_bytes){(const unsigned char *)"\203\152", 2}, &bare_result) == BEAM_OK);
     CHECK(bare_result.kind == BEAM_RETURN && bare_result.value.size == 3 && !memcmp(bare_result.value.data, "\203\141\052", 3));
@@ -119,6 +133,7 @@ int main(int argc, char **argv)
 cleanup:
 #ifdef DEPLOY_RETURNING
     bytecode_input_release(&base);
+    free(modules);
 #endif
     beam_return_discard(&returning);
     if (vm) beam_vm_terminate(&vm, NULL);

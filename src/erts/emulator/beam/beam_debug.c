@@ -1119,6 +1119,8 @@ static void print_bif_name(fmtfn_t to, void* to_arg, BifFunction bif)
     }
     if (i == BIF_SIZE) {
 	erts_print(to, to_arg, "bif(%d)", (Uint) bif);
+    } else if (!is_atom(bif_table[i].module)) {
+        erts_print(to, to_arg, "bif(%s)", bif_descriptors[i].implementation);
     } else {
 	Eterm module = bif_table[i].module;
 	Eterm name = bif_table[i].name;

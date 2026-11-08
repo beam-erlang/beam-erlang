@@ -1,0 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Existing VM instruction entries; the last field requests a following return. */
+BEAM_NATIVE_INSTRUCTION(vm_apply_2, apply, 2, i_apply_fun_only, 0)
+BEAM_NATIVE_INSTRUCTION(vm_apply_3, apply, 3, i_apply_only, 0)
+BEAM_NATIVE_INSTRUCTION(vm_yield_0, yield, 0, i_yield, 1)
+BEAM_NATIVE_INSTRUCTION(vm_hibernate_0, hibernate, 0, i_hibernate, 1)

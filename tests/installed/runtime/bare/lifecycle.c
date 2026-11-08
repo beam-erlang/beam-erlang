@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define _GNU_SOURCE
 #include <beam/beam.h>
+#include <beam/beam_enif.h>
 #include <dirent.h>
 #include <errno.h>
 #include <locale.h>
@@ -13,6 +14,7 @@
 #include "module.h"
 #include "fixtures.h"
 #include "support.h"
+#include "builtin_bindings.h"
 #ifdef __APPLE__
 #include <unistd.h>
 #include "host_observe.h"
@@ -191,6 +193,37 @@ static int call_atom(beam_vm *vm, const char *function, beam_bytes args,
     return 0;
 }
 
+static int embedding_terms(beam_vm *vm)
+{
+    BeamBinary encoded = {0};
+    BeamPid receiver;
+    BeamTerm name, tag, decoded;
+
+    CHECK(call_atom(vm, "start_enif_receiver", empty, "ok") == 0);
+    BeamEnv *env = beam_enif_alloc_env();
+    CHECK(env);
+    CHECK(beam_enif_make_existing_atom(env, "lifecycle_enif_receiver", &name,
+                                      ERL_NIF_LATIN1));
+    CHECK(beam_enif_make_existing_atom(env, "embedding_message", &tag, ERL_NIF_LATIN1));
+    CHECK(beam_enif_whereis_pid(NULL, name, &receiver));
+
+    BeamTerm list = beam_enif_make_list(env, 2, beam_enif_make_int(env, 17),
+                                      beam_enif_make_int(env, 42));
+    BeamTerm message = beam_enif_make_tuple(env, 2, tag, list);
+    CHECK(beam_enif_term_to_binary(env, message, &encoded));
+    size_t size = encoded.size;
+    size_t decoded_size = beam_enif_binary_to_term(env, encoded.data, size, &decoded,
+                                                  ERL_NIF_BIN2TERM_SAFE);
+    beam_enif_release_binary(&encoded);
+    CHECK(size > 0 && decoded_size == size && beam_enif_is_identical(message, decoded));
+
+    CHECK(beam_enif_send(NULL, &receiver, env, decoded));
+    beam_enif_clear_env(env);
+    beam_enif_free_env(env);
+    CHECK(call_atom(vm, "await_enif_message", empty, "ok") == 0);
+    return 0;
+}
+
 static beam_bytes binary_argument(const char *value, unsigned char *storage)
 {
     size_t n = strlen(value), pos = 0;
@@ -293,10 +326,13 @@ int main(void)
 
     /* Stopping an unstarted VM never needs to create a worker. */
     OK(beam_vm_init(system, &options, &vm, NULL));
-    OK(beam_vm_load(vm, (beam_bytes){bare_module, sizeof bare_module}));
-    CHECK(beam_vm_load(vm, (beam_bytes){bare_module, sizeof bare_module}) == BEAM_ALREADY_LOADED);
-    CHECK(beam_vm_load(vm, (beam_bytes){bare_module, 20}) == BEAM_INVALID_BEAM);
-    CHECK(beam_vm_load(vm, (beam_bytes){bare_on_load, sizeof bare_on_load}) == BEAM_UNSUPPORTED);
+    BeamEnv *unstarted_env = beam_enif_alloc_env();
+    CHECK(unstarted_env);
+    beam_enif_clear_env(unstarted_env);
+    OK(beam_module_load(vm, (beam_bytes){bare_module, sizeof bare_module}));
+    CHECK(beam_module_load(vm, (beam_bytes){bare_module, sizeof bare_module}) == BEAM_ALREADY_LOADED);
+    CHECK(beam_module_load(vm, (beam_bytes){bare_module, 20}) == BEAM_INVALID_BEAM);
+    CHECK(beam_module_load(vm, (beam_bytes){bare_on_load, sizeof bare_on_load}) == BEAM_UNSUPPORTED);
     CHECK(host_settings_unchanged(host_locale));
     OK(beam_vm_get_state(vm, &state));
     CHECK(state.state == BEAM_VM_INITIALIZED && state.halt_status == 0);
@@ -310,6 +346,7 @@ int main(void)
     CHECK(beam_terminate(&system) == BEAM_INVALID_STATE && system);
     OK(beam_vm_stop(vm, &status));
     OK(beam_vm_stop(vm, &status));
+    beam_enif_free_env(unstarted_env);
     CHECK(status == 0 && entries("/proc/self/task") == threads);
     CHECK(beam_vm_start(vm, NULL) == BEAM_INVALID_STATE);
     CHECK(beam_vm_init(system, &options, &other, NULL) == BEAM_ALREADY_STARTED && !other);
@@ -349,24 +386,31 @@ int main(void)
         options.min_heap_size = cycle % 2 ? 611 : 234;
         options.min_bin_vheap_size = cycle % 2 ? 50000 : 30000;
         options.max_heap_size = cycle % 2 ? 400000 : 0;
+        beam_composition *state_composition = NULL;
+        const beam_composition_options state_selection = {.struct_size=sizeof state_selection,
+            .builtin_binding_count=BEAM_TEST_MODERN_BINDING_COUNT,.builtin_bindings=beam_test_modern_bindings};
+        OK(beam_composition_prepare(&state_selection, &state_composition, &error));
+        options.composition = state_composition;
         OK(beam_vm_init(system, &options, &vm, &error));
+        beam_composition_release(&state_composition);
         CHECK(!strcmp(erl_errno_id(EINVAL), "einval"));
         CHECK(!strcmp(erl_errno_id(EAGAIN), "eagain"));
         CHECK(erts_debugger_flags == 2); /* Line instrumentation permitted, debugger disabled. */
         CHECK(host_settings_unchanged(host_locale));
         OK(beam_vm_get_state(vm, &state));
         CHECK(state.state == BEAM_VM_INITIALIZED && state.halt_status == 0);
-        OK(beam_vm_load(vm, (beam_bytes){copy, module.size}));
+        OK(beam_module_load(vm, (beam_bytes){copy, module.size}));
         CHECK(host_settings_unchanged(host_locale));
         memset(copy, 0, module.size);
         free(copy);
-        OK(beam_vm_load(vm, (beam_bytes){host_module, sizeof host_module}));
+        OK(beam_module_load(vm, (beam_bytes){host_module, sizeof host_module}));
         OK(beam_vm_set_host_handler(vm, handler, &calls));
         CHECK(entries("/proc/self/task") == threads && calls == 0);
         /* Internal acceptance instrumentation: mutate only before workers run,
          * then require the documented defaults in the next fresh VM. */
         erts_debugger_flags |= 1;
         OK(beam_vm_start(vm, &error));
+        if (cycle == 0) CHECK(embedding_terms(vm) == 0);
         CHECK(call_atom(vm, "configuration", configuration_arguments(&options, arguments), "ok") == 0);
         {
             unsigned char mode[] = {131, 108, 0, 0, 0, 1, 97,
@@ -407,8 +451,12 @@ int main(void)
         CHECK(beam_vm_init(system, &options, &other, NULL) == BEAM_ALREADY_STARTED && !other);
         CHECK(beam_terminate(&system) == BEAM_INVALID_STATE && system);
         if (cycle % 4 == 0) {
+            BeamEnv *running_env = beam_enif_alloc_env();
+            CHECK(running_env);
             OK(beam_vm_call(vm, "bare_lifecycle", "halt", empty, &result));
             CHECK(result.kind == BEAM_HALT && result.halt_status == 17);
+            beam_enif_clear_env(running_env);
+            beam_enif_free_env(running_env);
             beam_result_release(&result);
             expected_halt = 17;
         } else if (cycle % 4 == 1) {
@@ -437,6 +485,40 @@ int main(void)
         OK(beam_vm_terminate(&vm, &status));
         CHECK(!vm && status == expected_halt && calls == 1);
         CHECK(resources_released(0, 1));
+        CHECK(executable_mappings() == executable_maps);
+        CHECK(host_settings_unchanged(host_locale));
+        CHECK(entries("/proc/self/fd") == fds);
+        CHECK(joined_thread_count(threads) == threads);
+        CHECK(small_result(&saved, 1));
+    }
+    /* Additional ordinary bytecode must not weaken the core-only lifetimes
+     * above. Pattern storage and abandoned continuations belong to each VM. */
+    for (unsigned cycle = 0; cycle < 4; ++cycle) {
+        beam_composition *composition = NULL;
+        beam_composition_options preparation = {.struct_size = sizeof preparation,
+            .builtin_binding_count = BEAM_TEST_MODERN_BINDING_COUNT,
+            .builtin_bindings = beam_test_modern_bindings};
+        OK(beam_composition_prepare(&preparation, &composition, &error));
+        beam_vm_options_init(&options);
+        options.composition = composition;
+        options.schedulers = options.schedulers_online = 1;
+        options.dirty_cpu_schedulers = options.dirty_cpu_schedulers_online = 1;
+        options.dirty_io_schedulers = options.async_threads = options.poll_threads = 1;
+        beam_composition *state_composition = NULL;
+        const beam_composition_options state_selection = {.struct_size=sizeof state_selection,
+            .builtin_binding_count=BEAM_TEST_MODERN_BINDING_COUNT,.builtin_bindings=beam_test_modern_bindings};
+        OK(beam_composition_prepare(&state_selection, &state_composition, &error));
+        options.composition = state_composition;
+        OK(beam_vm_init(system, &options, &vm, &error));
+        beam_composition_release(&state_composition);
+        beam_composition_release(&composition);
+        OK(beam_module_load(vm, (beam_bytes){bare_lifecycle_1, sizeof bare_lifecycle_1}));
+        OK(beam_module_load(vm, (beam_bytes){installed_beam_binary, sizeof installed_beam_binary}));
+        CHECK(entries("/proc/self/task") == threads);
+        OK(beam_vm_start(vm, &error));
+        CHECK(call_atom(vm, "byte_patterns", empty, "ok") == 0);
+        OK(beam_vm_terminate(&vm, &status));
+        CHECK(!vm && status == 0 && resources_released(0, 1));
         CHECK(executable_mappings() == executable_maps);
         CHECK(host_settings_unchanged(host_locale));
         CHECK(entries("/proc/self/fd") == fds);

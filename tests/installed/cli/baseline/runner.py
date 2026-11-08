@@ -36,7 +36,7 @@ def check_beam_prefix(prefix, work, fixture, artifacts):
     command = [str(beam)]
     selected = prefix / "lib/beam/runtime/beam"
     family_ebin = selected / "ebin"
-    service_modules = {"prim_zip", "erl_tracer"}
+    service_modules = {"prim_zip"}
     expected = {name + ".beam" for name in service_modules}
     check(set(artifacts) == expected, "wrong BEAM artifact recipe")
     check({path.name for path in family_ebin.iterdir()} == expected,
@@ -56,7 +56,7 @@ def check_beam_prefix(prefix, work, fixture, artifacts):
     extra = interactive / "unrelated_corrupt.beam"
     extra.write_bytes(b"not a BEAM module")
     try:
-        out, err = run([*command, "eval", "false = erlang:module_loaded(unrelated_corrupt)."], work, env)
+        out, err = run([*command, "eval", "false = beam:module_loaded(unrelated_corrupt)."], work, env)
         check(out == err == b"", "preparation acquired an unrelated library file")
     finally:
         extra.unlink()
@@ -84,7 +84,7 @@ def check_beam_prefix(prefix, work, fixture, artifacts):
                        input_data=b'io:format("~p~n", [6 * 7]).\n')
         check(re.search(rb"(?:^|\n)(?:\d+> )?42\n", out) is not None,
               f"piped expression was not evaluated: {out!r}, {err!r}")
-        run([*command, *arguments], work, env, input_data=b"erlang:halt(7).\n", status=7)
+        run([*command, *arguments], work, env, input_data=b"beam:halt(7).\n", status=7)
     for arguments in (["--runtime="], ["--runtime=unknown"],
                       ["--runtime=otp", "--runtime=beam", "version"],
                       ["--runtime=beam", "--runtime=beam", "version"],

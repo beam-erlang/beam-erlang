@@ -24,10 +24,31 @@ contain code shared by those processes; scheduler threads execute runnable work.
 fresh VM with different code, options and composition under the same system.
 Concurrent VMs, cross-thread VM operations other than `beam_vm_wake`, and library unloading are unsupported.
 
-A default VM loads nine core modules, then creates a private root and required
+A default VM loads six core modules, then creates a private root and required
 runtime helpers at explicit start. It does not start OTP applications, a code
 server, compiler, automatic loader or I/O server. Load application dependencies
 explicitly. Loading code and activating services are separate decisions.
+
+Composition can bind optional native implementation contracts to public MFAs
+before initialization. For example:
+
+```c
+const beam_builtin_binding split[] = {
+    {sizeof(beam_builtin_binding), "bytes_split_2", "beam_binary", "split", 2},
+    {sizeof(beam_builtin_binding), "bytes_split_list_3", "beam_binary", "split", 3}
+};
+beam_composition_options composition = {
+    .struct_size = sizeof composition,
+    .builtin_binding_count = sizeof split / sizeof *split,
+    .builtin_bindings = split
+};
+```
+
+Supply the ordinary `beam_binary` module separately when using those names.
+A host can choose another module and function for the same compiled contracts.
+The choice stays fixed for that VM, including reload and framework restart.
+Zero bindings publish no native callable exports. The [reference](reference.md#optional-native-bif-bindings)
+lists contracts, validation and module-export obligations.
 
 ## Build and run the first host
 
@@ -85,7 +106,7 @@ for error checks and cleanup. The important sequence is:
 2. Call `beam_init(&system, &error)`, then
    `beam_vm_init(system, &options, &vm, &error)`. Both return without VM workers
    or Erlang execution; VM initialization leaves `BEAM_VM_INITIALIZED`.
-3. Pass the complete compiled module bytes to `beam_vm_load`. It copies them,
+3. Pass the complete compiled module bytes to `beam_module_load`. It copies them,
    does not acquire dependencies and executes no Erlang. Start explicitly with
    `beam_vm_start`; starting does not call an application function.
 4. Call `beam_vm_call(vm, "answer", "value", arguments, &result)`. The owner
@@ -156,15 +177,47 @@ Additional native controls are described in the [reference](reference.md):
 | Operation | Use |
 | --- | --- |
 | `beam_query_host` | Observe CPU availability before initialization; it reserves no capacity or scheduler policy. |
-| `beam_vm_get_module`, `beam_vm_list_modules` | Inspect code and obtain copied module-name snapshots. |
-| `beam_vm_unload` | Remove unused code conservatively without killing processes; busy code remains intact. |
-| `beam_vm_get_schedulers`, `beam_vm_set_schedulers_online` | Observe or change online participation within initialized capacity, without creating threads or pausing the VM. |
+| `beam_module_get_info`, `beam_module_list_names` | Inspect code and obtain copied module-name snapshots. |
+| `beam_module_inspect`, `beam_module_inspect_all` | Capture code summaries, callable exports and selected retained metadata in one copied snapshot, including during background execution. |
+| `beam_module_replace` | Publish current code while a prior version remains old; the application coordinates its own transition. |
+| `beam_module_delete`, `beam_module_soft_purge` | Withdraw current ordinary dispatch or reclaim unused old code without killing processes. |
+| `beam_module_unload` | Remove unused code conservatively without killing processes; busy code remains intact. |
+| `beam_scheduler_get_info`, `beam_scheduler_set_online` | Observe or change online participation within initialized capacity, without creating threads or pausing the VM. |
+| `beam_scheduler_inspect_all` | Copy scheduler identities, online selections and separate normal/shared-dirty queue observations. |
+| `beam_process_list_pids`, `beam_process_inspect` | Copy process membership and selected runtime facts through `<beam/process.h>`, including while an asynchronous entry occupies its separate slot. |
+| `beam_process_spawn` | Copy native-term arguments and return a published child's `BeamPid`; application readiness needs its own acknowledgement. |
 | `beam_vm_get_report`, `beam_vm_terminate_report` | Inspect a copied terminal cause and cleanup diagnostics, including the final report after reclamation. |
 
 Erlang exports can return richer observations through ordinary calls, including
 `system_info`, `statistics`, `memory` and selected `process_info`. Measurements
 assembled separately are not an atomic snapshot; process disappearance and
 scheduler cooperation remain relevant. VM-accounted memory is not host RSS.
+
+Scheduler snapshots distinguish execution capacity from online participation,
+and schedulers from their queues. Each normal scheduler has its own queue;
+dirty CPU and dirty I/O schedulers each share one queue. Queue lengths count
+actual queued work, exclude executing work and establish no utilization level.
+Copied snapshots remain historical data after termination and need their own
+release calls.
+
+Process membership includes runtime processes and does not retain them. Handle
+`BEAM_NOT_FOUND` when a target disappears before a detailed inspection. Native
+spawn preserves its argument environment, whereas successful
+`beam_enif_send(NULL, &pid, message_env, message)` invalidates the message
+environment's terms. Correlate application acknowledgements explicitly when
+messages originate from different senders. Release VM-bound environments before
+termination; independently copied process names and observations can outlive it.
+See [process management](reference.md#process-management) for fields, group
+leaders, admission and blocking-call limits. Native host death observation and
+general exit APIs remain deferred.
+
+For a cooperative code transition, publish B while a worker still runs A, then
+let the worker make an external tail call into B with its state. New external
+calls resolve B immediately; local execution can remain A. Soft purge reports
+busy while A is still in use and succeeds after the transition. A copied module
+snapshot remains historical data through purge and VM/system termination; it
+retains no executable code. See [module inspection and code management](reference.md#detailed-module-snapshots)
+for scopes, optional detail fields, ownership and blocking-call limits.
 
 ## Supply host services and I/O
 
@@ -205,17 +258,29 @@ The core VM, ordinary bytecode and native capabilities are separate inputs:
 
 | Input | How the host supplies it | What it enables |
 | --- | --- | --- |
-| Nine core modules | Embedded in the selected runtime. | Runtime mechanisms and required helper processes. |
-| Seven base modules | Verified `base` inventory through ordinary module inputs. | Modern collection, text, formatting and time functions. |
+| Six core modules | Embedded in the selected runtime. | Runtime mechanisms and required helper processes. |
+| Base modules | Verified `base` inventory through ordinary module inputs. | Modern collection, byte, text, formatting and time code. Native byte stubs also require bindings. |
+| Optional BIF bindings | Explicit implementation identifiers and public MFAs in composition. | Selected native byte, collection, text, array, persistent-store and ETS calling contracts. |
+| Standard-library modules | Verified `stdlib` inventory through ordinary module inputs. | Collections, functional and ETS-backed graphs, and sets of sets; no own native slots. |
 | Boot modules | Verified `boot` inventory through ordinary module inputs. | The returning application lifecycle. |
 | Optional support | Select `startup`, `host`, `output` or `code` inventories through ordinary module inputs. | Explicit startup, host callbacks, output or code acquisition respectively. |
 | File, network or zlib library | Explicit shared acquisition or a static descriptor. | Modules and resident native registrations; startup remains explicit. |
 
-The nine core modules are `erlang`, `erts_internal`, `erts_code_purger`,
+The six core modules are `erlang`, `erts_internal`, `erts_code_purger`,
 `erts_literal_area_collector`, `erts_dirty_process_signal_handler`,
-`erts_trace_cleaner`, `atomics`, `counters` and `persistent_term`.
-The base inventory is `beam`, `beam_list`, `beam_map`, `beam_bytes`, `beam_text`,
-`beam_format` and `beam_time`. Boot contains `beam_return_boot` and `beam_boot`.
+`beam_internal`.
+SDK inspection reports all six physical modules. Erlang preload reporting omits
+private `beam_internal`; the mandatory cleaner still executes in that module.
+The base inventory contains `beam`, `beam_format`, `beam_time`, `beam_atomics`,
+`beam_counters`, `beam_persistent_term`, the six upstream-based modules
+`beam_binary`, `beam_lists`, `beam_maps`, `beam_records`, `beam_string` and
+`beam_unicode`, and private `beam_runtime_unicode_util`. The six modules preserve
+OTP 29.0 contracts except the explicitly obsolete list/string exports. Their 51
+native operations require explicit optional bindings; loading ordinary code alone
+leaves native stubs raising `undef`. The modern CLI selects those canonical
+contracts at the new public names. See the
+[contract identifiers](reference.md#optional-native-bif-bindings).
+Boot contains `beam_return_boot` and `beam_boot`.
 The single-module support inventories contain `beam_startup`, `beam_host`,
 `beam_output` and `beam_code` respectively. The `services` inventory is a
 convenience selection containing all four; it is not a VM requirement.
@@ -274,7 +339,9 @@ its main-thread contract.
 `beam_vm_call_begin` copies the module/function names and ETF argument list and
 admits one asynchronous call. Its slot remains occupied, including after the
 outcome is ready, until `beam_vm_call_take` consumes it. Further admission and
-conflicting module/scheduler operations return `BEAM_BUSY`.
+module mutation or scheduler changes return `BEAM_BUSY`. Read-only module
+get-info, name-list and detailed inspection calls use a separate management slot
+and leave the application outcome available for `beam_vm_call_take`.
 
 Repeatedly call `beam_vm_pump(vm, timeout_ms, callback_budget, &pumped)` with a
 properly initialized `beam_pump_result`. The owner waits against a monotonic
@@ -299,3 +366,21 @@ whether to call, stop or restart. Wake is not cross-thread cancellation.
 The synchronous `beam_vm_call` uses the same admission, pumping and result
 machinery. Existing main-thread, returning and process-owned contracts remain.
 For application packaging, see [iOS deployment](ios.md).
+
+Returning controllers require `beam_persistent_term:get/2` and `put/2`
+bindings (`persistent_value_get_2`, `persistent_value_put_2`), even when only a
+controller and entry are supplied. Startup requires `put/2`. Networking requires
+its seventeen public list/map contracts, public Unicode-to-UTF-8 conversion and
+modern persistent `get/1` / `put/2` (20 total). File support requires
+`list_reverse_2` at `beam_lists:reverse/2`. Generic Host, returning C
+orchestration and passive descriptors select no defaults.
+
+Modern library recipes and the full CLI select the same 558 bindings, including
+the four ETS implementation protocols and all 51 operations of the six public
+library modules. Networking and file-only
+hosts may select just their required subsets. These selections publish native
+exports; ordinary `beam_ets` helpers require the explicitly supplied base-library
+artifact. Native-only compositions do not acquire it implicitly.
+Hosts form explicit unions by implementation and destination, deduplicate identical
+selections and reject conflicts. Private runtime modules are implementation
+details, not additional public library APIs.

@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import time
 
-from support.bytecode import RETURNING_ASSETS, copy_bytecode
+from support.bytecode import BASE_MODULES, STDLIB_MODULES, RETURNING_ASSETS, STDLIB_ASSETS, copy_bytecode
 from support.files import hidden
 from support.process import child_process, run as capture, isolated_environment, check
 
@@ -34,9 +34,10 @@ def erl(value):
     return json.dumps(str(value), ensure_ascii=False)
 
 
-def compile_sources(prefix, sources, output, work, env):
+def compile_sources(prefix, sources, output, work, env, *, tooling=False):
     output.mkdir(parents=True, exist_ok=True)
     stdout, stderr = run([prefix / "bin/beam", "compile", "--deterministic",
+                          *(["--native-bindings=canonical"] if tooling else []),
                           "-o", output, "--", *sources], work, env)
     check(not stdout and not stderr, f"fixture compilation diagnostics: {stdout!r} {stderr!r}")
 
@@ -44,6 +45,50 @@ def compile_sources(prefix, sources, output, work, env):
 def source_run(prefix, source, args, work, env, status=0):
     return run([prefix / "bin/beam", "run", source, "--", *args],
                work, env, status=status)
+
+
+def stdlib_cases(prefix, fixture, work, hello_fixture):
+    work.mkdir(parents=True, exist_ok=True)
+    env = isolated_environment(work)
+    hello = work / "hello_world.erl"
+    shutil.copyfile(hello_fixture, hello)
+    stdout, stderr = source_run(prefix, hello, [], work, env)
+    check(stdout == "Hello, World!\n" and not stderr and not hello.with_suffix('.beam').exists(),
+          f"standard library Hello World: {stdout!r} {stderr!r}")
+    stdout, stderr = source_run(prefix, fixture, [str(prefix)], work, env)
+    check(stdout == "stdlib ok\n" and not stderr, f"standard library source: {stdout!r} {stderr!r}")
+    expression = ('[a,b] = queue:to_list(queue:from_list([a,b])), '
+                  '[[a],[b]] = beam_lists:sort(graph:strong_components('
+                  'graph:add_vertex(graph:add_vertex(graph:new(),a),b))), '
+                  'io:put_chars("stdlib interactive ok\\n").')
+    stdout, stderr = run([prefix / "bin/beam", "eval", expression], work, env)
+    check(stdout == "stdlib interactive ok\n" and not stderr, f"standard library eval: {stdout!r} {stderr!r}")
+    stdout, stderr = run([prefix / "bin/beam", "shell"], work, env, stdin=(expression + "\n").encode())
+    check("stdlib interactive ok\n" in stdout and not stderr and "exception" not in stdout,
+          f"standard library piped shell: {stdout!r} {stderr!r}")
+
+
+def stdlib_missing_assets(prefix, work):
+    env = isolated_environment(work)
+    source = write(work / "stdlib_entry.erl", '-module(stdlib_entry).\n-export([main/1]).\n'
+                   'main(_) -> io:put_chars("entered standard library fixture\\n").\n')
+    path = prefix / "lib/beam/stdlib/ebin/queue.beam"
+    original = path.read_bytes()
+    try:
+        for content in (None, original[:-1] + bytes([original[-1] ^ 1])):
+            if content is None:
+                path.unlink()
+            else:
+                path.write_bytes(content)
+            stdout, stderr = source_run(prefix, source, [], work, env, status=1)
+            check(not stdout and "queue" in stderr,
+                  f"standard library failure must precede entry: {stdout!r} {stderr!r}")
+            path.write_bytes(original)
+            stdout, stderr = source_run(prefix, source, [], work, env)
+            check(stdout == "entered standard library fixture\n" and not stderr,
+                  f"standard library restoration: {stdout!r} {stderr!r}")
+    finally:
+        path.write_bytes(original)
 
 
 def input_case(prefix, source, work, env):
@@ -118,15 +163,17 @@ def probe_origins(stdout, prefix, source):
     runner = prefix / "lib/beam/runtime/beam/run/ebin"
     common = prefix / "lib/beam/runtime/beam/cli/ebin"
     core = {"erlang", "erts_internal", "erts_code_purger", "erts_literal_area_collector",
-            "erts_trace_cleaner", "erts_dirty_process_signal_handler", "atomics", "counters", "persistent_term"}
-    base = {"beam", "beam_list", "beam_map", "beam_bytes", "beam_text", "beam_format", "beam_time"}
+            "beam_internal", "erts_dirty_process_signal_handler"}
+    base = set(BASE_MODULES)
     components = {
         "file": {"beam_file", "prim_file", "prim_buffer"},
-        "network": {"beam_socket", "socket", "socket_registry", "prim_socket", "lists", "maps"},
+        "network": {"beam_socket", "socket", "socket_registry", "prim_socket", "beam_lists", "beam_maps", "beam_runtime_string_legacy"},
+        "tracing": {"beam_trace", "beam_runtime_trace_errors"},
     }
     expected = {name: f"{prefix}/lib/beam/library/ebin/{name}.beam" for name in base}
     expected.update({p.stem: str(p) for ebin in (runner, common) for p in ebin.glob("*.beam")})
     ordinary = {
+        "stdlib": set(STDLIB_MODULES),
         "boot": {"beam_return_boot", "beam_boot"},
         "services": {"beam_startup", "beam_host", "beam_output", "beam_code"},
     }
@@ -145,6 +192,7 @@ def probe_origins(stdout, prefix, source):
               f"unexpected module origin: {name} -> {origin}; expected {expected.get(name)!r}")
     check({"run_probe", "beam_source_run", "io", "beam_run_io"} <= actual.keys(),
           "runner inventory omitted source or I/O modules")
+    check("binary" not in actual, "source runtime loaded ordinary binary support")
 
 
 def compiler_boundary(prefix, work, env):
@@ -167,17 +215,17 @@ parse_transform(Forms, _) ->
     ok = file:write_file({erl(marker)}, <<"called\\n">>, [append]),
     Forms.
 ''')
-    compile_sources(prefix, [transform], work, work, env)
+    compile_sources(prefix, [transform], work, work, env, tooling=True)
     source = write(work / "run_boundary.erl", f'''
 -module(run_boundary).
 -compile({{parse_transform,run_boundary_transform}}).
 -export([main/1]).
 main([]) ->
-    absent = persistent_term:get(run_compiler_state, absent),
+    absent = beam_persistent_term:get(run_compiler_state, absent),
     undefined = whereis(run_compiler_worker),
-    undefined = ets:whereis(run_compiler_table),
-    false = erlang:module_loaded(run_boundary_transform),
-    false = erlang:module_loaded(beam_compiler_cli),
+    undefined = beam_ets:whereis(run_compiler_table),
+    false = beam:module_loaded(run_boundary_transform),
+    false = beam:module_loaded(beam_compiler_cli),
     {{ok,<<"called\\n">>}} = beam_file:read_file(<<{erl(marker)}/utf8>>, infinity),
     io:put_chars("compiler boundary ok\\n").
 ''')
@@ -209,7 +257,7 @@ value() -> onload.
 -export([main/1]).
 main([]) ->
     undef = try run_explicit_helper:value() catch error:undef -> undef end,
-    false = erlang:module_loaded(run_explicit_helper),
+    false = beam:module_loaded(run_explicit_helper),
     Origin = <<{erl(helper.with_suffix('.beam'))}/utf8>>,
     {{error,#{{kind := invalid_data}}}} = beam_code:fetch(<<"relative.beam">>,run_explicit_helper,infinity),
     {{error,#{{kind := invalid_data}}}} = beam_code:fetch(<<Origin/binary,0>>,run_explicit_helper,infinity),
@@ -222,7 +270,7 @@ main([]) ->
     explicit = run_explicit_helper:value(),
     {{ok,OnLoad}} = beam_code:fetch(<<{erl(onload.with_suffix('.beam'))}/utf8>>,run_onload_helper,infinity),
     {{error,#{{reason := on_load}}}} = beam_code:load(run_onload_helper,OnLoad,Origin),
-    false = erlang:module_loaded(run_onload_helper),
+    false = beam:module_loaded(run_onload_helper),
     {{error,#{{kind := not_found}}}} = beam_code:fetch(<<{erl(work / 'missing.beam')}/utf8>>,missing,infinity),
     io:put_chars("explicit code ok\\n").
 ''')
@@ -255,7 +303,7 @@ main(_) -> io:put_chars("must not run\\n").
 ''')
     stdout, stderr = source_run(prefix, onload, [], work, env, status=1)
     check(not stdout and "on_load" in stderr and not marker.exists(), "source on_load was not rejected")
-    collision = write(work / "io.erl", '-module(io).\n-export([main/1]).\nmain(_) -> erlang:halt(23).\n')
+    collision = write(work / "io.erl", '-module(io).\n-export([main/1]).\nmain(_) -> beam:halt(23).\n')
     stdout, stderr = source_run(prefix, collision, [], work, env, status=1)
     check(not stdout and stderr, "source replaced runner io module")
 
@@ -271,6 +319,8 @@ def prefix_cases(prefix, fixture, phase, root, hello_fixture):
           "protected Hello World changed in the source-run composition")
     source = work / "run_probe.erl"
     shutil.copyfile(fixture, source)
+    stdout, stderr = source_run(prefix, source, ["library"], work, env)
+    check(stdout == "base library ok\n" and not stderr, "base library source execution failed")
     stdout, stderr = source_run(prefix, source, ["probe", str(prefix), str(source)], work, env)
     check(not stderr, f"probe stderr: {stderr}")
     probe_origins(stdout, prefix, source)
@@ -312,12 +362,12 @@ def missing_assets(prefix, source, work, env):
     common = prefix / "lib/beam/runtime/beam/cli"
     paths = [runner, common, prefix / "lib/beam/tools/compiler", prefix / "lib/beam/boot",
              artifact(prefix,"library.file.shared"), artifact(prefix,"library.network.shared"),
-             artifact(prefix,"library.zlib.shared")]
+             artifact(prefix,"library.zlib.shared"), artifact(prefix,"library.tracing.shared")]
     paths.extend(sorted((runner / "ebin").glob("*.beam")))
     paths.extend(sorted((common / "ebin").glob("*.beam")))
-    # lists/maps are supplied by the network component in the full service recipe.
+    # Legacy string support is supplied by networking in the full service recipe.
     for path in paths:
-        if path.name in {"lists.beam", "maps.beam"}:
+        if path.name == "beam_runtime_string_legacy.beam":
             continue
         with hidden(path):
             stdout, stderr = source_run(prefix, source, ["io"], work, env, status=1)
@@ -354,7 +404,7 @@ def lifecycle(args, prefix, root, env):
     minimal = root / "minimal output prefix"
     (minimal / "bin").mkdir(parents=True)
     (minimal / "lib").mkdir()
-    copy_bytecode(prefix, minimal)
+    copy_bytecode(prefix, minimal, RETURNING_ASSETS + STDLIB_ASSETS)
     shutil.copy2(host, minimal / "bin/source_run_acceptance")
     for name in (artifact(prefix,"runtime").name,):
         shutil.copy2(prefix / "lib" / name, minimal / "lib" / name)
@@ -362,7 +412,7 @@ def lifecycle(args, prefix, root, env):
     common = Path("lib/beam/runtime/beam/cli")
     for inventory in (runner, common):
         shutil.copytree(prefix / inventory, minimal / inventory)
-    expected = set(RETURNING_ASSETS) | {"bin/source_run_acceptance", artifact_relative(prefix,"runtime")} | {
+    expected = set(RETURNING_ASSETS + STDLIB_ASSETS) | {"bin/source_run_acceptance", artifact_relative(prefix,"runtime")} | {
         str(inventory / path.relative_to(prefix / inventory))
         for inventory in (runner, common) for path in (prefix / inventory).rglob("*") if path.is_file()}
     actual = {str(path.relative_to(minimal)) for path in minimal.rglob("*") if path.is_file()}
@@ -372,7 +422,7 @@ def lifecycle(args, prefix, root, env):
     command[0], command[1], command[-1] = minimal / "bin/source_run_acceptance", minimal, "minimal"
     stdout, stderr = run(command, root, isolated)
     check(not stderr and stdout.startswith("source runner lifetimes ok:"), "output-only runner failed")
-    for name in ("lists", "maps"):
+    for name in ("beam_runtime_string_legacy",):
         with hidden(minimal / common / "ebin" / f"{name}.beam"):
             _, stderr = run(command, root, isolated, status=1)
             check(stderr, f"missing output-only {name} fallback was ignored")
@@ -385,6 +435,7 @@ def main():
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--project-source-dir", type=Path, required=True)
     parser.add_argument("--hello-fixture", type=Path, required=True)
+    parser.add_argument("--case", choices=("full", "stdlib"), default="full")
     add_installation_arguments(parser)
     args = resolve_installation(parser, parser.parse_args(), private=True)
     args.test_dir = args.test_dir.resolve()
@@ -396,8 +447,20 @@ def main():
         env = isolated_environment(args.test_dir)
         stage = args.test_dir / "stage"
         stage_installation(args, stage)
+        stdlib_fixture = args.source_dir / "stdlib_probe.erl"
+        stdlib_cases(stage, stdlib_fixture, args.test_dir / "stdlib fresh work", args.hello_fixture)
         fixture = args.source_dir / "run_probe.erl"
-        prefix_cases(stage, fixture, "fresh", args.test_dir, args.hello_fixture)
+        if args.case == "full":
+            prefix_cases(stage, fixture, "fresh", args.test_dir, args.hello_fixture)
+        relocated = args.test_dir / "relocated standard library prefix κ"
+        stage.rename(relocated)
+        work = args.test_dir / "stdlib relocated work"
+        stdlib_cases(relocated, stdlib_fixture, work, args.hello_fixture)
+        stdlib_missing_assets(relocated, work)
+        if args.case == "stdlib":
+            print("installed standard library: source, shell, eval, relocation and asset recovery passed")
+            return
+        stage = relocated
         reduce_prefix(stage)
         prefix_cases(stage, fixture, "fresh reduced", args.test_dir, args.hello_fixture)
         prefix = args.test_dir / "relocated reduced prefix κ"

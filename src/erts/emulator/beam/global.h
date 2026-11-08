@@ -950,6 +950,8 @@ typedef struct ErtsLiteralArea_ {
 } ErtsLiteralArea;
 
 void erts_queue_release_literals(Process *c_p, ErtsLiteralArea* literals);
+void erts_bare_release_literal_nif_resources(ErtsLiteralArea *literal_area);
+void erts_bare_release_pending_literal_nif_resources(void);
 
 #define ERTS_LITERAL_AREA_ALLOC_SIZE(N) \
     (offsetof(ErtsLiteralArea,start) + sizeof(Eterm)*(N))
@@ -1008,6 +1010,7 @@ void erts_update_ranges(const BeamCodeHeader* code, Uint size);
 void erts_remove_from_ranges(const BeamCodeHeader* code);
 void erts_bare_remove_initial_range(const BeamCodeHeader* code);
 int erts_bare_is_core_module(const char *name);
+int erts_bare_is_private_core_module(Eterm module);
 UWord erts_ranges_sz(void);
 void erts_lookup_function_info(FunctionInfo* fi,
                                ErtsCodePtr pc,
@@ -1446,9 +1449,6 @@ extern int erts_cpu_timestamp;
 #endif
 /* erl_bif_chksum.c */
 void erts_init_bif_chksum(void);
-/* erl_bif_re.c */
-void erts_init_bif_re(void);
-Sint erts_re_set_loop_limit(Sint limit);
 /* erl_bif_binary.c */
 void erts_init_bif_binary(void);
 Sint erts_binary_set_loop_limit(Sint limit);

@@ -627,7 +627,7 @@ beam_status beam_return_run(beam_system *system, beam_return_boot **boot_out,
     if (status != BEAM_OK) return status;
     status = beam_vm_set_host_handler(vm, host_request, boot);
     for (size_t i = 0; status == BEAM_OK && i < boot->initial_count; ++i)
-        status = beam_vm_load(vm, boot->initial_modules[i]->bytes);
+        status = beam_module_load(vm, boot->initial_modules[i]->bytes);
     if (status == BEAM_OK) status = beam_vm_start(vm, error);
     if (status == BEAM_OK) status = beam_host_start(boot->host, vm, error);
     if (status == BEAM_OK && !encode_call(boot, &call)) status = BEAM_OUT_OF_MEMORY;

@@ -24,7 +24,7 @@ static const beam_bytes empty = {empty_data, sizeof empty_data};
 static int flags(beam_vm *vm, unsigned expected)
 {
     beam_module_info info = {sizeof info, 0};
-    OK(beam_vm_get_module(vm, "prim_eval", &info));
+    OK(beam_module_get_info(vm, "prim_eval", &info));
     CHECK(info.flags == expected);
     return 0;
 }
@@ -51,7 +51,7 @@ static int load_copy(beam_vm *vm)
     unsigned char *copy = malloc(sizeof installed_prim_eval);
     CHECK(copy);
     memcpy(copy, installed_prim_eval, sizeof installed_prim_eval);
-    beam_status status = beam_vm_load(vm, (beam_bytes){copy, sizeof installed_prim_eval});
+    beam_status status = beam_module_load(vm, (beam_bytes){copy, sizeof installed_prim_eval});
     memset(copy, 0, sizeof installed_prim_eval);
     free(copy);
     CHECK(status == BEAM_OK);
@@ -66,7 +66,7 @@ static int unload(beam_vm *vm)
     clock_gettime(CLOCK_MONOTONIC, &start);
     /* The call's result may arrive just before its process leaves the table. */
     do {
-        status = beam_vm_unload(vm, "prim_eval", NULL);
+        status = beam_module_unload(vm, "prim_eval", NULL);
         clock_gettime(CLOCK_MONOTONIC, &now);
     } while (status == BEAM_BUSY && now.tv_sec - start.tv_sec < 10);
     CHECK(status == BEAM_OK);
@@ -96,19 +96,28 @@ int main(void)
     beam_vm *vm = NULL;
     int halt_status = -1;
     OK(beam_init(&system, NULL));
+    const beam_builtin_binding bindings[] = {
+        {sizeof(beam_builtin_binding),"vm_module_loaded_1","beam","module_loaded",1},
+        {sizeof(beam_builtin_binding),"vm_pre_loaded_0","beam","pre_loaded",0},
+        {sizeof(beam_builtin_binding),"vm_self_0","beam","self",0}};
+    beam_composition_options input = {.struct_size=sizeof input,
+        .builtin_binding_count=sizeof bindings/sizeof *bindings,.builtin_bindings=bindings};
+    beam_composition *composition=NULL;
+    OK(beam_composition_prepare(&input,&composition,NULL));
     for (unsigned cycle = 0; cycle < 4; ++cycle) {
         beam_vm_options options;
         beam_module_list modules = {0};
         beam_vm_options_init(&options);
+        options.composition=composition;
 
         options.schedulers = 1 + cycle % 2;
         options.schedulers_online = options.schedulers;
         OK(beam_vm_init(system, &options, &vm, NULL));
         CHECK(!flags(vm, 0));
-        OK(beam_vm_list_modules(vm, &modules));
-        CHECK(modules.count == 9);
+        OK(beam_module_list_names(vm, &modules));
+        CHECK(modules.count == 6);
         beam_module_list_release(&modules);
-        OK(beam_vm_load(vm, (beam_bytes){bare_prim_eval, sizeof bare_prim_eval}));
+        OK(beam_module_load(vm, (beam_bytes){bare_prim_eval, sizeof bare_prim_eval}));
         if (cycle % 2 == 0) {
             CHECK(!load_copy(vm));
             CHECK(!unload(vm));
@@ -131,6 +140,7 @@ int main(void)
         OK(beam_vm_terminate(&vm, &halt_status));
         CHECK(!vm && halt_status == 0 && !resources_released(0));
     }
+    beam_composition_release(&composition);
     OK(beam_terminate(&system));
     CHECK(!system && !resources_released(1));
     puts("Explicit prim_eval lifetimes completed; C continued.");

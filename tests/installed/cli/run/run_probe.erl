@@ -2,11 +2,20 @@
 -module(run_probe).
 -export([main/1]).
 
+main(["library"]) ->
+    150.0 = 1.5e2,
+    0.01 = 1.0e-2,
+    255 = 16#ff,
+    3.0 = beam_math:sqrt(9),
+    true = beam_math:tau() =:= 2 * beam_math:pi(),
+    false = beam:module_loaded(math),
+    io:format("base library ok~n");
 main(["probe", Root, Source]) ->
     absence(),
+    runtime_support_cases(),
     {ok, Services} = beam_boot:services(),
     true = same_members(Services, [output,code,file,socket,zlib,program]),
-    Origins = persistent_term:get(beam_boot_origins),
+    Origins = beam_persistent_term:get(beam_boot_origins),
     SourceBytes = utf8(Source),
     SourceBytes = origin(?MODULE, Origins),
     RootBytes = utf8(Root),
@@ -15,24 +24,24 @@ main(["probe", Root, Source]) ->
     RunnerEntry = origin(beam_source_run, Origins),
     RunnerIO = <<RootBytes/binary, "/lib/beam/runtime/beam/cli/ebin/io.beam">>,
     RunnerIO = origin(io, Origins),
-    lists:foreach(fun(Module) ->
-        case member(Module, erlang:pre_loaded()) of
+    beam_lists:foreach(fun(Module) ->
+        case member(Module, [beam_internal|beam:pre_loaded()]) of
             true -> ok;
             false -> io:format("origin ~s ~ts~n", [Module, origin(Module, Origins)])
         end
-    end, erlang:loaded()),
+    end, beam:loaded()),
     io:format("probe ok~n");
 main(["io"]) ->
     ok = io:format("Unicode ~ts ~p ~p~n", [<<"日本語 λ"/utf8>>, 42, {ok,[1,2]}]),
     ok = io:format(standard_error, "error ~ts~n", [<<"é"/utf8>>]),
     Parent = self(),
-    {Child, Ref} = spawn_monitor(fun() ->
+    {Child, Ref} = erlang:spawn_monitor(fun() ->
         ok = io:put_chars("child output\n"), Parent ! child_done
     end),
     receive child_done -> ok after 3000 -> error(child_output_timeout) end,
     receive {'DOWN',Ref,process,Child,normal} -> ok after 3000 -> error(child_exit_timeout) end;
 main(["input"]) ->
-    spawn(fun() ->
+    erlang:spawn(fun() ->
         receive after 30 -> ok end,
         ok = io:put_chars("reader live\n")
     end),
@@ -44,14 +53,14 @@ main(["input"]) ->
 main(["io_options"]) ->
     {ok,80} = io:columns(),
     {ok,24} = io:rows(),
-    #{encoding := unicode,binary := false} = maps:from_list(io:getopts()),
+    #{encoding := unicode,binary := false} = beam_maps:from_list(io:getopts()),
     {error,enotsup} = io:request({user,node()}, getopts),
     {error,enotsup} = io:setopts([{unsupported,true}]),
     {error,enotsup} = io:read(""),
     {error,enotsup} = io:fread("", "~d"),
     {error,enotsup} = io:scan_erl_exprs(""),
-    false = erlang:module_loaded(erl_parse),
-    false = erlang:module_loaded(erl_eval),
+    false = beam:module_loaded(erl_parse),
+    false = beam:module_loaded(erl_eval),
     {error,enotsup} = io:request({requests,[{put_chars,unicode,"must not print"}|invalid_tail]}),
     badarg = try io:format(#{}, "must not print", []) catch error:badarg -> badarg end,
     badarg = try io:format(invalid_format(), [one]) catch error:badarg -> badarg end,
@@ -99,17 +108,17 @@ main(["services", Path]) ->
 main(["output_only"]) ->
     absence(),
     {ok,[output]} = beam_boot:services(),
-    lists:foreach(fun(Module) -> false = erlang:module_loaded(Module) end,
+    beam_lists:foreach(fun(Module) -> false = beam:module_loaded(Module) end,
                   [beam_file,prim_file,prim_buffer,beam_socket,prim_socket,zlib]),
-    [] = erlang:ports(),
-    #{answer := 42} = maps:from_list([{answer,42}]),
-    [1,2] = lists:reverse([2,1]),
+    [] = beam:ports(),
+    #{answer := 42} = beam_maps:from_list([{answer,42}]),
+    [1,2] = beam_lists:reverse([2,1]),
     io:put_chars("output only\n"),
     <<"copied runner result">>;
 main(["clean"]) ->
-    absent = persistent_term:get(run_retained_state, absent),
+    absent = beam_persistent_term:get(run_retained_state, absent),
     undefined = whereis(run_retained_worker),
-    undefined = ets:whereis(run_retained_table),
+    undefined = beam_ets:whereis(run_retained_table),
     <<"copied runner result">>;
 main(["retain", Path, Ending]) ->
     retain(Path, Ending, true);
@@ -135,11 +144,11 @@ main(["finish"]) ->
     beam_boot:finish(6).
 
 retain(Path, Ending, UseProgram) ->
-    absent = persistent_term:get(run_retained_state, absent),
+    absent = beam_persistent_term:get(run_retained_state, absent),
     undefined = whereis(run_retained_worker),
-    undefined = ets:whereis(run_retained_table),
+    undefined = beam_ets:whereis(run_retained_table),
     Parent = self(),
-    Worker = spawn(fun() -> retain_resources(utf8(Path), Parent, UseProgram) end),
+    Worker = erlang:spawn(fun() -> retain_resources(utf8(Path), Parent, UseProgram) end),
     true = register(run_retained_worker, Worker),
     ProgramPid = receive {resources_ready, Pid} -> Pid
                  after 3000 -> error(resource_timeout) end,
@@ -148,17 +157,43 @@ retain(Path, Ending, UseProgram) ->
     finish(Ending).
 
 absence() ->
-    true = same_members(erlang:pre_loaded(),
+    true = same_members(beam:pre_loaded(),
         [erlang,erts_internal,erts_code_purger,erts_literal_area_collector,
-         erts_trace_cleaner,erts_dirty_process_signal_handler,atomics,counters,persistent_term]),
-    lists:foreach(fun(Name) -> undefined = whereis(Name) end,
+         erts_dirty_process_signal_handler]),
+    beam_lists:foreach(fun(Name) -> undefined = whereis(Name) end,
         [code_server,file_server_2,application_controller,inet_db,erl_prim_loader]),
-    undefined = ets:whereis(ac_tab),
-    lists:foreach(fun(Module) -> false = erlang:module_loaded(Module) end,
+    undefined = beam_ets:whereis(ac_tab),
+    beam_lists:foreach(fun(Module) -> false = beam:module_loaded(Module) end,
         [application,application_controller,code,code_server,file,file_server,
          gen,gen_server,supervisor,inet,inet_db,inet_gethost_native,os,
          compile,epp,beam_compiler_cli,beam_compiler_engine,beam_cli,beam_cli_io,
          beam_run,beam_compile,shell,erl_eval,erl_parse,init,erl_prim_loader]),
+    ok.
+
+runtime_support_cases() ->
+    Facades=[ets,binary,lists,maps,string,unicode,atomics,counters,persistent_term],
+    beam_lists:foreach(fun(M) ->
+        false=beam:module_loaded(M),
+        []=[E || E={Module,_,_} <- beam:system_info(snifs), Module=:=M]
+    end,Facades),
+    Calls=[{ets,new,[absent,[]]},{binary,compile_pattern,[<<"a">>]},{lists,member,[a,[a]]},
+           {maps,find,[a,#{a=>1}]},{string,list_to_float,["1.0"]},
+           {unicode,characters_to_binary,["a",utf8]}, {atomics,get,[bad,1]},
+           {counters,get,[bad,1]},{persistent_term,get,[missing]}],
+    beam_lists:foreach(fun({M,F,Args})->
+        false=beam:function_exported(M,F,length(Args)),
+        undef=try apply(M,F,Args) catch error:undef->undef end
+    end,Calls),
+    Captured=fun lists:member/2,
+    undef=try Captured(a,[a]) catch error:undef->undef end,
+    [<<"a">>,<<"b">>,<<"c">>]=beam_string:split(<<"a,b,c">>,<<",">>,all),
+    <<"a;b;c">>=iolist_to_binary(beam_string:replace(<<"a,b,c">>,<<",">>,<<";">>,all)),
+    #{a:=1}=beam_maps:from_list([{a,1}]),
+    [1,2]=beam_lists:reverse([2,1]),
+    <<16#e9/utf8>>=beam_unicode:characters_to_nfc_binary([101,16#301]),
+    {error,<<>>,<<255>>}=beam_unicode:characters_to_binary(<<255>>,utf8),
+    Trace = beam_trace:session_create(cli_probe, self(), []),
+    true = beam_trace:session_destroy(Trace),
     ok.
 
 file_roundtrip(Path) ->
@@ -168,7 +203,7 @@ file_roundtrip(Path) ->
     {ok, Handle} = beam_file:open(Path, infinity, #{mode => read}),
     {ok, Payload} = beam_file:read(Handle, byte_size(Payload), infinity),
     Parent = self(),
-    spawn(fun() -> Parent ! {not_owner,beam_file:read(Handle,1,infinity)} end),
+    erlang:spawn(fun() -> Parent ! {not_owner,beam_file:read(Handle,1,infinity)} end),
     receive {not_owner,{error,#{kind := not_owner}}} -> ok
     after 3000 -> error(file_ownership_timeout) end,
     ok = beam_file:close(Handle, infinity),
@@ -181,7 +216,7 @@ socket_roundtrip() ->
     {ok, Listen} = beam_socket:listen(#{addr => {127,0,0,1},port => 0}, Deadline),
     {ok, #{port := Port}} = beam_socket:sockname(Listen),
     Parent = self(),
-    {Child, Ref} = spawn_monitor(fun() ->
+    {Child, Ref} = erlang:spawn_monitor(fun() ->
         {ok, Socket} = beam_socket:connect(#{addr => {127,0,0,1},port => Port}, Deadline),
         ok = beam_socket:send(Socket, <<"ping">>, Deadline),
         <<"pong">> = recv_bytes(Socket, 4, <<>>, Deadline),
@@ -220,9 +255,9 @@ retain_resources(Path, Parent, UseProgram) ->
     Stream = zlib:open(),
     ok = zlib:deflateInit(Stream),
     Port = retain_program(UseProgram),
-    Table = ets:new(run_retained_table, [named_table,public]),
-    true = ets:insert(Table, {compiler_state,retained}),
-    persistent_term:put(run_retained_state, {File,Socket,Stream,Table,Port}),
+    Table = beam_ets:new(run_retained_table, [named_table,public]),
+    true = beam_ets:insert(Table, {compiler_state,retained}),
+    beam_persistent_term:put(run_retained_state, {File,Socket,Stream,Table,Port}),
     ProgramPid = case Port of unused -> 0; _ -> {os_pid,Pid} = erlang:port_info(Port,os_pid), Pid end,
     Parent ! {resources_ready,ProgramPid},
     receive release -> ok end.
@@ -255,6 +290,6 @@ member(_, []) -> false;
 member(Value, [Value|_]) -> true;
 member(Value, [_|Rest]) -> member(Value, Rest).
 same_members(Left, Right) ->
-    lists:sort(Left) =:= lists:sort(Right).
+    beam_lists:sort(Left) =:= beam_lists:sort(Right).
 utf8(Characters) -> << <<Codepoint/utf8>> || Codepoint <- Characters >>.
 invalid_format() -> "~p ~p".

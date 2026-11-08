@@ -71,6 +71,10 @@ typedef struct {
 #include "erl_db_catree.h" /* DbTableCATree */
 /*TT*/
 
+extern Export *erts_ets_select_resume_export;
+void erts_db_reset_bif_state(void);
+int erts_db_is_bif(const void *function);
+int erts_db_tree_is_bif(const void *function);
 Uint erts_get_ets_misc_mem_size(void);
 Uint erts_ets_table_count(void);
 

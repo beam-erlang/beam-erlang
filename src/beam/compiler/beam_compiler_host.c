@@ -814,13 +814,30 @@ static int module_path(char *out, size_t capacity, const char *root, const char 
     return size >= 0 && (size_t)size < capacity;
 }
 
+static const beam_builtin_binding compiler_builtin_bindings[] = {
+#include "native_bindings.def"
+
+};
+static const beam_builtin_binding modern_target_bindings[] = {
+#include "../modern_native_bindings.def"
+};
+
+static int native_profile(buffer *b, const beam_builtin_binding *entries, size_t count)
+{
+    if (!list(b,count)) return 0;
+    for (size_t i = 0; i < count; ++i)
+        if (!tuple(b,4) || !atom(b,entries[i].implementation) || !atom(b,entries[i].module) ||
+            !atom(b,entries[i].function) || !integer(b,entries[i].arity)) return 0;
+    return byte(b,ETF_NIL);
+}
+
 static int arguments(buffer *b, const char *root, const char *cwd, const char *source,
                      int argc, char **argv)
 {
     size_t index;
     char path[PATH_MAX];
     if (argc < 0 || !byte(b, ETF_VERSION) || !list(b, 1) || !byte(b, ETF_MAP) ||
-        !u32(b, source ? 5 : 4) || !atom(b, "root") || !text_binary(b, root) ||
+        !u32(b, source ? 7 : 6) || !atom(b, "root") || !text_binary(b, root) ||
         !atom(b, "cwd") || !text_binary(b, cwd) || !atom(b, "arguments") || !list(b, (size_t)argc))
         return 0;
     for (index = 0; index < (size_t)argc; ++index)
@@ -835,6 +852,10 @@ static int arguments(buffer *b, const char *root, const char *cwd, const char *s
     }
     if (!byte(b, ETF_NIL))
         return 0;
+    if (!atom(b,"native_bindings") ||
+        !native_profile(b,compiler_builtin_bindings,sizeof compiler_builtin_bindings/sizeof *compiler_builtin_bindings) ||
+        !atom(b,"modern_native_bindings") ||
+        !native_profile(b,modern_target_bindings,sizeof modern_target_bindings/sizeof *modern_target_bindings)) return 0;
     if (source && (!atom(b, "source") || !text_binary(b, source)))
         return 0;
     return byte(b, ETF_NIL);
@@ -938,12 +959,14 @@ invalid:
     return 1;
 }
 
+
 int beam_compiler_execute(beam_system *system, const char *root,
                           const char *source, int argc, char **argv,
                           beam_compiled_source *compiled)
 {
     beam_vm_options options;
     beam_vm *vm = NULL;
+    beam_composition *composition = NULL;
     beam_result result = {0};
     beam_error error = {0};
     beam_status status;
@@ -966,6 +989,20 @@ int beam_compiler_execute(beam_system *system, const char *root,
     }
     beam_vm_options_init(&options);
 
+    const beam_core_export core_exports[] = {
+        {sizeof(beam_core_export), "erlang", "convert_time_unit", 3},
+        {sizeof(beam_core_export), "erlang", "trace", 3},
+        {sizeof(beam_core_export), "erlang", "trace_pattern", 2},
+        {sizeof(beam_core_export), "erlang", "trace_pattern", 3}};
+    beam_composition_options bindings = {.struct_size = sizeof bindings,
+        .core_export_count = sizeof core_exports / sizeof *core_exports,
+        .core_exports = core_exports,
+        .builtin_binding_count = sizeof compiler_builtin_bindings / sizeof *compiler_builtin_bindings,
+        .builtin_bindings = compiler_builtin_bindings};
+    status = beam_composition_prepare(&bindings, &composition, &error);
+    if (status != BEAM_OK)
+        goto failed;
+    options.composition = composition;
     status = beam_vm_init(system, &options, &vm, &error);
     if (status != BEAM_OK)
         goto failed;
@@ -983,13 +1020,13 @@ int beam_compiler_execute(beam_system *system, const char *root,
             free(module.data);
             goto done;
         }
-        status = beam_vm_load(vm, (beam_bytes){module.data, module.size});
+        status = beam_module_load(vm, (beam_bytes){module.data, module.size});
         free(module.data);
         if (status != BEAM_OK) {
             fprintf(stderr, "beam: cannot load compiler module %s: %s\n", path, beam_status_message(status));
             goto done;
         }
-        status = beam_vm_get_module(vm, beam_compiler_modules[index], &info);
+        status = beam_module_get_info(vm, beam_compiler_modules[index], &info);
         if (status != BEAM_OK) {
             fprintf(stderr, "beam: cannot inspect compiler module %s: %s\n", path, beam_status_message(status));
             goto done;
@@ -1019,6 +1056,7 @@ done:
         fputs("beam: could not terminate compiler VM\n", stderr);
         exit_status = 1;
     }
+    beam_composition_release(&composition);
     while (context.writers) {
         if (close_writer(&context.writers)) {
             fputs("beam: could not close compiler file\n", stderr);

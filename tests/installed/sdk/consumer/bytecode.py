@@ -8,7 +8,7 @@ from support.installation import expected_version
 
 def check_bytecode(execute, cmake, source, sdk, client, root):
     for inventory, assets, name, other in (
-        ('base', BASE_ASSETS, 'beam_map', 'beam_list'),
+        ('base', BASE_ASSETS, 'beam_binary', 'beam_lists'),
         ('boot', BOOT_ASSETS, 'beam_boot', 'beam_return_boot'),
         ('services', SERVICES_ASSETS, 'beam_output', 'beam_code'),
     ):

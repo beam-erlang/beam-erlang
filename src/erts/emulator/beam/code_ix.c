@@ -345,6 +345,34 @@ int erts_try_seize_code_stage_permission(Process* c_p)
     return try_seize_code_permission(&code_stage_permission, c_p, NULL, NULL);
 }
 
+static int try_seize_code_permission_process_nowait(struct code_permission *perm,
+                                                    Process *c_p)
+{
+    int success;
+    ASSERT(c_p != NULL);
+    ASSERT(!erts_thr_progress_is_blocking());
+    ERTS_LC_ASSERT(erts_proc_lc_my_proc_locks(c_p) == ERTS_PROC_LOCK_MAIN);
+    erts_mtx_lock(&perm->lock);
+    success = !perm->seized;
+    if (success) {
+        perm->owner = c_p;
+        perm->aux_arg = NULL;
+        perm->seized = 1;
+    }
+    erts_mtx_unlock(&perm->lock);
+    return success;
+}
+
+int erts_try_seize_code_load_permission_nowait(Process* c_p)
+{
+    if (!try_seize_code_permission_process_nowait(&code_stage_permission, c_p))
+        return 0;
+    if (try_seize_code_permission_process_nowait(&code_mod_permission, c_p))
+        return 1;
+    erts_release_code_stage_permission();
+    return 0;
+}
+
 void erts_release_code_stage_permission(void) {
     release_code_permission(&code_stage_permission);
 }

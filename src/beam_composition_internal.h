@@ -28,6 +28,13 @@ struct beam_composition {
     beam_native_owner *native_owners;
     size_t embedded_dependency_count;
     beam_embedded_dependency *embedded_dependencies;
+    size_t builtin_binding_count;
+    beam_builtin_binding *builtin_bindings;
+    size_t core_export_count;
+    beam_core_export *core_exports;
+    char *default_tracer_module;
+    size_t system_worker_entry_count;
+    beam_system_worker_entry *system_worker_entries;
 };
 void beam_composition_retain(const beam_composition *composition);
 beam_status beam_composition_stage(beam_vm *vm, const beam_composition *composition,

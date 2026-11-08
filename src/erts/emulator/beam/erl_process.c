@@ -2583,19 +2583,29 @@ bare_stop_step(void *unused)
             break;
         if (erts_bare_host_replies_pending())
             break;
-        {
-            extern void erts_bare_release_persistent_nif_resources(void);
-            /* Schedulers are still alive, so resource destructors queued here
-             * run in the aux drain below. Persistent-term headers are unlinked
-             * first; later literal release must not free them again. */
-            erts_bare_release_persistent_nif_resources();
-        }
+        /* Complete deferred table deletions before enumerating literal roots.
+         * They can transfer erased values to the literal collector's queue. */
         erts_atomic32_set_relb(&bare_drain_remaining, erts_no_aux_work_threads);
         erts_schedule_multi_misc_aux_work(0, 0, erts_no_aux_work_threads - 1,
                                          bare_drain_aux, NULL);
         bare_stop_phase = 3;
         break;
     case 3:
+        if (erts_atomic32_read_acqb(&bare_drain_remaining))
+            break;
+        {
+            extern void erts_bare_release_persistent_nif_resources(void);
+            /* No Erlang process or deferred deletion can transfer areas now.
+             * Native destructors still need live scheduler auxiliary workers. */
+            erts_bare_release_persistent_nif_resources();
+            erts_bare_release_pending_literal_nif_resources();
+        }
+        erts_atomic32_set_relb(&bare_drain_remaining, erts_no_aux_work_threads);
+        erts_schedule_multi_misc_aux_work(0, 0, erts_no_aux_work_threads - 1,
+                                         bare_drain_aux, NULL);
+        bare_stop_phase = 4;
+        break;
+    case 4:
         if (erts_atomic32_read_acqb(&bare_drain_remaining))
             break;
         erts_atomic32_set_relb(&bare_threads_terminal, 1);
@@ -8589,6 +8599,84 @@ erts_bare_get_schedulers(beam_scheduler_info *out)
     erts_mtx_unlock(&schdlr_sspnd.mtx);
 }
 
+static void bare_scheduler_queue_observations(beam_scheduler_snapshot *out);
+
+beam_status
+erts_bare_inspect_schedulers(beam_scheduler_snapshot *out)
+{
+    beam_scheduler_info info = {0};
+    beam_scheduler_record *items;
+    beam_scheduler_queue_record *queues;
+    size_t item = 0;
+    unsigned ix;
+
+    ASSERT(erts_get_scheduler_data()->no == 1);
+    if (erts_bare_stop_requested())
+        return BEAM_STOPPED;
+    info.struct_size = sizeof(info);
+    erts_bare_get_schedulers(&info);
+    if (!out || !out->items || !out->queues
+        || out->count != ((size_t) info.schedulers
+                         + info.dirty_cpu_schedulers + info.dirty_io_schedulers)
+        || out->queue_count != (size_t) info.schedulers + 2)
+        return BEAM_INVALID_ARGUMENT;
+
+    /* These fields and associations are fixed by init_scheduler_data for the
+     * VM lifetime. Reject an unfamiliar topology rather than projecting it
+     * into the public individual-normal/shared-dirty queue model. */
+    if ((unsigned) erts_no_run_queues != info.schedulers
+        || ERTS_NUM_DIRTY_CPU_RUNQS != 1 || ERTS_NUM_DIRTY_IO_RUNQS != 1)
+        return BEAM_UNSUPPORTED;
+
+    items = (beam_scheduler_record *) out->items;
+    queues = (beam_scheduler_queue_record *) out->queues;
+    for (ix = 0; ix < info.schedulers; ix++) {
+        ErtsSchedulerData *esdp = ERTS_SCHEDULER_IX(ix);
+        ErtsRunQueue *runq = ERTS_RUNQ_IX(ix);
+        if (esdp->type != ERTS_SCHED_NORMAL || esdp->no != ix + 1
+            || esdp->dirty_no != 0 || esdp->run_queue != runq
+            || (unsigned) runq->ix != ix)
+            return BEAM_UNSUPPORTED;
+        items[item++] = (beam_scheduler_record) {
+            {BEAM_SCHEDULER_NORMAL, ix + 1},
+            ix < info.schedulers_online,
+            {BEAM_SCHEDULER_NORMAL, ix + 1}
+        };
+        queues[ix].id = (beam_scheduler_queue_id) {BEAM_SCHEDULER_NORMAL, ix + 1};
+    }
+    for (ix = 0; ix < info.dirty_cpu_schedulers; ix++) {
+        ErtsSchedulerData *esdp = ERTS_DIRTY_CPU_SCHEDULER_IX(ix);
+        if (esdp->type != ERTS_SCHED_DIRTY_CPU || esdp->no != 0
+            || esdp->dirty_no != ix + 1 || esdp->run_queue != ERTS_DIRTY_CPU_RUNQ)
+            return BEAM_UNSUPPORTED;
+        items[item++] = (beam_scheduler_record) {
+            {BEAM_SCHEDULER_DIRTY_CPU, ix + 1},
+            ix < info.dirty_cpu_schedulers_online,
+            {BEAM_SCHEDULER_DIRTY_CPU, 1}
+        };
+    }
+    for (ix = 0; ix < info.dirty_io_schedulers; ix++) {
+        ErtsSchedulerData *esdp = ERTS_DIRTY_IO_SCHEDULER_IX(ix);
+        if (esdp->type != ERTS_SCHED_DIRTY_IO || esdp->no != 0
+            || esdp->dirty_no != ix + 1 || esdp->run_queue != ERTS_DIRTY_IO_RUNQ)
+            return BEAM_UNSUPPORTED;
+        items[item++] = (beam_scheduler_record) {
+            {BEAM_SCHEDULER_DIRTY_IO, ix + 1}, 1,
+            {BEAM_SCHEDULER_DIRTY_IO, 1}
+        };
+    }
+    if (ERTS_DIRTY_CPU_RUNQ->ix != erts_no_run_queues
+        || ERTS_DIRTY_IO_RUNQ->ix != erts_no_run_queues + 1)
+        return BEAM_UNSUPPORTED;
+    queues[info.schedulers].id =
+        (beam_scheduler_queue_id) {BEAM_SCHEDULER_DIRTY_CPU, 1};
+    queues[info.schedulers + 1].id =
+        (beam_scheduler_queue_id) {BEAM_SCHEDULER_DIRTY_IO, 1};
+    out->info = info;
+    bare_scheduler_queue_observations(out);
+    return erts_bare_stop_requested() ? BEAM_STOPPED : BEAM_OK;
+}
+
 /* Completion runs on scheduler 1, outside the lock and outside any Erlang
  * process. Keep the host slot occupied until this callback retires it, so
  * another setter cannot overwrite either member of an acknowledged pair. */
@@ -9727,6 +9815,23 @@ run_queues_len_aux(ErtsRunQueue *rq, Uint *tot_len, Uint *qlen, int *ip, int inc
     if (qlen)
         qlen[(*ip)++] = rq_len;
     *tot_len += (Uint) rq_len;
+}
+
+static void
+bare_scheduler_queue_observations(beam_scheduler_snapshot *out)
+{
+    beam_scheduler_queue_record *queues =
+        (beam_scheduler_queue_record *) out->queues;
+    size_t ix;
+
+    /* Reuse statistics' inexpensive individual atomic readings and queued-work
+     * definition, without adding executing normal/dirty work to queue length. */
+    for (ix = 0; ix < out->queue_count; ix++) {
+        Uint total = 0, length = 0;
+        int index = 0;
+        run_queues_len_aux(ERTS_RUNQ_IX(ix), &total, &length, &index, 0, 0);
+        queues[ix].queued_tasks = length;
+    }
 }
 
 Uint
@@ -12941,7 +13046,9 @@ erl_create_process(Process* parent, /* Parent of process (default group leader).
     else {
         token = SEQ_TRACE_TOKEN(parent);
         erts_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
-        group_leader = parent->group_leader;
+        group_leader = is_non_value(so->local_group_leader)
+            ? parent->group_leader : so->local_group_leader;
+        ASSERT(is_pid(group_leader));
         parent_id = parent->common.id;
         if (so->monitor_oflags & ERTS_ML_STATE_ALIAS_MASK)
             spawn_ref = so->mref = erts_make_pid_ref(parent);

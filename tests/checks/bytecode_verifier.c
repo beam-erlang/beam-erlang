@@ -24,7 +24,7 @@ int main(void)
     CHECK(beam_sdk_inventory_get((beam_sdk_inventory_kind)-1) == NULL);
     CHECK(beam_sdk_inventory_get((beam_sdk_inventory_kind)INT_MAX) == NULL);
     const struct { beam_sdk_inventory_kind kind; size_t count; } selections[] = {
-        {BEAM_SDK_INVENTORY_BASE, 7}, {BEAM_SDK_INVENTORY_BOOT, 2},
+        {BEAM_SDK_INVENTORY_BASE, 17}, {BEAM_SDK_INVENTORY_BOOT, 2},
         {BEAM_SDK_INVENTORY_SERVICES, 4}, {BEAM_SDK_INVENTORY_STARTUP, 1},
         {BEAM_SDK_INVENTORY_HOST, 1}, {BEAM_SDK_INVENTORY_OUTPUT, 1},
         {BEAM_SDK_INVENTORY_CODE, 1}

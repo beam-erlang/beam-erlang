@@ -20,6 +20,10 @@
 %% %CopyrightEnd%
 %%
 -module(erl_eval).
+-compile(beam_native_evaluator).
+-compile({beam_private_native_functions,[{do_apply,6},{do_apply,7},{apply_error,6},
+                                         {beam_native_source_guard_name,2},
+                                         {validate_tag,2}]}).
 -moduledoc """
 The Erlang meta interpreter.
 
@@ -355,7 +359,7 @@ expr(E, Bs, Lf, Ef) ->
 -doc false.
 check_command(Es, Bs) ->
     Opts = [{features,erl_features:enabled()}],
-    case erl_lint:exprs_opt(Es, bindings(Bs), Opts) of
+    case erl_lint:exprs_opt(beam_native_lint(Es), bindings(Bs), Opts) of
         {ok,_Ws} ->
             ok;
         {error,[{_File,[Error|_]}],_Ws} ->
@@ -616,13 +620,14 @@ expr({'receive',_, Cs, E, TB}, Bs0, Lf, Ef, RBs, FUVs) ->
     receive_clauses(T, Cs, {TB,Bs}, Bs0, Lf, Ef, RBs, FUVs);
 expr({'fun',_Anno,{function,Mod0,Name0,Arity0}}, Bs0, Lf, Ef, RBs, FUVs) ->
     {[Mod,Name,Arity],Bs} = expr_list([Mod0,Name0,Arity0], Bs0, Lf, Ef, FUVs),
-    F = erlang:make_fun(Mod, Name, Arity),
+    F = fun Mod:Name/Arity,
     ret_expr(F, Bs, RBs);
 expr({'fun',Anno,{function,Name,Arity}}, Bs0, Lf, Ef, RBs, FUVs) -> % R8
     case erl_internal:bif(Name, Arity) of
         true ->
             %% Auto-imported BIF. Create an external fun.
-            ret_expr(fun erlang:Name/Arity, Bs0, RBs);
+            {M,F} = beam_native_auto(Name,Arity),
+            ret_expr(fun M:F/Arity, Bs0, RBs);
         false ->
             %% A local function assumed to be defined in the shell.
             %% Create a wrapper fun that will call the local fun.
@@ -731,6 +736,16 @@ expr({named_fun,Anno,Name,Cs} = Ex, Bs, Lf, Ef, RBs, FUVs) ->
             apply_error(Reason, ?STACKTRACE, Anno, Bs, Ef, RBs)
     end,
     ret_expr(F, Bs, RBs);
+expr({beam_language_call,Anno,F,Args}, Bs0, Lf, Ef, RBs, FUVs) ->
+    {As,Bs} = expr_list(Args,Bs0,Lf,Ef,FUVs),
+    beam_native_language_call(F,As,Anno,Bs,Ef,RBs);
+expr({beam_guard_call,Anno,M,F,Args}, Bs0, Lf, Ef, RBs, FUVs) ->
+    case beam_native_selected(M,F,length(Args)) of
+        true ->
+            {As,Bs} = expr_list(Args,Bs0,Lf,Ef,FUVs),
+            do_apply(M,F,As,Anno,Bs,Ef,RBs);
+        false -> apply_error(guard_expr,?STACKTRACE,Anno,Bs0,Ef,RBs)
+    end;
 expr({call,_,{remote,_,{atom,_,qlc},{atom,_,q}},[{lc,_,_E,_Qs}=LC | As0]},
      Bs0, Lf, Ef, RBs, FUVs) when length(As0) =< 1 ->
     %% No expansion or evaluation of module name or function name.
@@ -753,9 +768,9 @@ expr({call,Anno,{remote,_,Mod,Func},As0}, Bs0, Lf, Ef, RBs, FUVs) ->
     {value,F,Bs2} = expr(Func, Bs0, Lf, Ef, none, FUVs),
     {As,Bs3} = expr_list(As0, merge_bindings(Bs1, Bs2, Anno, Ef), Lf, Ef, FUVs),
     %% M could be a parameterized module (not an atom).
-    case is_atom(M) andalso erl_internal:bif(M, F, length(As)) of
+    case beam_native_apply(M,F,length(As)) of
         true ->
-            bif(F, As, Anno, Bs3, Ef, RBs);
+            bif_apply(As, Anno, Bs3, Ef, RBs);
         false ->
             do_apply(M, F, As, Anno, Bs3, Ef, RBs)
     end;
@@ -845,8 +860,11 @@ expr({bin,_,Fs}, Bs0, Lf, Ef, RBs, FUVs) ->
 expr({remote,Anno,_,_}, Bs0, _Lf, Ef, RBs, _FUVs) ->
     apply_error({badexpr,':'}, ?STACKTRACE, Anno, Bs0, Ef, RBs).
 
+apply_error(Reason, Stack, _Anno, _Bs, none, _RBs) ->
+    erlang:raise(error, Reason, Stack);
 apply_error(Reason, Stack, Anno, Bs0, Ef, RBs) ->
-    do_apply(erlang, raise, [error, Reason, Stack], Anno, Bs0, Ef, RBs).
+    {M,F} = beam_native_auto(raise,3),
+    do_apply(M, F, [error, Reason, Stack], Anno, Bs0, Ef, RBs).
 
 find_maxline(LC) ->
     put('$erl_eval_max_line', 0),
@@ -876,7 +894,7 @@ fun_used_bindings(Fun, Cs, Bs, FUVs) ->
 
             #{} ->
                 %% Save only used variables in the function environment.
-                AllUsedVars = erl_lint:used_vars([Fun], bindings(Bs)),
+                AllUsedVars = erl_lint:used_vars(beam_native_lint([Fun]), bindings(Bs)),
 
                 %% At the root we should see only a single function,
                 %% so we extract its used vars and its tree out.
@@ -970,14 +988,12 @@ local_func2({eval,F,As,Bs}, Anno, RBs) -> % This reply is not documented.
 %%  Evaluate the Erlang auto-imported function Name. erlang:apply/2,3
 %%  are "hidden" from the external function handler.
 
-bif(apply, [erlang,apply,As], Anno, Bs, Ef, RBs) ->
-    bif(apply, As, Anno, Bs, Ef, RBs);
-bif(apply, [M,F,As], Anno, Bs, Ef, RBs) ->
-    do_apply(M, F, As, Anno, Bs, Ef, RBs);
-bif(apply, [F,As], Anno, Bs, Ef, RBs) ->
-    do_apply(F, As, Anno, Bs, Ef, RBs);
 bif(Name, As, Anno, Bs, Ef, RBs) ->
-    do_apply(erlang, Name, As, Anno, Bs, Ef, RBs).
+    {M,F} = beam_native_auto(Name,length(As)),
+    case Name =:= apply andalso beam_native_apply(M,F,length(As)) of
+        true -> bif_apply(As,Anno,Bs,Ef,RBs);
+        false -> do_apply(M,F,As,Anno,Bs,Ef,RBs)
+    end.
 
 %% do_apply(Func, Arguments, Bindings, ExternalFuncHandler, RBs) ->
 %%	{value,Value,Bindings} | Value when
@@ -1510,7 +1526,7 @@ eval_m_generate(Iter0, P, Anno, Bs0, Lf, Ef, CompFun, Relaxed, Acc0) ->
     end.
 
 eval_filter(F, Bs0, Lf, Ef, CompFun, FUVs, Acc) ->
-    case erl_lint:is_guard_test(F) of
+    case beam_native_is_guard_test(F) of
 	true ->
 	    case guard_test(F, Bs0, Lf, Ef) of
 		{value,true,Bs1} -> CompFun(Bs1);
@@ -1667,10 +1683,10 @@ expr_list([], Vs, _, Bs, _Lf, _Ef, _FUVs) ->
     {Vs,Bs}.
 
 eval_op(Op, Arg1, Arg2, Anno, Bs, Ef, RBs) ->
-    do_apply(erlang, Op, [Arg1,Arg2], Anno, Bs, Ef, RBs).
+    beam_native_language_call(Op,[Arg1,Arg2],Anno,Bs,Ef,RBs).
 
 eval_op(Op, Arg, Anno, Bs, Ef, RBs) ->
-    do_apply(erlang, Op, [Arg], Anno, Bs, Ef, RBs).
+    beam_native_language_call(Op,[Arg],Anno,Bs,Ef,RBs).
 
 %% if_clauses(Clauses, Anno, Bindings, LocalFuncHandler, ExtFuncHandler, RBs)
 
@@ -1810,7 +1826,7 @@ guard1([], _Bs, _Lf, _Ef) -> false.
 
 %% guard conjunction
 guard0([G|Gs], Bs0, Lf, Ef) ->
-    case erl_lint:is_guard_test(G) of
+    case beam_native_is_guard_test(G) of
 	true ->
 	    case guard_test(G, Bs0, Lf, Ef) of
                 {value,true,Bs} -> guard0(Gs, Bs, Lf, Ef);
@@ -1838,7 +1854,7 @@ guard_test(G, Bs0, Lf, Ef) ->
     expr_guard_test(G, Bs0, Lf, Ef).
 
 expr_guard_test(G, Bs0, Lf, Ef) ->
-    try {value,true,_} = expr(G, Bs0, Lf, Ef, none)
+    try {value,true,_} = expr(beam_native_guard_expr(G), Bs0, Lf, Ef, none)
     catch error:_ -> {value,false,Bs0} end.
 
 type_test(integer) -> is_integer;
@@ -1944,12 +1960,12 @@ match1({record,_,_,_}, _, _Bs, _BBs, _Ef) ->
     throw(nomatch);
 match1({bin, _, Fs}, <<_/bitstring>>=B, Bs0, BBs, Ef) ->
     EvalFun = fun(E, Bs) ->
-                      case erl_lint:is_guard_expr(E) of
+                      case erl_lint:is_guard_expr(beam_native_guard_ast(E)) of
                           true -> ok;
                           false -> throw(invalid)
                       end,
                       try
-                          expr(E, Bs, none, none, none)
+                          expr(beam_native_guard_expr(E), Bs, none, none, none)
                       catch
                           error:{unbound, _} ->
                               throw(invalid)
@@ -2259,11 +2275,14 @@ reset_anno() ->
     fun(A) -> erl_anno:new(erl_anno:location(A)) end.
 
 fixup_ast(pid, A, _S, T) ->
-    {call,A,{remote,A,{atom,A,erlang},{atom,A,list_to_pid}},[T]};
+    {M,F} = beam_native_auto(list_to_pid,1),
+    {call,A,{remote,A,{atom,A,M},{atom,A,F}},[T]};
 fixup_ast(port, A, _S, T) ->
-    {call,A,{remote,A,{atom,A,erlang},{atom,A,list_to_port}},[T]};
+    {M,F} = beam_native_auto(list_to_port,1),
+    {call,A,{remote,A,{atom,A,M},{atom,A,F}},[T]};
 fixup_ast(reference, A, _S, T) ->
-    {call,A,{remote,A,{atom,A,erlang},{atom,A,list_to_ref}},[T]};
+    {M,F} = beam_native_auto(list_to_ref,1),
+    {call,A,{remote,A,{atom,A,M},{atom,A,F}},[T]};
 fixup_ast(function, A, S, _T) ->
     {Module, Function, Arity} = fixup_mfa(S),
     {'fun',A,{function,{atom,A,Module},{atom,A,Function},{integer,A,Arity}}}.
@@ -2355,9 +2374,19 @@ normalise({op,_,'-',{char,_,I}}) -> -I;   %Weird, but compatible!
 normalise({op,_,'-',{integer,_,I}}) -> -I;
 normalise({op,_,'-',{float,_,F}}) -> -F;
 %% Special case for #...<>
-normalise({call,_,{remote,_,{atom,_,erlang},{atom,_,Fun}},[{string,_,S}]}) when
-        Fun =:= list_to_ref; Fun =:= list_to_port; Fun =:= list_to_pid ->
-    erlang:Fun(S);
+normalise({call,_,{remote,_,{atom,_,M},{atom,_,F}},[{string,_,S}]}) ->
+    PidConstructor = beam_native_auto(list_to_pid,1),
+    PortConstructor = beam_native_auto(list_to_port,1),
+    RefConstructor = beam_native_auto(list_to_ref,1),
+    Tag = case {M,F} of
+              PidConstructor -> pid;
+              PortConstructor -> port;
+              RefConstructor -> reference
+          end,
+    case beam_native_selected(M,F,1) of
+        true -> validate_tag(Tag,S);
+        false -> erlang:error(badarg)
+    end;
 normalise({'fun',_,{function,{atom,_,M},{atom,_,F},{integer,_,A}}}) ->
     %% Since "#Fun<M.F.A>" is recognized, "fun M:F/A" should be too.
     fun M:F/A.
@@ -2406,8 +2435,8 @@ partial_eval(Expr) ->
         error:_ -> Expr
     end.
 
-ev_expr({op,_,Op,L,R}) -> erlang:Op(ev_expr(L), ev_expr(R));
-ev_expr({op,_,Op,A}) -> erlang:Op(ev_expr(A));
+ev_expr({op,_,Op,L,R}) -> beam_native_language(Op,[ev_expr(L),ev_expr(R)]);
+ev_expr({op,_,Op,A}) -> beam_native_language(Op,[ev_expr(A)]);
 ev_expr({integer,_,X}) -> X;
 ev_expr({char,_,X})    -> X;
 ev_expr({float,_,X})   -> X;
@@ -2486,3 +2515,5 @@ ret_expr(_Old, New) ->
     New.
 
 anno(Expr) -> element(2, Expr).
+
+-include("beam_eval_native.hrl").

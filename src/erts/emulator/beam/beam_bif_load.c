@@ -25,6 +25,7 @@
 #endif
 
 #include "sys.h"
+#include "beam_builtin_catalog.h"
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_process.h"
@@ -45,6 +46,7 @@
 #include "erl_record.h"
 #include "erl_trace.h"
 #include "beam_internal.h"
+#include "beam_module_management.h"
 
 #include <fenv.h>
 #include <stdlib.h>
@@ -55,6 +57,13 @@
 #if defined(BEAMASM) && defined(ADDRESS_SANITIZER)
 #  include <sanitizer/lsan_interface.h>
 #endif
+
+enum bare_purge_admission {
+    BARE_PURGER_IDLE,
+    BARE_PURGER_ORDINARY,
+    BARE_PURGER_RESERVED,
+    BARE_PURGER_ACTIVE
+};
 
 static struct {
     Eterm module;
@@ -69,6 +78,12 @@ static struct {
     Uint fe_size;
     Uint fe_count;
     struct erl_module_instance saved_old;
+    enum bare_purge_admission host_admission;
+    Eterm host_module;
+    Eterm host_requester;
+    Eterm host_completed_requester;
+    Eterm host_result;
+    int host_requester_alive;
 } purge_state;
 
 Process *erts_code_purger = NULL;
@@ -85,6 +100,12 @@ static void
 init_purge_state(void)
 {
     purge_state.module = THE_NON_VALUE;
+    purge_state.host_admission = BARE_PURGER_IDLE;
+    purge_state.host_module = THE_NON_VALUE;
+    purge_state.host_requester = THE_NON_VALUE;
+    purge_state.host_completed_requester = THE_NON_VALUE;
+    purge_state.host_result = THE_NON_VALUE;
+    purge_state.host_requester_alive = 0;
 
     erts_mtx_init(&purge_state.mtx, "purge_state", NIL,
         ERTS_LOCK_FLAGS_PROPERTY_STATIC | ERTS_LOCK_FLAGS_CATEGORY_GENERIC);
@@ -253,6 +274,12 @@ erts_internal_prepare_loading_2(BIF_ALIST_2)
         BIF_ERROR(BIF_P, BADARG);
     }
 
+    if (erts_bare_is_private_core_module(BIF_ARG_1)) {
+        erts_free_aligned_binary_bytes(temp_alloc);
+        hp = HAlloc(BIF_P, 3);
+        BIF_RET(TUPLE2(hp, am_error, am_atom_put("sticky_directory", 16)));
+    }
+
     magic = erts_alloc_loader_state();
     reason = erts_prepare_loading(magic, BIF_P, BIF_P->group_leader,
                                   &BIF_ARG_1, code, size);
@@ -393,7 +420,7 @@ finish_loading_1(BIF_ALIST_1)
 	}
 	p[i].code = erts_magic_ref2bin(term);
 	p[i].module = erts_module_for_prepared_code(p[i].code);
-	if (p[i].module == NIL) {
+	if (p[i].module == NIL || erts_bare_is_private_core_module(p[i].module)) {
 	    goto badarg;
 	}
 	BIF_ARG_1 = CDR(cons);
@@ -694,6 +721,8 @@ BIF_RETTYPE delete_module_1(BIF_ALIST_1)
 	BIF_ERROR(BIF_P, BADARG);
     }
 
+    if (erts_bare_is_private_core_module(BIF_ARG_1)) BIF_RET(am_false);
+
     if (!erts_try_seize_code_load_permission(BIF_P)) {
 	ERTS_BIF_YIELD1(BIF_TRAP_EXPORT(BIF_delete_module_1), BIF_P, BIF_ARG_1);
     }
@@ -890,7 +919,8 @@ BIF_RETTYPE finish_after_on_load_2(BIF_ALIST_2)
                         (void*)ep->trampoline.not_loaded.deferred;
                     ep->trampoline.not_loaded.deferred = 0;
             } else {
-                if (ep->bif_number != -1) {
+                if (ep->bif_number != -1 || beam_builtin_selected_instruction(
+                    ep->info.mfa.module,ep->info.mfa.function,ep->info.mfa.arity) >= 0) {
                     continue;
                 }
 
@@ -930,7 +960,8 @@ BIF_RETTYPE finish_after_on_load_2(BIF_ALIST_2)
 	    if (ep == NULL || ep->info.mfa.module != BIF_ARG_1) {
 		continue;
 	    }
-	    if (ep->bif_number != -1) {
+	    if (ep->bif_number != -1 || beam_builtin_selected_instruction(
+                ep->info.mfa.module,ep->info.mfa.function,ep->info.mfa.arity) >= 0) {
 		continue;
 	    }
 
@@ -2086,7 +2117,11 @@ resume_purger(void *unused)
 {
     Process *p = erts_code_purger;
     erts_proc_lock(p, ERTS_PROC_LOCK_STATUS);
-    erts_resume(p, ERTS_PROC_LOCK_STATUS);
+    /* Returning shutdown can retire the system process before this later
+     * operation. Its retained Process reference remains valid, but exit has
+     * already discarded the suspension count. */
+    if (!ERTS_PROC_IS_EXITING(p))
+        erts_resume(p, ERTS_PROC_LOCK_STATUS);
     erts_proc_unlock(p, ERTS_PROC_LOCK_STATUS);
 }
 
@@ -2105,9 +2140,166 @@ finalize_purge_abort(void *unused)
     resume_purger(NULL);
 }
 
+static int bare_protected_module(Eterm module)
+{
+    const char *const *names;
+    size_t count, i;
+    const Atom *atom = atom_tab(atom_val(module));
+    const byte *bytes = erts_atom_get_name(atom);
+    beam_module_core_names(&names, &count);
+    for (i = 0; i < count; ++i) {
+        size_t size = strlen(names[i]);
+        if (atom->len == size && !memcmp(bytes, names[i], size))
+            return 1;
+    }
+    return 0;
+}
+
+/* The admission gate covers the whole Erlang purger handler, including the
+ * intervals before prepare and after abort/complete resume. Its identities are
+ * immediate terms; no caller storage or native request pointer enters Erlang. */
+static Eterm bare_purger_control(Process *process, Eterm module, Eterm operation)
+{
+    Eterm result = am_false;
+    Eterm requester = THE_NON_VALUE;
+    Eterm *hp = NULL;
+
+    if (operation == am_beam_host_admit) {
+        if (!is_atom(module) || !erts_bare_is_module_purge_request(process))
+            return THE_NON_VALUE;
+        if (erts_bare_stop_requested())
+            return am_busy;
+        erts_mtx_lock(&purge_state.mtx);
+        if (purge_state.host_admission != BARE_PURGER_IDLE ||
+            is_value(purge_state.module)) {
+            result = am_busy;
+        } else {
+            purge_state.host_admission = BARE_PURGER_RESERVED;
+            purge_state.host_module = module;
+            purge_state.host_requester = process->common.id;
+            purge_state.host_requester_alive = 1;
+            purge_state.host_completed_requester = THE_NON_VALUE;
+            purge_state.host_result = THE_NON_VALUE;
+            result = am_true;
+        }
+        erts_mtx_unlock(&purge_state.mtx);
+        return result;
+    }
+
+    if (operation == am_beam_host_result) {
+        if (!erts_bare_is_module_purge_request(process))
+            return THE_NON_VALUE;
+        erts_mtx_lock(&purge_state.mtx);
+        result = purge_state.host_completed_requester == process->common.id
+               ? purge_state.host_result : am_undefined;
+        erts_mtx_unlock(&purge_state.mtx);
+        return result;
+    }
+
+    if (process != erts_code_purger)
+        return THE_NON_VALUE;
+    if (operation == am_beam_host_begin)
+        hp = HAlloc(process, 3);
+    erts_mtx_lock(&purge_state.mtx);
+    if (operation == am_beam_host_begin) {
+        if (purge_state.host_admission == BARE_PURGER_RESERVED) {
+            purge_state.host_admission = BARE_PURGER_ACTIVE;
+            result = TUPLE2(hp, purge_state.host_module,
+                            purge_state.host_requester);
+        } else if (purge_state.host_admission == BARE_PURGER_IDLE) {
+            purge_state.host_admission = BARE_PURGER_ORDINARY;
+        } else {
+            result = THE_NON_VALUE;
+        }
+    } else if (operation == am_beam_host_reply) {
+        if ((module == am_true || module == am_false || module == am_busy ||
+             module == am_unsupported) &&
+            purge_state.host_admission == BARE_PURGER_ACTIVE) {
+            ASSERT(is_non_value(purge_state.module));
+            requester = purge_state.host_requester;
+            if (purge_state.host_requester_alive) {
+                purge_state.host_completed_requester = requester;
+                purge_state.host_result = module;
+            }
+            purge_state.host_module = THE_NON_VALUE;
+            purge_state.host_requester = THE_NON_VALUE;
+            purge_state.host_requester_alive = 0;
+            /* The already selected ordinary request owns admission before
+             * the host can receive its result and attempt another purge. */
+            purge_state.host_admission = BARE_PURGER_ORDINARY;
+            result = am_true;
+        } else {
+            result = THE_NON_VALUE;
+        }
+    } else if (operation == am_beam_host_finish) {
+        if (module == am_false &&
+                   purge_state.host_admission == BARE_PURGER_ORDINARY) {
+            ASSERT(is_non_value(purge_state.module));
+            purge_state.host_admission = BARE_PURGER_IDLE;
+            result = am_true;
+        } else {
+            result = THE_NON_VALUE;
+        }
+    } else {
+        result = THE_NON_VALUE;
+    }
+    erts_mtx_unlock(&purge_state.mtx);
+    if (is_value(requester))
+        erts_bare_module_purge_retired(requester);
+    return result;
+}
+
+int erts_bare_module_purge_request_deleted(Process *process)
+{
+    int active = 0;
+    erts_mtx_lock(&purge_state.mtx);
+    if (purge_state.host_requester == process->common.id) {
+        if (purge_state.host_admission == BARE_PURGER_RESERVED) {
+            purge_state.host_admission = BARE_PURGER_IDLE;
+            purge_state.host_module = THE_NON_VALUE;
+            purge_state.host_requester = THE_NON_VALUE;
+            purge_state.host_requester_alive = 0;
+        } else if (purge_state.host_admission == BARE_PURGER_ACTIVE) {
+            purge_state.host_requester_alive = 0;
+            active = 1;
+        }
+    }
+    if (purge_state.host_completed_requester == process->common.id) {
+        purge_state.host_completed_requester = THE_NON_VALUE;
+        purge_state.host_result = THE_NON_VALUE;
+    }
+    erts_mtx_unlock(&purge_state.mtx);
+    return active;
+}
+
+void erts_bare_module_purge_reset_after_stop(void)
+{
+    ASSERT(erts_bare_is_stopped());
+    /* Stop has deleted every process and drained native auxiliary work. The
+     * runtime purge/literal state remains owned by normal final teardown. */
+    erts_mtx_lock(&purge_state.mtx);
+    purge_state.host_admission = BARE_PURGER_IDLE;
+    purge_state.host_module = THE_NON_VALUE;
+    purge_state.host_requester = THE_NON_VALUE;
+    purge_state.host_completed_requester = THE_NON_VALUE;
+    purge_state.host_result = THE_NON_VALUE;
+    purge_state.host_requester_alive = 0;
+    erts_mtx_unlock(&purge_state.mtx);
+}
+
 
 BIF_RETTYPE erts_internal_purge_module_2(BIF_ALIST_2)
 {
+    if (BIF_ARG_2 == am_beam_host_admit ||
+        BIF_ARG_2 == am_beam_host_begin ||
+        BIF_ARG_2 == am_beam_host_finish ||
+        BIF_ARG_2 == am_beam_host_reply ||
+        BIF_ARG_2 == am_beam_host_result) {
+        Eterm result = bare_purger_control(BIF_P, BIF_ARG_1, BIF_ARG_2);
+        if (is_non_value(result))
+            BIF_ERROR(BIF_P, EXC_NOTSUP);
+        BIF_RET(result);
+    }
     if (BIF_P != erts_code_purger) {
         BIF_ERROR(BIF_P, EXC_NOTSUP);
     }
@@ -2118,8 +2310,11 @@ BIF_RETTYPE erts_internal_purge_module_2(BIF_ALIST_2)
 
     switch (BIF_ARG_2) {
 
+    case am_beam_host_prepare:
     case am_prepare:
     case am_prepare_on_load: {
+        if (BIF_ARG_2 != am_beam_host_prepare &&
+            erts_bare_is_private_core_module(BIF_ARG_1)) BIF_RET(am_false);
         /* Prepare for purge by marking all fun entries referring to the code
          * to purge with "pending purge" markers. */
         ErtsCodeIndex code_ix;
@@ -2133,7 +2328,17 @@ BIF_RETTYPE erts_internal_purge_module_2(BIF_ALIST_2)
         /* Fun purging requires that we don't stage new code while any purge
          * markers are alive, lest we kill them by reloading a new module on
          * top of an old instance of the same module. */
-        if (!erts_try_seize_code_stage_permission(BIF_P)) {
+        if (BIF_ARG_2 == am_beam_host_prepare) {
+            int admitted;
+            erts_mtx_lock(&purge_state.mtx);
+            admitted = purge_state.host_admission == BARE_PURGER_ACTIVE &&
+                       purge_state.host_module == BIF_ARG_1;
+            erts_mtx_unlock(&purge_state.mtx);
+            if (!admitted)
+                BIF_ERROR(BIF_P, EXC_NOTSUP);
+            if (!erts_try_seize_code_load_permission_nowait(BIF_P))
+                BIF_RET(am_busy);
+        } else if (!erts_try_seize_code_stage_permission(BIF_P)) {
             ERTS_BIF_YIELD2(BIF_TRAP_EXPORT(BIF_erts_internal_purge_module_2),
                             BIF_P, BIF_ARG_1, BIF_ARG_2);
         }
@@ -2142,6 +2347,19 @@ BIF_RETTYPE erts_internal_purge_module_2(BIF_ALIST_2)
 
         /* Correct module? */
         modp = erts_get_module(BIF_ARG_1, code_ix);
+        if (BIF_ARG_2 == am_beam_host_prepare &&
+            erts_vm_module_has_nif_selection((uintptr_t) BIF_ARG_1)) {
+            erts_release_code_load_permission();
+            BIF_RET(am_busy);
+        }
+        if (BIF_ARG_2 == am_beam_host_prepare) {
+            if (bare_protected_module(BIF_ARG_1) ||
+                (modp && (modp->on_load || modp->curr.nif || modp->old.nif))) {
+                erts_release_code_load_permission();
+                BIF_RET(am_unsupported);
+            }
+            erts_release_code_mod_permission();
+        }
         if (!modp) {
             res = am_false;
         } else {
@@ -2425,6 +2643,22 @@ erts_debug_foreach_release_literal_area_off_heap(void (*func)(ErlOffHeap *, void
     }
 }
 
+/* The collector may have queued or published areas when its process exits.
+ * Their native references must be released before native unload and scheduler
+ * shutdown, just like resources in the active persistent-term table. */
+void erts_bare_release_pending_literal_nif_resources(void)
+{
+    ErtsLiteralAreaRef *ref;
+    ErtsLiteralArea *copy_area = ERTS_COPY_LITERAL_AREA();
+    erts_mtx_lock(&release_literal_areas.mtx);
+    for (ref = release_literal_areas.first; ref; ref = ref->next)
+        erts_bare_release_literal_nif_resources(ref->literal_area);
+    erts_mtx_unlock(&release_literal_areas.mtx);
+    erts_bare_release_literal_nif_resources(copy_area);
+    if (copy_area != release_literal_areas.block_area)
+        erts_bare_release_literal_nif_resources(release_literal_areas.block_area);
+}
+
 /*
  * Move code from current to old and null all export entries for the module
  */
@@ -2459,7 +2693,17 @@ clear_module_exports(Module* modp)
             ep->trampoline.common.op = BeamOpCodeAddr(op_call_error_handler);
             ep->trampoline.not_loaded.deferred = 0;
 
-            erts_activate_export_trampoline(ep, code_ix);
+            int instruction = beam_builtin_selected_instruction(ep->info.mfa.module,
+                ep->info.mfa.function,ep->info.mfa.arity);
+            if (instruction >= 0)
+                ep->dispatch.addresses[code_ix] =
+                    (ErtsCodePtr)beam_builtin_instruction_address(instruction);
+            else if (ep->bif_number >= 0 &&
+                *bif_descriptors[ep->bif_number].implementation)
+                ep->dispatch.addresses[code_ix] =
+                    (ErtsCodePtr)beam_builtin_export_address(ep->bif_number);
+            else
+                erts_activate_export_trampoline(ep, code_ix);
 
 	    DBG_TRACE_MFA_P(&ep->info.mfa,
 			    "export invalidation, code_ix=%d", code_ix);
@@ -2497,12 +2741,100 @@ beam_make_current_old(Process *c_p, ErtsProcLocks c_p_locks, Eterm module)
 	}
 	/* Make the current version old. */
 	delete_code(modp);
+    } else if (modp->curr.num_traced_exports) {
+        /* A host-bound native export can be traced before its first ordinary
+         * module version. Retire those export breakpoints as for a reload. */
+        clear_module_exports(modp);
     }
     return NIL;
 }
 
 /* Public embedding operations keep module identity in the native tables. No
  * lookup interns an atom, and no pointer into these tables escapes to C. */
+beam_status
+erts_bare_module_name_atom(beam_module_name name, Eterm *out)
+{
+    const byte *end;
+    Uint characters;
+    Eterm atom;
+    if (!name.data || name.size > MAX_ATOM_SZ_LIMIT ||
+        erts_analyze_utf8_x((const byte *)name.data, name.size, &end, &characters,
+                            NULL, NULL, MAX_ATOM_CHARACTERS) != ERTS_UTF8_OK)
+        return BEAM_INVALID_ARGUMENT;
+    if (!erts_atom_get(name.data, name.size, &atom, ERTS_ATOM_ENC_UTF8))
+        return BEAM_NOT_FOUND;
+    *out = atom;
+    return BEAM_OK;
+}
+
+static beam_status bare_mutation_module_status(Eterm atom, Module *module)
+{
+    if (erts_vm_module_has_nif_selection((uintptr_t) atom))
+        return BEAM_BUSY;
+    if (bare_protected_module(atom) ||
+        (module && (module->on_load || module->curr.nif || module->old.nif)))
+        return BEAM_UNSUPPORTED;
+    return BEAM_OK;
+}
+
+beam_status
+erts_bare_replace_prepared(Binary *prepared, Eterm atom)
+{
+    Module *module = erts_get_module(atom, erts_active_code_ix());
+    beam_status status = bare_mutation_module_status(atom, module);
+    Eterm result;
+    if (status != BEAM_OK)
+        return status;
+    if (erts_has_code_on_load(prepared) == am_true)
+        return BEAM_UNSUPPORTED;
+    if (module && module->curr.code_hdr && module->old.code_hdr)
+        return BEAM_BUSY;
+
+    erts_thr_progress_block();
+    erts_start_staging_code_ix(1);
+    module = erts_put_module(atom);
+    if (module->curr.num_breakpoints)
+        erts_clear_module_break(module);
+    result = erts_finish_loading(prepared, NULL, 0, &atom);
+    ASSERT(result == NIL);
+    erts_end_staging_code_ix();
+    erts_commit_staging_code_ix();
+    set_on_load_trace_pattern(atom);
+    erts_blocking_code_barrier();
+    erts_thr_progress_unblock();
+    return BEAM_OK;
+}
+
+beam_status
+erts_bare_delete_module(beam_module_name name)
+{
+    Eterm atom;
+    Module *module;
+    beam_status status = erts_bare_module_name_atom(name, &atom);
+    if (status != BEAM_OK)
+        return status;
+    module = erts_get_module(atom, erts_active_code_ix());
+    status = bare_mutation_module_status(atom, module);
+    if (status != BEAM_OK)
+        return status;
+    if (module && module->old.code_hdr)
+        return BEAM_BUSY;
+    if (!module || !module->curr.code_hdr)
+        return BEAM_NOT_FOUND;
+
+    erts_thr_progress_block();
+    erts_start_staging_code_ix(0);
+    module = erts_get_module(atom, erts_staging_code_ix());
+    if (module->curr.num_breakpoints)
+        erts_clear_module_break(module);
+    delete_code(module);
+    erts_end_staging_code_ix();
+    erts_commit_staging_code_ix();
+    erts_blocking_code_barrier();
+    erts_thr_progress_unblock();
+    return BEAM_OK;
+}
+
 static beam_status
 bare_find_module(const char *name, ErtsCodeIndex ix, Module **out)
 {
@@ -2833,6 +3165,8 @@ void erts_bare_destroy_code(void)
     ErtsLiteralArea *copy_area = ERTS_COPY_LITERAL_AREA();
 
     ASSERT(erts_bare_mode);
+    if (erts_initialized)
+        erts_bare_module_purge_reset_after_stop();
     ix = erts_initialized ? erts_active_code_ix() : erts_staging_code_ix();
     capacity += 3 * module_code_size(ix);
     instances = erts_alloc(ERTS_ALC_T_TMP, capacity * sizeof(*instances));

@@ -26,6 +26,9 @@ The `ErlDrvEntry` structure declared by the installed `erl_driver.h` header.
 Use this with the [driver API reference](drivers.md). Driver loading and
 lifetime follow the current [provisional loading design](loading.md).
 References to `erl_ddll` describe the separate OTP product's loader.
+Native `erlang` entries below correspond to selected `beam` bindings in modern
+hosts. Ordinary `erlang` helpers retain their names; see
+[native calls and language operations](../language/native-calls.md).
 
 ## Description
 

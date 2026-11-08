@@ -26,6 +26,8 @@
 
 -export([new/0,opcode/2,highest_opcode/1,
          atom/2,local/4,export/4,import/4,
+         guard_import/6,native_guards/1,private_import/5,private_natives/1,
+         selection_import/5,native_selections/1,
          string/2,lambda/3,literal/2,line/3,
          fname/2,type/2,debug_info/3,
          atom_table/1,local_table/1,export_table/1,import_table/1,
@@ -42,7 +44,9 @@
 -type debug_info() :: #{frame_size := frame_size(), vars := list(), calls := list()}.
 
 -type atom_tab()   :: #{atom() => index()}.
--type import_tab() :: gb_trees:tree(mfa(), index()).
+-type import_key() :: {index(),index(),arity()} |
+                      {index(),index(),arity(),atom(),term()}.
+-type import_tab() :: gb_trees:tree(import_key(), index()).
 -type fname_tab()  :: #{Name :: term() => index()}.
 -type line_tab()   :: #{{Fname :: index(), Line :: term()} => index()}.
 -type literal_tab() :: #{Literal :: term() => index()}.
@@ -67,6 +71,9 @@
          debug = #{}                :: debug_tab(),
          num_lines = 0              :: non_neg_integer(), %Number of line instructions
          exec_line = false          :: boolean(),
+         native_selections = [],
+         private_natives = [],
+         native_guards = [],
          next_import = 0            :: non_neg_integer(),
          string_offset = 0          :: non_neg_integer(),
          next_literal = 0           :: non_neg_integer(),
@@ -298,7 +305,7 @@ export_table(#asm{exports = Exports}) ->
 
 import_table(#asm{imports=Imp,next_import=NumImports}) ->
     Sorted = lists:keysort(2, gb_trees:to_list(Imp)),
-    ImpTab = [MFA || {MFA,_} <:- Sorted],
+    ImpTab = [{element(1,K),element(2,K),element(3,K)} || {K,_} <:- Sorted],
     {NumImports,ImpTab}.
 
 -spec string_table(bdict()) -> {non_neg_integer(), binary()}.
@@ -388,3 +395,40 @@ old_string(Str, Pool) ->
         nomatch -> none;
         {Start,_Length} -> byte_size(Pool) - Start
     end.
+
+guard_import(M, F, A, ID, Fail, D0) ->
+    {Mod,D1} = atom(M,D0),
+    {Name,D2} = atom(F,D1),
+    #asm{imports=Imports,next_import=Next,native_guards=Guards} = D2,
+    Key = {Mod,Name,A,ID,Fail},
+    case gb_trees:lookup(Key,Imports) of
+        {value,Index} -> {Index,D2};
+        none ->
+            {Next,D2#asm{imports=gb_trees:insert(Key,Next,Imports),
+                         next_import=Next+1,native_guards=[{Next,ID,Fail}|Guards]}}
+    end.
+native_guards(#asm{native_guards=Guards}) -> lists:reverse(Guards).
+
+private_import(M,F,A,ID,D0) ->
+    {Mod,D1} = atom(M,D0),
+    {Name,D2} = atom(F,D1),
+    #asm{imports=Imports,next_import=Next,private_natives=Private} = D2,
+    Key = {Mod,Name,A,private,ID},
+    case gb_trees:lookup(Key,Imports) of
+        {value,Index} -> {Index,D2};
+        none -> {Next,D2#asm{imports=gb_trees:insert(Key,Next,Imports),
+                            next_import=Next+1,private_natives=[{Next,ID}|Private]}}
+    end.
+private_natives(#asm{private_natives=Private}) -> lists:reverse(Private).
+
+selection_import(M,F,A,ID,D0) ->
+    {Mod,D1} = atom(M,D0),
+    {Name,D2} = atom(F,D1),
+    #asm{imports=Imports,next_import=Next,native_selections=Selections} = D2,
+    Key = {Mod,Name,A,selection,ID},
+    case gb_trees:lookup(Key,Imports) of
+        {value,Index} -> {Index,D2};
+        none -> {Next,D2#asm{imports=gb_trees:insert(Key,Next,Imports),
+                            next_import=Next+1,native_selections=[{Next,ID}|Selections]}}
+    end.
+native_selections(#asm{native_selections=Selections}) -> lists:reverse(Selections).

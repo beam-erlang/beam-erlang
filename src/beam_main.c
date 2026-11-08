@@ -91,6 +91,7 @@ help_command(const char *command)
               "  -D NAME[=TERM], -DNAME[=TERM] Define a macro (default value: true)\n"
               "  --warnings-as-errors     Fail on compiler warnings\n"
               "  --deterministic          Enable deterministic compiler output\n"
+              "  --native-bindings=modern|canonical Target native naming profile\n"
               "  --no-transforms          Reject compiler transforms\n"
               "  --depfile FILE           Write dependencies for one source\n"
               "  --                       Treat remaining arguments as filenames\n",
@@ -190,6 +191,8 @@ cmd_compile(int argc, char **argv)
             continue;
         } else if (strcmp(argument, "--warnings-as-errors") == 0 ||
                    strcmp(argument, "--deterministic") == 0 ||
+                   strcmp(argument, "--native-bindings=modern") == 0 ||
+                   strcmp(argument, "--native-bindings=canonical") == 0 ||
                    strcmp(argument, "--no-transforms") == 0) {
             continue;
         } else if (strncmp(argument, "--runtime", 9) == 0) {

@@ -12,7 +12,7 @@ no_handler() ->
 
 requests() ->
     {ok, <<"copied">>} = beam_host:request(copy),
-    Binary = <<(erlang:unique_integer([positive])):64, 0:524288>>,
+    Binary = <<(beam:unique_integer([positive])):64, 0:524288>>,
     Term = {echo, #{binary => Binary, shared => {Binary, Binary},
                     nested => [one, {2, [-3, 16#10000000000000000]},
                                {self(), make_ref()}]}},
@@ -28,7 +28,7 @@ requests() ->
     ok.
 
 pending() ->
-    true = register(bare_pending, spawn(fun() ->
+    true = register(bare_pending, erlang:spawn(fun() ->
         receive after 100 -> ok end,
         Result = beam_host:request(pending),
         receive {From, Ref} -> From ! {Ref, Result} end
@@ -41,25 +41,25 @@ pending_result() ->
     receive {Ref, {ok, ok}} -> ok end.
 
 pending_dead() ->
-    Pid = spawn(fun() ->
+    Pid = erlang:spawn(fun() ->
         receive after 25 -> beam_host:request(pending_dead) end
     end),
-    spawn(fun() -> receive after 100 -> exit(Pid, kill) end end),
+    erlang:spawn(fun() -> receive after 100 -> exit(Pid, kill) end end),
     ok.
 
 dead_requester() ->
-    Pid = spawn(fun() -> beam_host:request(dead_requester) end),
+    Pid = erlang:spawn(fun() -> beam_host:request(dead_requester) end),
     %% A separate process can terminate a requester while C handles its request.
     Ref = monitor(process, Pid),
-    spawn(fun() -> receive after 100 -> exit(Pid, kill) end end),
+    erlang:spawn(fun() -> receive after 100 -> exit(Pid, kill) end end),
     receive {'DOWN', Ref, process, Pid, killed} -> ok end.
 
 fairness() ->
-    First = spawn(fun() -> beam_host:request(fairness_first) end),
+    First = erlang:spawn(fun() -> beam_host:request(fairness_first) end),
     Ref = monitor(process, First),
-    spawn(fun() ->
+    erlang:spawn(fun() ->
         receive after 100 -> ok end,
-        Second = spawn(fun() ->
+        Second = erlang:spawn(fun() ->
             {ok, ok} = beam_host:request(fairness_second),
             receive {From, Tag} -> From ! {Tag, ok} end
         end),
@@ -83,9 +83,9 @@ fairness_result() ->
     receive {Ref, ok} -> ok end.
 
 halt_in_callback() ->
-    spawn(fun() -> receive after 100 -> erlang:halt(23) end end),
+    erlang:spawn(fun() -> receive after 100 -> erlang:halt(23) end end),
     beam_host:request(halt_in_callback).
 
 background_halt() ->
-    spawn(fun() -> receive after 250 -> erlang:halt(19) end end),
+    erlang:spawn(fun() -> receive after 250 -> erlang:halt(19) end end),
     ok.

@@ -38,9 +38,9 @@ The VM exposes:
 
 | Clock | Meaning | Typical use |
 | --- | --- | --- |
-| `erlang:monotonic_time(Unit)` | Time on the current VM's monotonic scale, with no portable wall-clock origin. | Elapsed durations and local deadlines. |
-| `erlang:system_time(Unit)` | The VM's view of POSIX wall-clock time. | Timestamps interpreted outside the current VM. |
-| `erlang:time_offset(Unit)` | The offset between the VM's monotonic and system clocks. | Understanding the relation between clock readings. |
+| `beam_time:monotonic_time(Unit)` | Time on the current VM's monotonic scale, with no portable wall-clock origin. | Elapsed durations and local deadlines. |
+| `beam_time:system_time(Unit)` | The VM's view of POSIX wall-clock time. | Timestamps interpreted outside the current VM. |
+| `beam_time:time_offset(Unit)` | The offset between the VM's monotonic and system clocks. | Understanding the relation between clock readings. |
 
 In native units at a given instant, system time is monotonic time plus the
 current time offset. Converting the values separately to coarser units can
@@ -63,12 +63,12 @@ hard real-time execution guarantee.
 
 Read monotonic time in native units, subtract the readings, then convert the
 difference to the desired unit. Native units are implementation-dependent;
-conversion through `erlang:convert_time_unit/3` avoids assuming a fixed frequency.
+conversion through `beam_time:convert_time_unit/3` avoids assuming a fixed frequency.
 
 ```erlang
-Start = erlang:monotonic_time(native),
-Elapsed = erlang:monotonic_time(native) - Start,
-erlang:convert_time_unit(Elapsed, native, microsecond).
+Start = beam_time:monotonic_time(native),
+Elapsed = beam_time:monotonic_time(native) - Start,
+beam_time:convert_time_unit(Elapsed, native, microsecond).
 ```
 
 This shell expression measures the interval between its two reads. Place the
@@ -114,3 +114,13 @@ expiration does not reserve a scheduler or guarantee immediate execution. A
 message already eligible for selection and a timeout are also distinct events.
 Use explicit acknowledgements when a protocol needs proof that work completed,
 as described in the [language guide](../language/README.md#signals-and-acknowledgements).
+
+## Timer messages
+
+`beam_time:start_timer/3,4` sends a tagged timeout; `send_after/3,4` sends the
+message directly. Their relative time arguments use milliseconds, independently
+of the native-unit deadlines returned by `deadline_after/1`. Absolute timers
+use monotonic milliseconds with `{abs,true}`. Convert units explicitly.
+See the [library reference](../stdlib/base.md#beam_time) for read/cancel options
+and asynchronous replies. Pending timers are reclaimed with their owning VM;
+clock reads and conversions require no ordinary I/O, filesystem or network service.

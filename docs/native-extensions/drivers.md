@@ -29,6 +29,11 @@ provisional. References to `erl_ddll` describe an OTP-owned loading service;
 that module is not part of the modern standard library. Version notes record
 upstream API history, not a BEAM/Erlang compatibility promise.
 
+Canonical `erlang` names in this reference identify OTP operations. Modern hosts
+select their native callables under `beam`; public names remain host-owned.
+Ordinary `erlang` helpers, including `open_port/2`, retain their names.
+See [native calls and language operations](../language/native-calls.md).
+
 ## Description
 
 An Erlang driver is a library containing a set of native driver callback

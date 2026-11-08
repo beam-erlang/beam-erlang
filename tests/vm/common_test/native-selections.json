@@ -1,0 +1,2365 @@
+{
+  "suites": {
+    "bif_SUITE": {
+      "all": "[erl_bif_types, guard_bifs_in_erl_bif_types, shadow_comments,\n     specs, improper_bif_stubs,\n     t_list_to_existing_atom, os_env, otp_7526,\n     display, display_string, list_to_utf8_atom,\n     t_atom_to_binary, t_binary_to_atom, t_binary_to_existing_atom,\n     erl_crash_dump_bytes, min_max, erlang_halt, halt_flush_timeout,\n     is_builtin, error_stacktrace, error_stacktrace_during_call_trace,\n     group_leader_prio, group_leader_prio_dirty,\n     is_process_alive, is_process_alive_signal_from,\n     process_info_blast, os_env_case_sensitivity,\n     verify_middle_queue_save, test_length,fixed_apply_badarg,\n     external_fun_apply3, node_1, doctests, is_integer_3_test]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "erl_bif_types",
+          "groups": []
+        },
+        {
+          "name": "guard_bifs_in_erl_bif_types",
+          "groups": []
+        },
+        {
+          "name": "shadow_comments",
+          "groups": []
+        },
+        {
+          "name": "specs",
+          "groups": []
+        },
+        {
+          "name": "improper_bif_stubs",
+          "groups": []
+        },
+        {
+          "name": "t_list_to_existing_atom",
+          "groups": []
+        },
+        {
+          "name": "os_env",
+          "groups": []
+        },
+        {
+          "name": "otp_7526",
+          "groups": []
+        },
+        {
+          "name": "display",
+          "groups": []
+        },
+        {
+          "name": "display_string",
+          "groups": []
+        },
+        {
+          "name": "list_to_utf8_atom",
+          "groups": []
+        },
+        {
+          "name": "t_atom_to_binary",
+          "groups": []
+        },
+        {
+          "name": "t_binary_to_atom",
+          "groups": []
+        },
+        {
+          "name": "t_binary_to_existing_atom",
+          "groups": []
+        },
+        {
+          "name": "erl_crash_dump_bytes",
+          "groups": []
+        },
+        {
+          "name": "min_max",
+          "groups": []
+        },
+        {
+          "name": "erlang_halt",
+          "groups": []
+        },
+        {
+          "name": "halt_flush_timeout",
+          "groups": []
+        },
+        {
+          "name": "is_builtin",
+          "groups": []
+        },
+        {
+          "name": "error_stacktrace",
+          "groups": []
+        },
+        {
+          "name": "error_stacktrace_during_call_trace",
+          "groups": []
+        },
+        {
+          "name": "group_leader_prio",
+          "groups": []
+        },
+        {
+          "name": "group_leader_prio_dirty",
+          "groups": []
+        },
+        {
+          "name": "is_process_alive",
+          "groups": []
+        },
+        {
+          "name": "is_process_alive_signal_from",
+          "groups": []
+        },
+        {
+          "name": "process_info_blast",
+          "groups": []
+        },
+        {
+          "name": "os_env_case_sensitivity",
+          "groups": []
+        },
+        {
+          "name": "verify_middle_queue_save",
+          "groups": []
+        },
+        {
+          "name": "test_length",
+          "groups": []
+        },
+        {
+          "name": "fixed_apply_badarg",
+          "groups": []
+        },
+        {
+          "name": "external_fun_apply3",
+          "groups": []
+        },
+        {
+          "name": "node_1",
+          "groups": []
+        },
+        {
+          "name": "doctests",
+          "groups": []
+        },
+        {
+          "name": "is_integer_3_test",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "num_bif_SUITE": {
+      "all": "[t_abs, t_float, t_float_to_string, t_integer_to_string,\n     {group, t_string_to_float}, t_string_to_integer, t_round,\n     t_trunc_and_friends, t_list_to_integer_edge_cases]",
+      "groups": "[{t_string_to_float, [],\n      [t_string_to_float_safe, t_string_to_float_risky]}]",
+      "occurrences": [
+        {
+          "name": "t_abs",
+          "groups": []
+        },
+        {
+          "name": "t_float",
+          "groups": []
+        },
+        {
+          "name": "t_float_to_string",
+          "groups": []
+        },
+        {
+          "name": "t_integer_to_string",
+          "groups": []
+        },
+        {
+          "name": "t_string_to_float_safe",
+          "groups": [
+            "t_string_to_float"
+          ]
+        },
+        {
+          "name": "t_string_to_float_risky",
+          "groups": [
+            "t_string_to_float"
+          ]
+        },
+        {
+          "name": "t_string_to_integer",
+          "groups": []
+        },
+        {
+          "name": "t_round",
+          "groups": []
+        },
+        {
+          "name": "t_trunc_and_friends",
+          "groups": []
+        },
+        {
+          "name": "t_list_to_integer_edge_cases",
+          "groups": []
+        }
+      ],
+      "group_paths": [
+        [
+          "t_string_to_float"
+        ]
+      ],
+      "parallel": false
+    },
+    "big_SUITE": {
+      "all": "[t_div, eq_28, eq_32, eq_big, eq_math, eq_big_mul_div,\n     eq_big_rem,\n     big_literals, borders, negative, karatsuba,\n     {group, big_float}, shift_limit_1,\n     bxor_2pow, band_2pow,\n     powmod, system_limit, toobig, otp_6692,\n     properties]",
+      "groups": "[{big_float, [], [big_float_1, big_float_2]}]",
+      "occurrences": [
+        {
+          "name": "t_div",
+          "groups": []
+        },
+        {
+          "name": "eq_28",
+          "groups": []
+        },
+        {
+          "name": "eq_32",
+          "groups": []
+        },
+        {
+          "name": "eq_big",
+          "groups": []
+        },
+        {
+          "name": "eq_math",
+          "groups": []
+        },
+        {
+          "name": "eq_big_mul_div",
+          "groups": []
+        },
+        {
+          "name": "eq_big_rem",
+          "groups": []
+        },
+        {
+          "name": "big_literals",
+          "groups": []
+        },
+        {
+          "name": "borders",
+          "groups": []
+        },
+        {
+          "name": "negative",
+          "groups": []
+        },
+        {
+          "name": "karatsuba",
+          "groups": []
+        },
+        {
+          "name": "big_float_1",
+          "groups": [
+            "big_float"
+          ]
+        },
+        {
+          "name": "big_float_2",
+          "groups": [
+            "big_float"
+          ]
+        },
+        {
+          "name": "shift_limit_1",
+          "groups": []
+        },
+        {
+          "name": "bxor_2pow",
+          "groups": []
+        },
+        {
+          "name": "band_2pow",
+          "groups": []
+        },
+        {
+          "name": "powmod",
+          "groups": []
+        },
+        {
+          "name": "system_limit",
+          "groups": []
+        },
+        {
+          "name": "toobig",
+          "groups": []
+        },
+        {
+          "name": "otp_6692",
+          "groups": []
+        },
+        {
+          "name": "properties",
+          "groups": []
+        }
+      ],
+      "group_paths": [
+        [
+          "big_float"
+        ]
+      ],
+      "parallel": false
+    },
+    "float_SUITE": {
+      "all": "[fpe, fp_drv, fp_drv_thread, otp_7178, denormalized,\n     match, bad_float_unpack, write, {group, comparison}\n     ,hidden_inf, negative_zero\n     ,arith, t_mul_add_ops]",
+      "groups": "[{comparison, [parallel], [cmp_zero, cmp_integer, cmp_bignum]}]",
+      "occurrences": [
+        {
+          "name": "fpe",
+          "groups": []
+        },
+        {
+          "name": "fp_drv",
+          "groups": []
+        },
+        {
+          "name": "fp_drv_thread",
+          "groups": []
+        },
+        {
+          "name": "otp_7178",
+          "groups": []
+        },
+        {
+          "name": "denormalized",
+          "groups": []
+        },
+        {
+          "name": "match",
+          "groups": []
+        },
+        {
+          "name": "bad_float_unpack",
+          "groups": []
+        },
+        {
+          "name": "write",
+          "groups": []
+        },
+        {
+          "name": "cmp_zero",
+          "groups": [
+            "comparison"
+          ]
+        },
+        {
+          "name": "cmp_integer",
+          "groups": [
+            "comparison"
+          ]
+        },
+        {
+          "name": "cmp_bignum",
+          "groups": [
+            "comparison"
+          ]
+        },
+        {
+          "name": "hidden_inf",
+          "groups": []
+        },
+        {
+          "name": "negative_zero",
+          "groups": []
+        },
+        {
+          "name": "arith",
+          "groups": []
+        },
+        {
+          "name": "t_mul_add_ops",
+          "groups": []
+        }
+      ],
+      "group_paths": [
+        [
+          "comparison"
+        ]
+      ],
+      "parallel": true
+    },
+    "small_SUITE": {
+      "all": "[{group, p}]",
+      "groups": "[{p, [parallel],\n      [edge_cases,\n       addition, subtraction, negation, multiplication, mul_add, division,\n       test_bitwise, test_bsl, test_bsr,\n       element,\n       range_optimization,\n       confused_squaring]}]",
+      "occurrences": [
+        {
+          "name": "edge_cases",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "addition",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "subtraction",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "negation",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "multiplication",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "mul_add",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "division",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "test_bitwise",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "test_bsl",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "test_bsr",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "element",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "range_optimization",
+          "groups": [
+            "p"
+          ]
+        },
+        {
+          "name": "confused_squaring",
+          "groups": [
+            "p"
+          ]
+        }
+      ],
+      "group_paths": [
+        [
+          "p"
+        ]
+      ],
+      "parallel": true
+    },
+    "op_SUITE": {
+      "all": "[bsl_bsr, logical, t_not, relop_simple, relop,\n     complex_relop, unsafe_fusing, range_tests,\n     combined_relops, typed_relop, term_equivalence]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "bsl_bsr",
+          "groups": []
+        },
+        {
+          "name": "logical",
+          "groups": []
+        },
+        {
+          "name": "t_not",
+          "groups": []
+        },
+        {
+          "name": "relop_simple",
+          "groups": []
+        },
+        {
+          "name": "relop",
+          "groups": []
+        },
+        {
+          "name": "complex_relop",
+          "groups": []
+        },
+        {
+          "name": "unsafe_fusing",
+          "groups": []
+        },
+        {
+          "name": "range_tests",
+          "groups": []
+        },
+        {
+          "name": "combined_relops",
+          "groups": []
+        },
+        {
+          "name": "typed_relop",
+          "groups": []
+        },
+        {
+          "name": "term_equivalence",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "exception_SUITE": {
+      "all": "[badmatch, pending_errors, nil_arith, top_of_stacktrace,\n     stacktrace, nested_stacktrace, raise, gunilla, per,\n     change_exception_class,\n     exception_with_heap_frag, backtrace_depth,\n     error_3, error_info,\n     no_line_numbers, line_numbers]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "badmatch",
+          "groups": []
+        },
+        {
+          "name": "pending_errors",
+          "groups": []
+        },
+        {
+          "name": "nil_arith",
+          "groups": []
+        },
+        {
+          "name": "top_of_stacktrace",
+          "groups": []
+        },
+        {
+          "name": "stacktrace",
+          "groups": []
+        },
+        {
+          "name": "nested_stacktrace",
+          "groups": []
+        },
+        {
+          "name": "raise",
+          "groups": []
+        },
+        {
+          "name": "gunilla",
+          "groups": []
+        },
+        {
+          "name": "per",
+          "groups": []
+        },
+        {
+          "name": "change_exception_class",
+          "groups": []
+        },
+        {
+          "name": "exception_with_heap_frag",
+          "groups": []
+        },
+        {
+          "name": "backtrace_depth",
+          "groups": []
+        },
+        {
+          "name": "error_3",
+          "groups": []
+        },
+        {
+          "name": "error_info",
+          "groups": []
+        },
+        {
+          "name": "no_line_numbers",
+          "groups": []
+        },
+        {
+          "name": "line_numbers",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "fun_SUITE": {
+      "all": "[bad_apply, bad_fun_call, badarity, ext_badarity,\n     bad_arglist,\n     equality, ordering, fun_to_port, t_phash,\n     t_phash2, md5,\n     const_propagation, t_arity, t_is_function2, t_fun_info,\n     t_fun_info_mfa,t_fun_to_list,\n     spurious_badfun]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "bad_apply",
+          "groups": []
+        },
+        {
+          "name": "bad_fun_call",
+          "groups": []
+        },
+        {
+          "name": "badarity",
+          "groups": []
+        },
+        {
+          "name": "ext_badarity",
+          "groups": []
+        },
+        {
+          "name": "bad_arglist",
+          "groups": []
+        },
+        {
+          "name": "equality",
+          "groups": []
+        },
+        {
+          "name": "ordering",
+          "groups": []
+        },
+        {
+          "name": "fun_to_port",
+          "groups": []
+        },
+        {
+          "name": "t_phash",
+          "groups": []
+        },
+        {
+          "name": "t_phash2",
+          "groups": []
+        },
+        {
+          "name": "md5",
+          "groups": []
+        },
+        {
+          "name": "const_propagation",
+          "groups": []
+        },
+        {
+          "name": "t_arity",
+          "groups": []
+        },
+        {
+          "name": "t_is_function2",
+          "groups": []
+        },
+        {
+          "name": "t_fun_info",
+          "groups": []
+        },
+        {
+          "name": "t_fun_info_mfa",
+          "groups": []
+        },
+        {
+          "name": "t_fun_to_list",
+          "groups": []
+        },
+        {
+          "name": "spurious_badfun",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "process_SUITE": {
+      "all": "[spawn_with_binaries, t_exit_1, {group, t_exit_2},\n     trap_exit_badarg, trap_exit_badarg_in_bif,\n     bump_reductions, low_prio, yield, yield2, otp_4725,\n     dist_unlink_ack_exit_leak, bad_register, garbage_collect,\n     process_flag_badarg,\n     process_flag_fullsweep_after, process_flag_heap_size,\n     command_line_max_heap_size,\n     spawn_opt_heap_size, spawn_opt_max_heap_size,\n     spawn_huge_arglist,\n     otp_6237,\n     {group, spawn_request},\n     {group, process_info_bif},\n     {group, suspend_process_bif},\n     {group, processes_bif},\n     {group, otp_7738}, garb_other_running,\n     {group, system_task},\n     {group, alias},\n     monitor_tag,\n     no_pid_wrap]",
+      "groups": "[{t_exit_2, [],\n      [t_exit_2_other, t_exit_2_other_normal, self_exit,\n       normal_suicide_exit, abnormal_suicide_exit,\n       t_exit_2_catch, exit_and_timeout, exit_twice]},\n     {spawn_request, [],\n      [spawn_request_bif,\n       spawn_request_monitor_demonitor,\n       spawn_request_monitor_child_exit,\n       spawn_request_link_child_exit,\n       spawn_request_link_parent_exit,\n       spawn_request_link_parent_exit_compound_reason,\n       spawn_request_link_parent_exit_nodedown,\n       spawn_request_abandon_bif,\n       dist_spawn_monitor,\n       spawn_against_ei_node,\n       spawn_against_old_node,\n       spawn_against_new_node,\n       spawn_request_reply_option,\n       dist_spawn_arg_list_mixup]},\n     {processes_bif, [],\n      [processes_large_tab, processes_default_tab,\n       processes_small_tab, processes_this_tab,\n       processes_last_call_trap, processes_apply_trap,\n       processes_gc_trap, processes_term_proc_list,\n       processes_send_infant,\n       processes_iter]},\n     {process_info_bif, [],\n      [t_process_info, process_info_messages,\n       process_info_other, process_info_other_msg,\n       process_info_other_message_queue_len_signal_race,\n       process_info_other_dist_msg, process_info_other_status,\n       process_info_2_list,\n       process_info_lock_reschedule,\n       process_info_lock_reschedule2,\n       process_info_lock_reschedule3,\n       process_info_garbage_collection,\n       process_info_parent,\n       process_info_smoke_all,\n       process_info_status_handled_signal,\n       process_info_reductions,\n       process_info_self_signal,\n       process_info_self_msgq_len,\n       process_info_self_msgq_len_messages,\n       process_info_self_msgq_len_more,\n       process_info_msgq_len_no_very_long_delay,\n       process_info_dict_lookup,\n       process_info_label]},\n     {suspend_process_bif, [],\n      [suspend_process_pausing_proc_timer,\n       suspend_process_pausing_proc_timer_multi_suspend,\n       suspend_process_pausing_bif_timer,\n       suspend_process_pausing_bif_timer_multi_suspend,\n       suspend_process_pausing_bif_timer_mass,\n       suspend_process_bif_timer_on_suspended]},\n     {otp_7738, [],\n      [otp_7738_waiting, otp_7738_suspended,\n       otp_7738_resume]},\n     {system_task, [],\n      [no_priority_inversion, no_priority_inversion2,\n       system_task_blast, system_task_on_suspended, system_task_failed_enqueue,\n       gc_request_when_gc_disabled, gc_request_blast_when_gc_disabled,\n       otp_16436, otp_16642]},\n     {alias, [],\n      [alias_bif, monitor_alias, spawn_monitor_alias,\n       demonitor_aliasmonitor, down_aliasmonitor,\n       dist_frag_alias, dist_frag_unaliased]}]",
+      "occurrences": [
+        {
+          "name": "spawn_with_binaries",
+          "groups": []
+        },
+        {
+          "name": "t_exit_1",
+          "groups": []
+        },
+        {
+          "name": "t_exit_2_other",
+          "groups": [
+            "t_exit_2"
+          ]
+        },
+        {
+          "name": "t_exit_2_other_normal",
+          "groups": [
+            "t_exit_2"
+          ]
+        },
+        {
+          "name": "self_exit",
+          "groups": [
+            "t_exit_2"
+          ]
+        },
+        {
+          "name": "normal_suicide_exit",
+          "groups": [
+            "t_exit_2"
+          ]
+        },
+        {
+          "name": "abnormal_suicide_exit",
+          "groups": [
+            "t_exit_2"
+          ]
+        },
+        {
+          "name": "t_exit_2_catch",
+          "groups": [
+            "t_exit_2"
+          ]
+        },
+        {
+          "name": "exit_and_timeout",
+          "groups": [
+            "t_exit_2"
+          ]
+        },
+        {
+          "name": "exit_twice",
+          "groups": [
+            "t_exit_2"
+          ]
+        },
+        {
+          "name": "trap_exit_badarg",
+          "groups": []
+        },
+        {
+          "name": "trap_exit_badarg_in_bif",
+          "groups": []
+        },
+        {
+          "name": "bump_reductions",
+          "groups": []
+        },
+        {
+          "name": "low_prio",
+          "groups": []
+        },
+        {
+          "name": "yield",
+          "groups": []
+        },
+        {
+          "name": "yield2",
+          "groups": []
+        },
+        {
+          "name": "otp_4725",
+          "groups": []
+        },
+        {
+          "name": "dist_unlink_ack_exit_leak",
+          "groups": []
+        },
+        {
+          "name": "bad_register",
+          "groups": []
+        },
+        {
+          "name": "garbage_collect",
+          "groups": []
+        },
+        {
+          "name": "process_flag_badarg",
+          "groups": []
+        },
+        {
+          "name": "process_flag_fullsweep_after",
+          "groups": []
+        },
+        {
+          "name": "process_flag_heap_size",
+          "groups": []
+        },
+        {
+          "name": "command_line_max_heap_size",
+          "groups": []
+        },
+        {
+          "name": "spawn_opt_heap_size",
+          "groups": []
+        },
+        {
+          "name": "spawn_opt_max_heap_size",
+          "groups": []
+        },
+        {
+          "name": "spawn_huge_arglist",
+          "groups": []
+        },
+        {
+          "name": "otp_6237",
+          "groups": []
+        },
+        {
+          "name": "spawn_request_bif",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_request_monitor_demonitor",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_request_monitor_child_exit",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_request_link_child_exit",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_request_link_parent_exit",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_request_link_parent_exit_compound_reason",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_request_link_parent_exit_nodedown",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_request_abandon_bif",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "dist_spawn_monitor",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_against_ei_node",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_against_old_node",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_against_new_node",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "spawn_request_reply_option",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "dist_spawn_arg_list_mixup",
+          "groups": [
+            "spawn_request"
+          ]
+        },
+        {
+          "name": "t_process_info",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_messages",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_other",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_other_msg",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_other_message_queue_len_signal_race",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_other_dist_msg",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_other_status",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_2_list",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_lock_reschedule",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_lock_reschedule2",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_lock_reschedule3",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_garbage_collection",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_parent",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_smoke_all",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_status_handled_signal",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_reductions",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_self_signal",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_self_msgq_len",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_self_msgq_len_messages",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_self_msgq_len_more",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_msgq_len_no_very_long_delay",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_dict_lookup",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "process_info_label",
+          "groups": [
+            "process_info_bif"
+          ]
+        },
+        {
+          "name": "suspend_process_pausing_proc_timer",
+          "groups": [
+            "suspend_process_bif"
+          ]
+        },
+        {
+          "name": "suspend_process_pausing_proc_timer_multi_suspend",
+          "groups": [
+            "suspend_process_bif"
+          ]
+        },
+        {
+          "name": "suspend_process_pausing_bif_timer",
+          "groups": [
+            "suspend_process_bif"
+          ]
+        },
+        {
+          "name": "suspend_process_pausing_bif_timer_multi_suspend",
+          "groups": [
+            "suspend_process_bif"
+          ]
+        },
+        {
+          "name": "suspend_process_pausing_bif_timer_mass",
+          "groups": [
+            "suspend_process_bif"
+          ]
+        },
+        {
+          "name": "suspend_process_bif_timer_on_suspended",
+          "groups": [
+            "suspend_process_bif"
+          ]
+        },
+        {
+          "name": "processes_large_tab",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_default_tab",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_small_tab",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_this_tab",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_last_call_trap",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_apply_trap",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_gc_trap",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_term_proc_list",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_send_infant",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "processes_iter",
+          "groups": [
+            "processes_bif"
+          ]
+        },
+        {
+          "name": "otp_7738_waiting",
+          "groups": [
+            "otp_7738"
+          ]
+        },
+        {
+          "name": "otp_7738_suspended",
+          "groups": [
+            "otp_7738"
+          ]
+        },
+        {
+          "name": "otp_7738_resume",
+          "groups": [
+            "otp_7738"
+          ]
+        },
+        {
+          "name": "garb_other_running",
+          "groups": []
+        },
+        {
+          "name": "no_priority_inversion",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "no_priority_inversion2",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "system_task_blast",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "system_task_on_suspended",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "system_task_failed_enqueue",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "gc_request_when_gc_disabled",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "gc_request_blast_when_gc_disabled",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "otp_16436",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "otp_16642",
+          "groups": [
+            "system_task"
+          ]
+        },
+        {
+          "name": "alias_bif",
+          "groups": [
+            "alias"
+          ]
+        },
+        {
+          "name": "monitor_alias",
+          "groups": [
+            "alias"
+          ]
+        },
+        {
+          "name": "spawn_monitor_alias",
+          "groups": [
+            "alias"
+          ]
+        },
+        {
+          "name": "demonitor_aliasmonitor",
+          "groups": [
+            "alias"
+          ]
+        },
+        {
+          "name": "down_aliasmonitor",
+          "groups": [
+            "alias"
+          ]
+        },
+        {
+          "name": "dist_frag_alias",
+          "groups": [
+            "alias"
+          ]
+        },
+        {
+          "name": "dist_frag_unaliased",
+          "groups": [
+            "alias"
+          ]
+        },
+        {
+          "name": "monitor_tag",
+          "groups": []
+        },
+        {
+          "name": "no_pid_wrap",
+          "groups": []
+        }
+      ],
+      "group_paths": [
+        [
+          "t_exit_2"
+        ],
+        [
+          "spawn_request"
+        ],
+        [
+          "process_info_bif"
+        ],
+        [
+          "suspend_process_bif"
+        ],
+        [
+          "processes_bif"
+        ],
+        [
+          "otp_7738"
+        ],
+        [
+          "system_task"
+        ],
+        [
+          "alias"
+        ]
+      ],
+      "parallel": false
+    },
+    "signal_SUITE": {
+      "all": "[xm_sig_order,\n     kill2killed,\n     contended_signal_handling,\n     dirty_signal_handling_race,\n     dirty_signal_handling_race_dirty_access,\n     dirty_signal_handling,\n     busy_dist_exit_signal,\n     busy_dist_demonitor_signal,\n     busy_dist_down_signal,\n     busy_dist_spawn_reply_signal,\n     busy_dist_unlink_ack_signal,\n     unlink_exit,\n     monitor_order,\n     monitor_named_order_local,\n     monitor_named_order_remote,\n     monitor_nodes_order,\n     parallel_signal_enqueue_race_1,\n     parallel_signal_enqueue_race_2,\n     dirty_schedule,\n     {group, adjust_message_queue},\n     {group, priority_messages}]",
+      "groups": "[{adjust_message_queue, [],\n      [move_msgs_off_heap_signal_basic,\n       move_msgs_off_heap_signal_recv,\n       move_msgs_off_heap_signal_exit,\n       move_msgs_off_heap_signal_recv_exit,\n       copy_literal_area_signal_basic,\n       copy_literal_area_signal_recv,\n       copy_literal_area_signal_exit,\n       copy_literal_area_signal_recv_exit,\n       copy_literal_area_signal_registers,\n       simultaneous_signals_basic,\n       simultaneous_signals_recv,\n       simultaneous_signals_exit,\n       simultaneous_signals_recv_exit]},\n     {priority_messages, [],\n      [priority_messages_link_enable_disable,\n       priority_messages_monitor_enable_disable,\n       priority_messages_alias_enable_disable,\n       priority_messages_order,\n       priority_messages_hopefull_encoding,\n       priority_messages_old_nodes]}]",
+      "occurrences": [
+        {
+          "name": "xm_sig_order",
+          "groups": []
+        },
+        {
+          "name": "kill2killed",
+          "groups": []
+        },
+        {
+          "name": "contended_signal_handling",
+          "groups": []
+        },
+        {
+          "name": "dirty_signal_handling_race",
+          "groups": []
+        },
+        {
+          "name": "dirty_signal_handling_race_dirty_access",
+          "groups": []
+        },
+        {
+          "name": "dirty_signal_handling",
+          "groups": []
+        },
+        {
+          "name": "busy_dist_exit_signal",
+          "groups": []
+        },
+        {
+          "name": "busy_dist_demonitor_signal",
+          "groups": []
+        },
+        {
+          "name": "busy_dist_down_signal",
+          "groups": []
+        },
+        {
+          "name": "busy_dist_spawn_reply_signal",
+          "groups": []
+        },
+        {
+          "name": "busy_dist_unlink_ack_signal",
+          "groups": []
+        },
+        {
+          "name": "unlink_exit",
+          "groups": []
+        },
+        {
+          "name": "monitor_order",
+          "groups": []
+        },
+        {
+          "name": "monitor_named_order_local",
+          "groups": []
+        },
+        {
+          "name": "monitor_named_order_remote",
+          "groups": []
+        },
+        {
+          "name": "monitor_nodes_order",
+          "groups": []
+        },
+        {
+          "name": "parallel_signal_enqueue_race_1",
+          "groups": []
+        },
+        {
+          "name": "parallel_signal_enqueue_race_2",
+          "groups": []
+        },
+        {
+          "name": "dirty_schedule",
+          "groups": []
+        },
+        {
+          "name": "move_msgs_off_heap_signal_basic",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "move_msgs_off_heap_signal_recv",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "move_msgs_off_heap_signal_exit",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "move_msgs_off_heap_signal_recv_exit",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "copy_literal_area_signal_basic",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "copy_literal_area_signal_recv",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "copy_literal_area_signal_exit",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "copy_literal_area_signal_recv_exit",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "copy_literal_area_signal_registers",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "simultaneous_signals_basic",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "simultaneous_signals_recv",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "simultaneous_signals_exit",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "simultaneous_signals_recv_exit",
+          "groups": [
+            "adjust_message_queue"
+          ]
+        },
+        {
+          "name": "priority_messages_link_enable_disable",
+          "groups": [
+            "priority_messages"
+          ]
+        },
+        {
+          "name": "priority_messages_monitor_enable_disable",
+          "groups": [
+            "priority_messages"
+          ]
+        },
+        {
+          "name": "priority_messages_alias_enable_disable",
+          "groups": [
+            "priority_messages"
+          ]
+        },
+        {
+          "name": "priority_messages_order",
+          "groups": [
+            "priority_messages"
+          ]
+        },
+        {
+          "name": "priority_messages_hopefull_encoding",
+          "groups": [
+            "priority_messages"
+          ]
+        },
+        {
+          "name": "priority_messages_old_nodes",
+          "groups": [
+            "priority_messages"
+          ]
+        }
+      ],
+      "group_paths": [
+        [
+          "adjust_message_queue"
+        ],
+        [
+          "priority_messages"
+        ]
+      ],
+      "parallel": false
+    },
+    "dirty_bif_SUITE": {
+      "all": "[dirty_bif,\n     dirty_bif_multischedule,\n     dirty_bif_exception,\n     dirty_bif_multischedule_exception,\n     dirty_scheduler_exit,\n     dirty_call_while_terminated,\n     dirty_heap_access,\n     dirty_process_info,\n     dirty_process_register,\n     dirty_process_trace,\n     code_purge,\n     otp_15688,\n     suspend_process]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "dirty_bif",
+          "groups": []
+        },
+        {
+          "name": "dirty_bif_multischedule",
+          "groups": []
+        },
+        {
+          "name": "dirty_bif_exception",
+          "groups": []
+        },
+        {
+          "name": "dirty_bif_multischedule_exception",
+          "groups": []
+        },
+        {
+          "name": "dirty_scheduler_exit",
+          "groups": []
+        },
+        {
+          "name": "dirty_call_while_terminated",
+          "groups": []
+        },
+        {
+          "name": "dirty_heap_access",
+          "groups": []
+        },
+        {
+          "name": "dirty_process_info",
+          "groups": []
+        },
+        {
+          "name": "dirty_process_register",
+          "groups": []
+        },
+        {
+          "name": "dirty_process_trace",
+          "groups": []
+        },
+        {
+          "name": "code_purge",
+          "groups": []
+        },
+        {
+          "name": "otp_15688",
+          "groups": []
+        },
+        {
+          "name": "suspend_process",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "code_SUITE": {
+      "all": "[versions, new_binary_types,\n     bad_beam_file, literal_leak,\n     call_purged_fun_code_gone,\n     call_purged_fun_code_reload, call_purged_fun_code_there,\n     call_purged_fun_code_altered,\n     multi_proc_purge, t_check_old_code, external_fun, get_chunk,\n     module_md5, many_purges,\n     constant_pools, constant_refc_binaries, fake_literals,\n     false_dependency,\n     coverage, fun_confusion, t_copy_literals, t_copy_literals_frags,\n     erl_544, max_heap_size, check_process_code_signal_order,\n     check_process_code_dirty_exec_proc, call_fun_before_load]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "versions",
+          "groups": []
+        },
+        {
+          "name": "new_binary_types",
+          "groups": []
+        },
+        {
+          "name": "bad_beam_file",
+          "groups": []
+        },
+        {
+          "name": "literal_leak",
+          "groups": []
+        },
+        {
+          "name": "call_purged_fun_code_gone",
+          "groups": []
+        },
+        {
+          "name": "call_purged_fun_code_reload",
+          "groups": []
+        },
+        {
+          "name": "call_purged_fun_code_there",
+          "groups": []
+        },
+        {
+          "name": "call_purged_fun_code_altered",
+          "groups": []
+        },
+        {
+          "name": "multi_proc_purge",
+          "groups": []
+        },
+        {
+          "name": "t_check_old_code",
+          "groups": []
+        },
+        {
+          "name": "external_fun",
+          "groups": []
+        },
+        {
+          "name": "get_chunk",
+          "groups": []
+        },
+        {
+          "name": "module_md5",
+          "groups": []
+        },
+        {
+          "name": "many_purges",
+          "groups": []
+        },
+        {
+          "name": "constant_pools",
+          "groups": []
+        },
+        {
+          "name": "constant_refc_binaries",
+          "groups": []
+        },
+        {
+          "name": "fake_literals",
+          "groups": []
+        },
+        {
+          "name": "false_dependency",
+          "groups": []
+        },
+        {
+          "name": "coverage",
+          "groups": []
+        },
+        {
+          "name": "fun_confusion",
+          "groups": []
+        },
+        {
+          "name": "t_copy_literals",
+          "groups": []
+        },
+        {
+          "name": "t_copy_literals_frags",
+          "groups": []
+        },
+        {
+          "name": "erl_544",
+          "groups": []
+        },
+        {
+          "name": "max_heap_size",
+          "groups": []
+        },
+        {
+          "name": "check_process_code_signal_order",
+          "groups": []
+        },
+        {
+          "name": "check_process_code_dirty_exec_proc",
+          "groups": []
+        },
+        {
+          "name": "call_fun_before_load",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "code_parallel_load_SUITE": {
+      "all": "[ multiple_load_check_purge_repeat,\n      many_load_distributed_only_once ]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "multiple_load_check_purge_repeat",
+          "groups": []
+        },
+        {
+          "name": "many_load_distributed_only_once",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "hibernate_SUITE": {
+      "all": "[basic, dynamic_call, min_heap_size, bad_args, messages_in_queue,\n     undefined_mfa, no_heap, wake_up_and_bif_trap, in_place,\n     stuck_dirty_hibernate]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "basic",
+          "groups": []
+        },
+        {
+          "name": "dynamic_call",
+          "groups": []
+        },
+        {
+          "name": "min_heap_size",
+          "groups": []
+        },
+        {
+          "name": "bad_args",
+          "groups": []
+        },
+        {
+          "name": "messages_in_queue",
+          "groups": []
+        },
+        {
+          "name": "undefined_mfa",
+          "groups": []
+        },
+        {
+          "name": "no_heap",
+          "groups": []
+        },
+        {
+          "name": "wake_up_and_bif_trap",
+          "groups": []
+        },
+        {
+          "name": "in_place",
+          "groups": []
+        },
+        {
+          "name": "stuck_dirty_hibernate",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "native_record_SUITE": {
+      "all": "[create,\n     explicit_module_name,\n     term_order,\n     gc,\n     external_term_format,\n     messages,\n     errors,\n     records_module,\n     dist]",
+      "groups": "[]",
+      "occurrences": [
+        {
+          "name": "create",
+          "groups": []
+        },
+        {
+          "name": "explicit_module_name",
+          "groups": []
+        },
+        {
+          "name": "term_order",
+          "groups": []
+        },
+        {
+          "name": "gc",
+          "groups": []
+        },
+        {
+          "name": "external_term_format",
+          "groups": []
+        },
+        {
+          "name": "messages",
+          "groups": []
+        },
+        {
+          "name": "errors",
+          "groups": []
+        },
+        {
+          "name": "records_module",
+          "groups": []
+        },
+        {
+          "name": "dist",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "trace_session_SUITE": {
+      "all": "[\n     basic,\n     call,\n     meta,\n     ms_enable_flags,\n     on_load,\n     trace_info_on_load,\n     procs,\n     test_set_on_spawn,\n     test_set_on_first_spawn,\n     test_set_on_link,\n     test_set_on_first_link,\n     return_to,\n     system_monitor_info,\n     system_monitor_long_msgq,\n     destroy,\n     negative,\n     error_info,\n     timem_basic,\n     is_bif_traced,\n\n     end_of_list]",
+      "groups": null,
+      "occurrences": [
+        {
+          "name": "basic",
+          "groups": []
+        },
+        {
+          "name": "call",
+          "groups": []
+        },
+        {
+          "name": "meta",
+          "groups": []
+        },
+        {
+          "name": "ms_enable_flags",
+          "groups": []
+        },
+        {
+          "name": "on_load",
+          "groups": []
+        },
+        {
+          "name": "trace_info_on_load",
+          "groups": []
+        },
+        {
+          "name": "procs",
+          "groups": []
+        },
+        {
+          "name": "test_set_on_spawn",
+          "groups": []
+        },
+        {
+          "name": "test_set_on_first_spawn",
+          "groups": []
+        },
+        {
+          "name": "test_set_on_link",
+          "groups": []
+        },
+        {
+          "name": "test_set_on_first_link",
+          "groups": []
+        },
+        {
+          "name": "return_to",
+          "groups": []
+        },
+        {
+          "name": "system_monitor_info",
+          "groups": []
+        },
+        {
+          "name": "system_monitor_long_msgq",
+          "groups": []
+        },
+        {
+          "name": "destroy",
+          "groups": []
+        },
+        {
+          "name": "negative",
+          "groups": []
+        },
+        {
+          "name": "error_info",
+          "groups": []
+        },
+        {
+          "name": "timem_basic",
+          "groups": []
+        },
+        {
+          "name": "is_bif_traced",
+          "groups": []
+        },
+        {
+          "name": "end_of_list",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "seq_trace_SUITE": {
+      "all": "[token_set_get, tracer_set_get, print, send, send_literal,\n     distributed_send, recv, distributed_recv, trace_exit,\n     old_heap_token, mature_heap_token,\n     distributed_exit, call, port, match_set_seq_token,\n     port_clean_token,\n     gc_seq_token,\n     inherit_on_spawn, inherit_on_dist_spawn, dist_spawn_error]",
+      "groups": "[]",
+      "occurrences": [
+        {
+          "name": "token_set_get",
+          "groups": []
+        },
+        {
+          "name": "tracer_set_get",
+          "groups": []
+        },
+        {
+          "name": "print",
+          "groups": []
+        },
+        {
+          "name": "send",
+          "groups": []
+        },
+        {
+          "name": "send_literal",
+          "groups": []
+        },
+        {
+          "name": "distributed_send",
+          "groups": []
+        },
+        {
+          "name": "recv",
+          "groups": []
+        },
+        {
+          "name": "distributed_recv",
+          "groups": []
+        },
+        {
+          "name": "trace_exit",
+          "groups": []
+        },
+        {
+          "name": "old_heap_token",
+          "groups": []
+        },
+        {
+          "name": "mature_heap_token",
+          "groups": []
+        },
+        {
+          "name": "distributed_exit",
+          "groups": []
+        },
+        {
+          "name": "call",
+          "groups": []
+        },
+        {
+          "name": "port",
+          "groups": []
+        },
+        {
+          "name": "match_set_seq_token",
+          "groups": []
+        },
+        {
+          "name": "port_clean_token",
+          "groups": []
+        },
+        {
+          "name": "gc_seq_token",
+          "groups": []
+        },
+        {
+          "name": "inherit_on_spawn",
+          "groups": []
+        },
+        {
+          "name": "inherit_on_dist_spawn",
+          "groups": []
+        },
+        {
+          "name": "dist_spawn_error",
+          "groups": []
+        }
+      ],
+      "group_paths": [],
+      "parallel": false
+    },
+    "tracer_SUITE": {
+      "all": "[{group,dynamic_pre_post},{group,legacy_pre_post}]",
+      "groups": "[{dynamic_pre_post,[],[load,unload,reload,invalid_tracers,{group,basic}]},{legacy_pre_post,[],[load,unload,reload,invalid_tracers,{group,basic}]},{basic,[],[send,recv,call,call_return,spawn,exit,link,unlink,getting_linked,getting_unlinked,register,unregister,in,out,gc_start,gc_end,seq_trace]}]",
+      "occurrences": [
+        {
+          "name": "load",
+          "groups": [
+            "dynamic_pre_post"
+          ]
+        },
+        {
+          "name": "unload",
+          "groups": [
+            "dynamic_pre_post"
+          ]
+        },
+        {
+          "name": "reload",
+          "groups": [
+            "dynamic_pre_post"
+          ]
+        },
+        {
+          "name": "invalid_tracers",
+          "groups": [
+            "dynamic_pre_post"
+          ]
+        },
+        {
+          "name": "send",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "recv",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "call",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "call_return",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "spawn",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "exit",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "link",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "unlink",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "getting_linked",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "getting_unlinked",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "register",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "unregister",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "in",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "out",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "gc_start",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "gc_end",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "seq_trace",
+          "groups": [
+            "dynamic_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "load",
+          "groups": [
+            "legacy_pre_post"
+          ]
+        },
+        {
+          "name": "unload",
+          "groups": [
+            "legacy_pre_post"
+          ]
+        },
+        {
+          "name": "reload",
+          "groups": [
+            "legacy_pre_post"
+          ]
+        },
+        {
+          "name": "invalid_tracers",
+          "groups": [
+            "legacy_pre_post"
+          ]
+        },
+        {
+          "name": "send",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "recv",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "call",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "call_return",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "spawn",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "exit",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "link",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "unlink",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "getting_linked",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "getting_unlinked",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "register",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "unregister",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "in",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "out",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "gc_start",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "gc_end",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        },
+        {
+          "name": "seq_trace",
+          "groups": [
+            "legacy_pre_post",
+            "basic"
+          ]
+        }
+      ],
+      "group_paths": [
+        [
+          "dynamic_pre_post"
+        ],
+        [
+          "dynamic_pre_post",
+          "basic"
+        ],
+        [
+          "legacy_pre_post"
+        ],
+        [
+          "legacy_pre_post",
+          "basic"
+        ]
+      ],
+      "parallel": false
+    }
+  },
+  "inputs": {
+    "bif_SUITE": [
+      "emulator/bif_SUITE.erl",
+      "emulator/erts_test_utils.erl"
+    ],
+    "num_bif_SUITE": [
+      "emulator/num_bif_SUITE.erl",
+      "emulator/erts_test_utils.erl"
+    ],
+    "big_SUITE": [
+      "emulator/big_SUITE.erl",
+      "emulator/erts_test_utils.erl",
+      "emulator/big_SUITE_data/borders.dat",
+      "emulator/big_SUITE_data/eq_28.dat",
+      "emulator/big_SUITE_data/eq_32.dat",
+      "emulator/big_SUITE_data/eq_big.dat",
+      "emulator/big_SUITE_data/eq_big_mul_div.dat",
+      "emulator/big_SUITE_data/eq_big_rem.dat",
+      "emulator/big_SUITE_data/eq_math.dat",
+      "emulator/big_SUITE_data/gen_data",
+      "emulator/big_SUITE_data/karatsuba.dat",
+      "emulator/big_SUITE_data/literal_test.erl",
+      "emulator/big_SUITE_data/negative.dat"
+    ],
+    "float_SUITE": [
+      "emulator/float_SUITE.erl",
+      "emulator/erts_test_utils.erl",
+      "emulator/float_SUITE_data/fp_drv.c",
+      "emulator/float_SUITE_data/has_fpe_bug.erl"
+    ],
+    "small_SUITE": [
+      "emulator/small_SUITE.erl",
+      "emulator/erts_test_utils.erl"
+    ],
+    "op_SUITE": [
+      "emulator/op_SUITE.erl",
+      "emulator/erts_test_utils.erl"
+    ],
+    "exception_SUITE": [
+      "emulator/exception_SUITE.erl",
+      "emulator/erts_test_utils.erl",
+      "emulator/exception_SUITE_data/no_line_numbers.erl",
+      "emulator/error_info_lib.erl"
+    ],
+    "fun_SUITE": [
+      "emulator/fun_SUITE.erl",
+      "emulator/erts_test_utils.erl"
+    ],
+    "process_SUITE": [
+      "emulator/process_SUITE.erl",
+      "emulator/erts_test_utils.erl",
+      "emulator/process_SUITE_data/fwd_node.c"
+    ],
+    "signal_SUITE": [
+      "emulator/signal_SUITE.erl",
+      "emulator/erts_test_utils.erl",
+      "emulator/signal_SUITE_data/unlink_signal_drv.c",
+      "emulator/literal_area_collector_test.erl",
+      "emulator/gen_tcp_dist.erl"
+    ],
+    "dirty_bif_SUITE": [
+      "emulator/dirty_bif_SUITE.erl",
+      "emulator/erts_test_utils.erl"
+    ],
+    "code_SUITE": [
+      "emulator/code_SUITE.erl",
+      "emulator/erts_test_utils.erl",
+      "emulator/code_SUITE_data/another_code_test.erl",
+      "emulator/code_SUITE_data/call_fun_before_load.erl",
+      "emulator/code_SUITE_data/call_purged_fun.erl",
+      "emulator/code_SUITE_data/call_purged_fun_altered.erl",
+      "emulator/code_SUITE_data/call_purged_fun_tester.erl",
+      "emulator/code_SUITE_data/cpbugx.erl",
+      "emulator/code_SUITE_data/erl_544.erl",
+      "emulator/code_SUITE_data/fun_confusion.erl",
+      "emulator/code_SUITE_data/literals.erl",
+      "emulator/code_SUITE_data/many_funs.erl",
+      "emulator/code_SUITE_data/my_code_test.erl",
+      "emulator/code_SUITE_data/my_code_test2.erl",
+      "emulator/code_SUITE_data/versions.erl",
+      "emulator/literal_area_collector_test.erl"
+    ],
+    "code_parallel_load_SUITE": [
+      "emulator/code_parallel_load_SUITE.erl",
+      "emulator/erts_test_utils.erl"
+    ],
+    "hibernate_SUITE": [
+      "emulator/hibernate_SUITE.erl",
+      "emulator/erts_test_utils.erl"
+    ],
+    "native_record_SUITE": [
+      "emulator/native_record_SUITE.erl",
+      "emulator/ext_records.erl"
+    ],
+    "trace_session_SUITE": [
+      "emulator/trace_session_SUITE.erl",
+      "emulator/error_info_lib.erl",
+      "emulator/dummy.erl"
+    ],
+    "seq_trace_SUITE": [
+      "emulator/seq_trace_SUITE.erl",
+      "emulator/seq_trace_SUITE_data/echo_drv.c"
+    ],
+    "tracer_SUITE": [
+      "emulator/tracer_SUITE.erl",
+      "emulator/trace_sessions.erl",
+      "emulator/tracer_test.erl",
+      "emulator/tracer_SUITE_data/tracer_test.c"
+    ]
+  }
+}

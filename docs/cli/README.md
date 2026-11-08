@@ -63,7 +63,7 @@ beam eval 'io:format("~p~n", [2 + 3]).'
 ```
 
 Successful evaluation returns status 0. Parsing, startup and uncaught execution
-errors report diagnostics and return 1. Supported `erlang:halt(Status)` preserves
+errors report diagnostics and return 1. Supported `beam:halt(Status)` preserves
 the requested status after cleanup.
 
 ### Terminal editing
@@ -116,6 +116,7 @@ beam compile --deterministic --depfile build/example.d \
 | `-D NAME[=TERM]`, `-DNAME[=TERM]` | Define a macro; the default value is `true`. Values are parsed Erlang terms. |
 | `--warnings-as-errors` | Treat compiler warnings as failure. |
 | `--deterministic` | Enable deterministic output policy; arbitrary transforms may still introduce nondeterminism. |
+| `--native-bindings=modern`, `--native-bindings=canonical` | Select the output's native naming profile; modern is the default. |
 | `--no-transforms` | Reject source parse/core transforms before execution. |
 | `--depfile FILE` | Write Make-compatible dependencies for exactly one source. |
 | `--` | Treat all remaining arguments as filenames. |
@@ -131,6 +132,10 @@ ignored; there is no arbitrary compiler-option passthrough. Transform support is
 limited by the compiler host's explicitly supplied facilities. Package builds
 disable transforms. Depfiles record inputs observed during preprocessing;
 transform-specific file reads must be declared separately by the build client.
+Compile parse transforms and their compiler-side dependencies with
+`--native-bindings=canonical`, matching the compiler host's explicit native
+inventory. This selects names in generated code independently of the executing
+compiler VM; it does not change runtime composition or enable services.
 Dependency paths containing newlines or `=` are rejected. Spaces and Unicode
 are supported; other shell/Make metacharacters can encounter additional quoting
 limits in the consuming build generator.
@@ -139,7 +144,7 @@ limits in the consuming build generator.
 
 | Profile | Available facilities |
 | --- | --- |
-| Source run, plain shell and eval | Standard I/O plus output, explicit code acquisition, file, socket, zlib and external-program services. |
+| Source run, plain shell and eval | Standard I/O plus output, explicit code acquisition, file, socket, zlib, tracing and external-program services. |
 | Installed project run | Core/base, standard I/O, selected package modules and declared native bindings. |
 | Installed project shell | Project facilities plus the interactive inventory. |
 
@@ -147,6 +152,32 @@ Project launch never builds or installs. It adds no implicit filesystem,
 network, program or code-acquisition service. Source-run I/O supports line and
 character input; term scanning and formatted input belong to shell/eval.
 No profile gains OTP applications or hostname resolution implicitly.
+Normal run/shell/eval explicitly acquire the passive tracing library, select
+`beam_trace` as the default delivery identity and invoke private
+`beam_trace:load_nif/0` before user entry. Compiler-only execution acquires no
+tracing backend. Project/application compositions keep their own selection
+policy; an interactive profile alone does not activate tracing.
+
+Hosts select the native dependencies of every supplied controller and library.
+These include process, error and clock operations, persistent values and the
+public list/map operations used by networking and I/O. Calls in ordinary
+support code acquire no native exports implicitly. Generic Host, returning C
+orchestration and passive descriptors select no defaults. Minimal hosts can
+select finite inventories without acquiring the modern base library.
+
+Modern library recipes and every CLI profile select the same 558 bindings,
+including the four ETS implementation protocols and all 51 canonical operations
+of the six public collection/binary/text/record modules. Ordinary algorithms
+still require their selected bytecode inventory. The CLI adds no separate private
+native-support list. Minimal generic hosts select their required subsets;
+ordinary `beam_ets` helpers come from the selected base inventory. Match-spec
+transformation support is supplied separately by compiler and shell profiles.
+Hosts form explicit unions by implementation and destination, deduplicate identical
+selections and reject conflicts. Private runtime modules are implementation
+details, not additional public library APIs.
+
+These native selections acquire no ordinary Unicode code. Source/user programs,
+shell input and dynamic user MFAs are never projected.
 
 Use the [standard library](../stdlib/README.md) and individual
 [component manuals](../components/README.md) for Erlang APIs. Private modules

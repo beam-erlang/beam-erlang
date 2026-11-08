@@ -58,6 +58,7 @@ my %dirty_bif_tab;
 
 my @bif;
 my @bif_info;
+my @bif_descriptor;
 my $dirty_schedulers_test = 'no';
 my $jit = 'no';
 
@@ -91,24 +92,35 @@ while (<>) {
     my($type, @args) = split;
     if ($type eq 'atom') {
 	save_atoms(@args);
-    } elsif ($type eq 'bif' or $type eq 'ubif' or $type eq 'hbif') {
+    } elsif ($type eq 'bif' or $type eq 'ubif' or $type eq 'hbif'
+             or $type =~ /^optional-(?:bif|ubif|hbif)$/) {
 	if (@args > 2) {
 	    error("$type only allows two arguments");
 	}
 	my($bif,$alias) = (@args);
-	$bif =~ m@^([a-z_.'0-9]+):(.*)/(\d)$@ or error("invalid BIF");
-	my($mod,$name,$arity) = ($1,$2,$3);
-	my $mfa = "$mod:$name/$arity";
-	save_atoms($mod, $name);
-	unless (defined $alias) {
-	    $alias = "";
-	    $alias = "${mod}_" unless $mod eq 'erlang';
-	    $alias .= "${name}_$arity";
-	}
+	my $optional = $type =~ s/^optional-//;
+	my ($mod, $name, $arity, $identifier);
+	if ($optional) {
+	    $bif =~ m@^([a-z_0-9]+)/(\d)$@ or error("invalid optional implementation");
+	    my $token = $1;
+            $arity = $2;
+	    defined($alias) && $alias =~ /^[a-z_0-9]+$/ or error("optional BIF requires a C entry");
+	    $identifier = "${token}_$arity";
+	    grep { $_->[0] eq $identifier } @bif_descriptor and error("duplicate implementation");
+        } else {
+	    $bif =~ m@^([a-z_.'0-9]+):(.*)/(\d)$@ or error("invalid BIF");
+	    ($mod,$name,$arity) = ($1,$2,$3);
+	    save_atoms($mod, $name);
+	    unless (defined $alias) {
+	        $alias = "";
+	        $alias = "${mod}_" unless $mod eq 'erlang';
+	        $alias .= "${name}_$arity";
+	    }
+        }
 	my $sched_type;
 	my $alias3 = $alias;
 
-	$sched_type = $dirty_bif_tab{$mfa};
+	$sched_type = $dirty_bif_tab{$optional ? $identifier : "$mod:$name/$arity"};
 
 	if (!$sched_type or ($type eq 'ubif')) {
 	    $sched_type = 'normal';
@@ -137,15 +149,21 @@ while (<>) {
             error("invalid bif_type: $type");
         }
 
-	push(@bif, ["am_$atom_alias{$mod}","am_$atom_alias{$name}",$arity,
+	push(@bif, [$optional ? 'THE_NON_VALUE' : "am_$atom_alias{$mod}",
+                    $optional ? 'THE_NON_VALUE' : "am_$atom_alias{$name}",$arity,
 		    $alias3,$alias,$kind]);
 	push(@bif_info, [$type, $sched_type, $alias3, $alias]);
+	push(@bif_descriptor, [$optional ? $identifier : '',
+                               $optional ? '' : $mod, $optional ? '' : $name, $arity]);
     } elsif ($type eq 'dirty-cpu' or $type eq 'dirty-io'
 	     or $type eq 'dirty-cpu-test' or $type eq 'dirty-io-test') {
         my($bif,$other) = (@args);
-        $bif =~ m@^([a-z_.'0-9]+):(.*)/(\d)$@ or error("invalid BIF");
-        my($mod,$name,$arity) = ($1,$2,$3);
-        my $mfa = "$mod:$name/$arity";
+        my $mfa;
+        if ($bif =~ /^[a-z_0-9]+$/) {
+            $mfa = $bif;
+        } else {
+            error("invalid BIF implementation");
+        }
         if (($type eq 'dirty-cpu')
             or (($dirty_schedulers_test eq 'yes')
                 and ($type eq 'dirty-cpu-test'))) {
@@ -203,7 +221,9 @@ open_file("$include/erl_bif_list.h");
 my $i;
 for ($i = 0; $i < @bif; $i++) {
     # module atom, function atom, arity, C function, table index
-    print "BIF_LIST($bif[$i]->[0],$bif[$i]->[1],$bif[$i]->[2],$bif[$i]->[3],$bif[$i]->[4],$i)\n";
+    my ($mod, $name) = @{$bif[$i]}[0,1];
+    ($mod, $name) = ('implementation', $bif_descriptor[$i]->[0]) if $bif_descriptor[$i]->[0];
+    print "BIF_LIST($mod,$name,$bif[$i]->[2],$bif[$i]->[3],$bif[$i]->[4],$i)\n";
 }
 
 #
@@ -235,6 +255,16 @@ typedef struct bif_entry {
     BifKind kind;
 } BifEntry;
 
+/* String metadata is usable by composition validation before atoms exist. */
+typedef struct {
+    const char *implementation;
+    const char *module;
+    const char *name;
+    unsigned arity;
+    BifKind kind;
+    const char *scheduler;
+} ErtsBifDescriptor;
+
 typedef struct erts_gc_bif {
     BifFunction bif;
     BifFunction gc_bif;
@@ -247,6 +277,9 @@ typedef struct erts_u_bif {
 } ErtsUBif;
 
 extern BifEntry bif_table[];
+extern const BifEntry bif_defaults[];
+extern const ErtsBifDescriptor bif_descriptors[];
+int erts_bif_is_ets(const void *function);
 extern const ErtsUBif erts_u_bifs[];
 
 #define BIF_SIZE $bif_size
@@ -260,6 +293,8 @@ print "\n";
 my $i;
 for ($i = 0; $i < @bif; $i++) {
     print "#define BIF_$bif_info[$i]->[3] $i\n";
+    print "#define BIF_IMPL_$bif_descriptor[$i]->[0] $i\n"
+        if $bif_descriptor[$i]->[0];
 }
 
 print "\n";
@@ -288,12 +323,28 @@ includes("export.h", "sys.h", "erl_vm.h", "erl_process.h", "bif.h",
 
 print "\nExport bif_trap_exports__[BIF_SIZE];\n";
 
-print "BifEntry bif_table[] = {\n";
+print "BifEntry bif_table[BIF_SIZE];\n";
+print "const BifEntry bif_defaults[] = {\n";
 for ($i = 0; $i < @bif; $i++) {
     my $func = $bif[$i]->[3];
     print "  {", join(', ', @{$bif[$i]}), "},\n";
 }
 print "};\n\n";
+print "const ErtsBifDescriptor bif_descriptors[] = {\n";
+for ($i = 0; $i < @bif; $i++) {
+    my ($token, $mod, $name, $arity) = @{$bif_descriptor[$i]};
+    print "  {\"$token\", \"$mod\", \"$name\", $arity, $bif[$i]->[5], \"$bif_info[$i]->[1]\"},\n";
+}
+print "};\n\n";
+
+# Accounting classification follows compiled contracts, never host names.
+print "int erts_bif_is_ets(const void *function)\n{\n    return 0";
+for ($i = 0; $i < @bif; $i++) {
+    if ($bif_descriptor[$i]->[0] =~ /^term_table_/) {
+        print "\n        || function == (const void *)$bif[$i]->[3]";
+    }
+}
+print ";\n}\n\n";
 
 #
 # Generate erl_gc_bifs.c.

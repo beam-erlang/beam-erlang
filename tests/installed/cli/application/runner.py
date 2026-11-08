@@ -38,19 +38,19 @@ def main():
         (app / 'ebin').mkdir(parents=True)
         (app / 'ordinary.erl').write_text('''-module(ordinary).
 -export([main/1]).
-main(["halt"]) -> erlang:halt(23);
-main(["throw"]) -> erlang:error(application_fixture);
+main(["halt"]) -> beam:halt(23);
+main(["throw"]) -> beam:error(application_fixture);
 main(["action"]) -> {beam_command,1,{exit,97}};
 main(Args) ->
-    undefined = persistent_term:get(application_fixture,undefined),
-    false = erlang:module_loaded(compile),
-    false = erlang:module_loaded(beam_pkg),
+    undefined = beam_persistent_term:get(application_fixture,undefined),
+    false = beam:module_loaded(compile),
+    false = beam:module_loaded(beam_pkg),
     io:format("ENTRY ~tp~n",[Args]).
 ''')
         (app / 'dispatcher.erl').write_text('''-module(dispatcher).
 -export([command/2]).
 command({beam_context,1,_,_,_,_,Root,Cwd,_,_,Bytes},["forward"|Rest]) ->
-    persistent_term:put(application_fixture,dirty),
+    beam_persistent_term:put(application_fixture,dirty),
     D0 = binary_to_term(Bytes),
     Inventory = [M || M={file,<<"ordinary">>,_,_,_} <- element(9,D0)],
     D1 = setelement(9,setelement(6,setelement(5,D0,Root),{main,<<"ordinary">>,<<"main">>}),Inventory),

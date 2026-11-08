@@ -31,6 +31,7 @@
 #include <stdbool.h>
 
 #include "sys.h"
+#include "beam_builtin_catalog.h"
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_process.h"
@@ -1886,6 +1887,12 @@ static int function_is_traced(Process *p,
         }
 	return got ? got : FUNC_TRACE_UNTRACED;
     } 
+    {
+        const Export *ep = erts_active_export_entry(mfa->module, mfa->function, mfa->arity);
+        if (ep && ep->bif_number >= 0 &&
+            *bif_descriptors[ep->bif_number].implementation)
+            return FUNC_TRACE_UNTRACED;
+    }
     return FUNC_TRACE_NOEXIST;
 }
 
@@ -1898,7 +1905,10 @@ static Eterm function_traced_by_sessions(Process *p, const ErtsCodeMFA *mfa)
     Eterm list = NIL;
 
     ci = erts_find_local_func(mfa);
-    if (!ci) {
+    e.info.mfa = *mfa;
+    ep = export_get(&e);
+    if (!ci && !(ep && ep->bif_number >= 0 &&
+                 *bif_descriptors[ep->bif_number].implementation)) {
         /* Function does not exists */
         return am_undefined;
     }
@@ -1906,8 +1916,6 @@ static Eterm function_traced_by_sessions(Process *p, const ErtsCodeMFA *mfa)
     erts_factory_proc_init(&factory, p);
 
     /* First look for an export entry */
-    e.info.mfa = *mfa;
-    ep = export_get(&e);
     if (ep) {
         if (erts_is_export_trampoline_active(ep, erts_active_code_ix()) &&
             ! BeamIsOpCode(ep->trampoline.common.op, op_call_error_handler)) {
@@ -2805,7 +2813,8 @@ erts_set_trace_pattern(ErtsCodeMFA *mfa, int specified,
         if (on && !flags.breakpoint) {
             /* Turn on global call tracing */
             if (!erts_is_export_trampoline_active(ep, code_ix)) {
-                fp[i].mod->curr.num_traced_exports++;
+                if (fp[i].mod)
+                    fp[i].mod->curr.num_traced_exports++;
 #if defined(DEBUG) && !defined(BEAMASM)
                 ep->info.u.op = BeamOpCodeAddr(op_i_func_info_IaaI);
 #endif

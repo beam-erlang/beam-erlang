@@ -26,6 +26,11 @@ processes, allocations or native operations were involved. This guide describes
 the shared VM's readable dump format; it does not imply that every host enables
 the same failure triggers or diagnostic tools.
 
+Canonical `erlang` names in the inherited format descriptions identify OTP
+operations. Modern hosts expose native primitives under `beam` and timers under
+`beam_time`. Stack frames and callable identities reflect the host's selected
+bindings; see [native calls and language operations](../language/native-calls.md).
+
 ## Production and host policy
 
 An ordinary Erlang exception returned through the embedding API is not a native

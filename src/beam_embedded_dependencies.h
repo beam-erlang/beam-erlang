@@ -21,7 +21,6 @@
 #endif
 #define BEAM_VM_EMBEDDED_DEPENDENCIES(X) \
     X("asmjit", BEAM_EMBEDDED_ASMJIT) \
-    X("pcre2", BEAM_EMBEDDED_INCLUDED) \
     X("ryu", BEAM_EMBEDDED_RYU) \
     X("STL", BEAM_EMBEDDED_RYU) \
     X("zlib", BEAM_EMBEDDED_ZLIB)

@@ -8,6 +8,7 @@ from support.installation import add_installation_arguments, resolve_installatio
 import shutil
 
 from support.bytecode import TEST_SUPPORT_DIR, BASE_ASSETS, copy_base
+from support.artifacts import artifact
 from support.process import run as capture, isolated_environment, check
 from support.terminal import capture_terminal
 
@@ -57,12 +58,16 @@ def main():
         header = ["/* Compiled acceptance fixtures; generated in the test build directory. */"]
         for name in ("bare_fixture", "bare_second", "bare_on_load", "bare_bridge",
                      "bare_observe", "bare_io", "bare_management", "bare_gzip", "bare_scheduler_stress",
-                     "bare_prim_eval", "base_contract", "base_conflict", "bare_async"):
+                     "bare_prim_eval", "base_contract", "base_conflict", "bare_async",
+                     "bif_selection", "native_calls", "native_modern", "chosen", "ordinary_binary", "builtin_tracer", "tracing_contract"):
             source = args.source_dir / "fixtures" / f"{name}.erl"
-            module = "beam_map" if name == "base_conflict" else name
+            module = {"base_conflict": "beam_maps", "ordinary_binary": "binary"}.get(name, name)
             if name == "base_conflict":
-                source = generated / "beam_map.erl"
+                source = generated / "beam_maps.erl"
                 shutil.copyfile(args.source_dir / "fixtures" / "base_conflict.erl", source)
+            elif name == "ordinary_binary":
+                source = generated / "binary.erl"
+                shutil.copyfile(args.source_dir / "fixtures" / "ordinary_binary.erl", source)
             execute(str(prefix / "bin/beam"), "compile",
                 "-o", str(generated), "--", str(source))
             data = (generated / f"{module}.beam").read_bytes()
@@ -70,6 +75,11 @@ def main():
             for offset in range(0, len(data), 16):
                 header.append(",".join(str(b) for b in data[offset:offset + 16]) + ",")
             header.append("};")
+        execute(str(prefix / "bin/beam"), "compile", "-DPROVIDER", "-o", str(generated), "--",
+                str(args.source_dir / "fixtures/chosen.erl"))
+        header.append("static const unsigned char chosen_provider[] = {" +
+                      ",".join(str(b) for b in (generated / "chosen.beam").read_bytes()) + "};")
+        (generated / "chosen.beam").unlink()
         for name, generation in ((name, generation) for name in ("bare_lifecycle", "bare_managed")
                                  for generation in (1, 2)):
             output = generated / f"{name}_{generation}.beam"
@@ -82,12 +92,37 @@ def main():
             for offset in range(0, len(data), 16):
                 header.append(",".join(str(b) for b in data[offset:offset + 16]) + ",")
             header.append("};")
+        bound_source = generated / "bound.bytes.erl"
+        shutil.copyfile(args.source_dir / "fixtures/bound_bytes.erl", bound_source)
+        for name, flags in (("bound_bytes_1", ["-DGENERATION=1"]),
+                            ("bound_bytes_2", ["-DGENERATION=2"]),
+                            ("bound_bytes_missing", ["-DGENERATION=1", "-DOMIT_THREE"])):
+            execute(str(prefix / "bin/beam"), "compile", "-o", str(generated), *flags,
+                    "--", str(bound_source))
+            output = generated / "bound.bytes.beam"
+            header.append(f"static const unsigned char {name}[] = {{" +
+                          ",".join(str(b) for b in output.read_bytes()) + "};")
+            output.unlink()
+        table_source = generated / "bound.tables.erl"
+        shutil.copyfile(args.source_dir / "fixtures/bound_tables.erl", table_source)
+        for name, flags in (("bound_tables", ["-DGENERATION=1"]),
+                            ("bound_tables_onload", ["-DGENERATION=2", "-DON_LOAD"])):
+            execute(str(prefix / "bin/beam"), "compile", "-o", str(generated), *flags,
+                    "--", str(table_source))
+            output = generated / "bound.tables.beam"
+            header.append(f"static const unsigned char {name}[] = {{" +
+                          ",".join(str(b) for b in output.read_bytes()) + "};")
+            output.unlink()
+        private_core = artifact(prefix, 'core.beam_internal').read_bytes()
+        header.append('static const unsigned char private_core[] = {' +
+                      ','.join(str(b) for b in private_core) + '};')
         (generated / "fixtures.h").write_text("\n".join(header) + "\n")
         client = args.test_dir / "client"
         execute(args.cmake, "-S", str(args.source_dir), "-B", str(client),
             f"-DCMAKE_PREFIX_PATH={prefix}",
             f"-DRUNTIME_COMPONENT={'RuntimeStatic' if args.linkage == 'static' else 'Runtime'}", f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}", f"-DFIXTURE_INCLUDE={generated}",
             f"-DPRIM_EVAL_MODULE={prefix / 'lib/beam/runtime/beam/interactive/ebin/prim_eval.beam'}",
+            f"-DBASE_EBIN_DIR={prefix / 'lib/beam/library/ebin'}",
             f"-DCLI_EBIN_DIR={prefix / 'lib/beam/runtime/beam/cli/ebin'}")
         execute(args.cmake, "--build", str(client))
 
@@ -131,6 +166,9 @@ def main():
         result = execute(str(client / "scheduler_stress_host"), env=env)
         if result.stdout != "Concurrent scheduler controls completed; C continued.\n" or result.stderr:
             raise RuntimeError(f"unexpected scheduler stress output: {result.stdout!r} {result.stderr!r}")
+        result = execute(str(client / "builtin_host"), env=env)
+        if result.stdout != "Bound builtin implementations completed; C continued.\n" or result.stderr:
+            raise RuntimeError(f"unexpected builtin output: {result.stdout!r} {result.stderr!r}")
         result = execute(str(client / "base_host"), str(base_component), env=env)
         if result.stdout != "Explicit base library completed; C continued.\n" or result.stderr:
             raise RuntimeError(f"unexpected base output: {result.stdout!r} {result.stderr!r}")

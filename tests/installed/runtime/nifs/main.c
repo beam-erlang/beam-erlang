@@ -1,5 +1,7 @@
 #include <beam/beam.h>
 #include <beam/host.h>
+#include <beam/native.h>
+#include "builtin_bindings.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +10,14 @@
 #include "host_observe.h"
 #endif
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"native check failed line %d: %s (%s)\n",__LINE__,#x,error.message); return 1; } } while(0)
+static int inspected_function(beam_module_functions functions,const char *name,unsigned arity)
+{
+    size_t size=strlen(name);
+    for(size_t i=0;i<functions.count;++i)
+        if(functions.items[i].arity==arity && functions.items[i].name.size==size &&
+           !memcmp(functions.items[i].name.data,name,size)) return 1;
+    return 0;
+}
 static beam_status check_mapping(void *context, beam_bytes request, beam_host_reply *reply) {
     (void)context; (void)request;
 #ifdef __APPLE__
@@ -26,7 +36,9 @@ static beam_status check_mapping(void *context, beam_bytes request, beam_host_re
 }
 int main(int argc,char **argv) {
     beam_error error={0}; beam_system *system=NULL; beam_vm *vm=NULL; beam_composition *composition=NULL;
+    beam_module_snapshot saved_snapshot={0};
     CHECK(argc==4 || argc==6);
+    CHECK(beam_native_stack_has_space(0) == -1);
 #if defined(__linux__)
     if (getenv("NIF_CHANGE_LOADER_ENV"))
         CHECK(!setenv("LD_LIBRARY_PATH","/missing-native-search-path",1));
@@ -37,7 +49,7 @@ int main(int argc,char **argv) {
     beam_nif_binding nif={.struct_size=sizeof(nif)};
     beam_native_image *images[2]={0};
     beam_native_owner owners[2]={{.struct_size=sizeof(beam_native_owner)},{.struct_size=sizeof(beam_native_owner)}};
-    beam_composition_options spec={.struct_size=sizeof(spec),.module_count=1,.modules=&module,.binding_count=1,.bindings=&nif,.native_owner_count=1,.native_owners=owners};
+    beam_composition_options spec={.struct_size=sizeof(spec),.module_count=1,.modules=&module,.binding_count=1,.bindings=&nif,.native_owner_count=1,.native_owners=owners,.builtin_binding_count=BEAM_TEST_NIFS_BINDING_COUNT,.builtin_bindings=beam_test_nifs_bindings};
     beam_module_spec partial_modules[2]; beam_nif_binding partial_nifs[2];
     unsigned char *extra=NULL;
     if(argc==6) {
@@ -108,6 +120,14 @@ int main(int argc,char **argv) {
         CHECK(beam_vm_call(vm,"probe","retain",(beam_bytes){args,sizeof(args)},&result)==BEAM_OK);
         CHECK(result.kind == BEAM_EXCEPTION); /* Still unbound; no implicit initializer. */
         beam_result_release(&result);
+        beam_module_query query;beam_module_query_init(&query);
+        query.fields=BEAM_MODULE_FIELD_NIFS|BEAM_MODULE_FIELD_FUNCTIONS|BEAM_MODULE_FIELD_EXPORTS;
+        beam_module_snapshot snapshot={0};
+        beam_module_name probe_name={"probe",5};
+        CHECK(beam_module_inspect(vm,probe_name,&query,&snapshot)==BEAM_OK);
+        CHECK(snapshot.count==1 && !snapshot.items[0].current.has_nif &&
+              !snapshot.items[0].current.nifs.count);
+        beam_module_snapshot_release(&snapshot);
         status=beam_vm_bind_nif(vm,"probe",&error);
         if(status==BEAM_OK && argc==6) status=beam_vm_bind_nif(vm,"probe2",&error);
         if (!strcmp(argv[3],"activation-failure") || !strcmp(argv[3],"partial")) {
@@ -119,6 +139,14 @@ int main(int argc,char **argv) {
         }
         else {
             CHECK(status==BEAM_OK);
+            CHECK(beam_module_inspect(vm,probe_name,&query,&snapshot)==BEAM_OK);
+            CHECK(snapshot.count==1 && snapshot.items[0].current.has_nif &&
+                  inspected_function(snapshot.items[0].current.nifs,"hold",0) &&
+                  inspected_function(snapshot.items[0].current.nifs,"caf\xc3\xa9",0) &&
+                  inspected_function(snapshot.items[0].current.functions,"caf\xc3\xa9",0) &&
+                  inspected_function(snapshot.items[0].exports,"caf\xc3\xa9",0));
+            if(i==1) saved_snapshot=snapshot;
+            else beam_module_snapshot_release(&snapshot);
             CHECK(beam_vm_call(vm,"probe","packets",(beam_bytes){args,sizeof(args)},&result)==BEAM_OK);
             if(result.kind!=BEAM_RETURN) {
                 fprintf(stderr,"packet result kind=%d ETF=",result.kind);
@@ -136,7 +164,7 @@ int main(int argc,char **argv) {
             }
             CHECK(beam_vm_call(vm,"probe","retain",(beam_bytes){args,sizeof(args)},&result)==BEAM_OK);
             CHECK(result.kind==BEAM_RETURN); beam_result_release(&result);
-            CHECK(beam_vm_unload(vm,"probe",&error)==BEAM_BUSY);
+            CHECK(beam_module_unload(vm,"probe",&error)==BEAM_BUSY);
             size_t n=strlen(argv[2]); unsigned char *arg=malloc(n+12); CHECK(arg);
             unsigned char head[]={131,108,0,0,0,1,109}; memcpy(arg,head,7);
             arg[7]=(unsigned char)(n>>24);arg[8]=(unsigned char)(n>>16);arg[9]=(unsigned char)(n>>8);arg[10]=(unsigned char)n;
@@ -145,6 +173,12 @@ int main(int argc,char **argv) {
             int denied=0;
             for(size_t j=0;j+13<=result.value.size;++j) if(!memcmp(result.value.data+j,"not_supported",13)) denied=1;
             CHECK(denied); free(arg); beam_result_release(&result);
+            if (i == 1) {
+                /* Erasure transfers ownership to deferred literal reclamation.
+                 * Stop immediately; user code must not flush that work first. */
+                CHECK(beam_vm_call(vm,"probe","retire",(beam_bytes){args,sizeof(args)},&result)==BEAM_OK);
+                CHECK(result.kind==BEAM_RETURN); beam_result_release(&result);
+            }
         }
         if(i==1) beam_composition_release(&composition);
         beam_vm_report final={.struct_size=sizeof(final)};
@@ -153,5 +187,10 @@ int main(int argc,char **argv) {
         CHECK(final.cause==(!strcmp(argv[3],"success") ? BEAM_TERMINAL_NONE : BEAM_TERMINAL_FAILURE));
     }
     CHECK(beam_terminate(&system)==BEAM_OK);
+    if(saved_snapshot.count) {
+        CHECK(saved_snapshot.count==1 && saved_snapshot.items[0].current.has_nif &&
+              inspected_function(saved_snapshot.items[0].current.nifs,"caf\xc3\xa9",0));
+        beam_module_snapshot_release(&saved_snapshot);
+    }
     puts("NATIVE_LIFETIMES_OK"); return 0;
 }

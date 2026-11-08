@@ -4,6 +4,22 @@ set(_compiler_out "${CMAKE_BINARY_DIR}/lib/beam/tools/compiler/ebin")
 set(_compiler_generated "${CMAKE_BINARY_DIR}/compiler/generated")
 set(_compiler_include "${CMAKE_BINARY_DIR}/compiler/include")
 file(MAKE_DIRECTORY "${_compiler_generated}" "${_compiler_include}")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(_ms_original "${CMAKE_SOURCE_DIR}/src/beam/support/generators/parser/ms_transform.erl")
+set(_ms_stage "${CMAKE_SOURCE_DIR}/src/beam/runtime_support/stage.py")
+set(_ms_projection "${CMAKE_SOURCE_DIR}/src/beam/runtime_support/beam_runtime_projection.erl")
+set(_ms_doc "${CMAKE_SOURCE_DIR}/src/beam/support/doc/src/ms_transform.md")
+add_custom_command(OUTPUT "${_compiler_generated}/ms_transform.erl"
+    BYPRODUCTS "${_compiler_generated}/ms_transform.source.json"
+    COMMAND "${Python3_EXECUTABLE}" "${_ms_stage}" --canonical
+        --source "${_ms_original}" --output "${_compiler_generated}/ms_transform.erl"
+        --transform "${_ms_projection}"
+    DEPENDS "${_ms_original}" "${_ms_stage}" "${_ms_projection}" VERBATIM)
+add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/compiler/doc/src/ms_transform.md"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/compiler/doc/src"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_ms_doc}"
+        "${CMAKE_BINARY_DIR}/compiler/doc/src/ms_transform.md"
+    DEPENDS "${_ms_doc}" VERBATIM)
 add_custom_command(
     OUTPUT "${_compiler_generated}/beam_opcodes.erl" "${_compiler_generated}/beam_opcodes.hrl"
     COMMAND ${PERL_EXECUTABLE} "${CMAKE_SOURCE_DIR}/src/erts/emulator/utils/beam_makeops"
@@ -73,6 +89,9 @@ set(_compiler_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/frontend/erl_expand_records.erl"
     "${CMAKE_CURRENT_SOURCE_DIR}/frontend/erl_features.erl"
     "${CMAKE_CURRENT_SOURCE_DIR}/frontend/erl_lint.erl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/atomics.erl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/counters.erl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/persistent_term.erl"
     "${CMAKE_CURRENT_SOURCE_DIR}/host/beam_compiler_host.erl"
     "${CMAKE_CURRENT_SOURCE_DIR}/host/code.erl"
     "${CMAKE_CURRENT_SOURCE_DIR}/host/error_handler.erl"
@@ -82,9 +101,12 @@ set(_compiler_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/host/os.erl"
     "${CMAKE_CURRENT_SOURCE_DIR}/beam_compiler_engine.erl"
     "${CMAKE_CURRENT_SOURCE_DIR}/beam_compiler_cli.erl"
-    "${_compiler_generated}/beam_opcodes.erl")
+    "${_compiler_generated}/beam_opcodes.erl"
+    "${_compiler_generated}/ms_transform.erl")
 add_custom_target(beam_compiler_opcode_tables DEPENDS
-    "${_compiler_generated}/beam_opcodes.erl" "${_compiler_generated}/beam_opcodes.hrl")
+    "${_compiler_generated}/beam_opcodes.erl" "${_compiler_generated}/beam_opcodes.hrl"
+    "${_compiler_generated}/ms_transform.erl"
+    "${CMAKE_BINARY_DIR}/compiler/doc/src/ms_transform.md")
 add_custom_target(beam_compiler_modules)
 foreach(_source IN LISTS _compiler_sources)
     get_filename_component(_module "${_source}" NAME_WE)
@@ -221,6 +243,8 @@ add_custom_target(beam_refresh_compiler_seeds
 if(BEAM_BUILD_CLI)
 install(FILES ${BEAM_COMPILER_BEAM_FILES} DESTINATION lib/beam/tools/compiler/ebin)
 install(FILES "${CMAKE_BINARY_DIR}/lib/beam/tools/compiler/modules.txt" DESTINATION lib/beam/tools/compiler)
+install(FILES "${CMAKE_SOURCE_DIR}/src/beam/support/generators/parser/ms_transform.hrl"
+    DESTINATION lib/beam/tools/compiler/include)
 endif()
 set(BEAM_COMPILER_NATIVE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/beam_compiler_host.c" PARENT_SCOPE)
 set(BEAM_COMPILER_INCLUDE_DIRECTORY "${_compiler_include}" PARENT_SCOPE)
@@ -228,7 +252,7 @@ set(BEAM_COMPILER_SEED_ROOT "${BEAM_COMPILER_SEED_ROOT}" PARENT_SCOPE)
 set(BEAM_COMPILER_MODULES "${BEAM_COMPILER_MODULES}" PARENT_SCOPE)
 set(BEAM_COMPILER_BEAM_FILES "${BEAM_COMPILER_BEAM_FILES}" PARENT_SCOPE)
 
-foreach(_compiler IN ITEMS beam_seed_compiler beam_bootstrap)
+foreach(_compiler IN ITEMS beam_seed_compiler beam_bootstrap beam_modern_build_compiler)
     if(TARGET ${_compiler})
         continue()
     endif()
@@ -247,8 +271,12 @@ foreach(_compiler IN ITEMS beam_seed_compiler beam_bootstrap)
         set(_compiler_root "${CMAKE_BINARY_DIR}")
         add_dependencies(${_compiler} beam_compiler_tooling)
     endif()
+    set(_command_entry bootstrap)
+    if(_compiler STREQUAL beam_modern_build_compiler)
+        set(_command_entry main)
+    endif()
     target_compile_definitions(${_compiler} PRIVATE
-        BEAM_COMPILER_COMMAND_FUNCTION="bootstrap" BEAM_BUILD_COMPILER_ROOT="${_compiler_root}")
+        BEAM_COMPILER_COMMAND_FUNCTION="${_command_entry}" BEAM_BUILD_COMPILER_ROOT="${_compiler_root}")
     set_target_properties(${_compiler} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         BUILD_RPATH "${BEAM_LOADER_ORIGIN}/../lib" BUILD_RPATH_USE_ORIGIN TRUE)

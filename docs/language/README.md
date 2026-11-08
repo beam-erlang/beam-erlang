@@ -107,6 +107,8 @@ monitoring, links and sending without bringing in an application supervisor.
 For timeout measurement across retries, see [time and deadlines](../runtime/time.md).
 The [abstract-form reference](abstract-forms.md) describes compiler input for
 advanced source transformations; it is separate from these execution semantics.
+The [native-call guide](native-calls.md) explains host-selected public names,
+language operations and compiler target profiles.
 
 The [standard-library catalog](../stdlib/README.md) is the starting point for
 library APIs. Language features do not imply that an OTP application service,

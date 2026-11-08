@@ -5,7 +5,7 @@ foreach(_module IN LISTS BEAM_FILE_COMPONENT_MODULES)
     list(APPEND _sources "${CMAKE_CURRENT_SOURCE_DIR}/${_module}.erl")
     list(APPEND BEAM_FILE_COMPONENT_BEAM_FILES "${CMAKE_BINARY_DIR}/components/file/ebin/${_module}.beam")
 endforeach()
-beam_add_erlang_component(beam_file_modules SOURCES ${_sources}
+beam_add_runtime_component(beam_file_modules SOURCES ${_sources}
     INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}" "${BEAM_SUPPORT_INCLUDE_DIRECTORY}"
     OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/components/file/ebin")
 set_source_files_properties(prim_buffer_nif.c PROPERTIES COMPILE_DEFINITIONS "STATIC_ERLANG_NIF_LIBNAME=beam_prim_buffer")
@@ -15,7 +15,7 @@ if(WIN32)
 else()
     set(_file_backend unix/unix_prim_file.c)
 endif()
-beam_add_library(beam_file_component NAME file
+beam_add_library(beam_file_component NAME file RESOURCE_COUNTER beam_file_descriptor_count
     MODULES ${BEAM_FILE_COMPONENT_MODULES} BEAM_FILES ${BEAM_FILE_COMPONENT_BEAM_FILES}
     NIF_ENTRIES - beam_prim_buffer_nif_init beam_prim_file_nif_init
     NATIVE_SOURCES prim_buffer_nif.c prim_file_nif.c ${_file_backend}

@@ -44,6 +44,7 @@
 #endif
 
 #include "erl_nif.h"
+#include "beam_enif_internal.h"
 
 #include "sys.h"
 #include "global.h"
@@ -62,6 +63,7 @@
 #include "erl_proc_sig_queue.h"
 #include "beam_common.h"
 #include "beam_internal.h"
+#include "beam_builtin_catalog.h"
 #undef ERTS_WANT_NFUNC_SCHED_INTERNALS__
 #define ERTS_WANT_NFUNC_SCHED_INTERNALS__
 #include "erl_nfunc_sched.h"
@@ -2136,6 +2138,17 @@ int enif_make_existing_atom_len(ErlNifEnv *env, const char *name, size_t len,
 
 ERL_NIF_TERM enif_make_tuple(ErlNifEnv* env, unsigned cnt, ...)
 {
+    va_list ap;
+    ERL_NIF_TERM result;
+
+    va_start(ap, cnt);
+    result = erts_nif_vmake_tuple(env, cnt, ap);
+    va_end(ap);
+    return result;
+}
+
+ERL_NIF_TERM erts_nif_vmake_tuple(ErlNifEnv *env, unsigned cnt, va_list ap)
+{
     if (cnt == 0) {
         return ERTS_GLOBAL_LIT_EMPTY_TUPLE;
     } else {
@@ -2144,16 +2157,12 @@ ERL_NIF_TERM enif_make_tuple(ErlNifEnv* env, unsigned cnt, ...)
 #endif
         Eterm* hp = alloc_heap(env,cnt+1);
         Eterm ret = make_tuple(hp);
-        va_list ap;
-
         *hp++ = make_arityval(cnt);
-        va_start(ap,cnt);
         while (cnt--) {
             Eterm elem = va_arg(ap,Eterm);
             ASSERT_IN_ENV(env, elem, ++nr, "tuple");
             *hp++ = elem;
         }
-        va_end(ap);
         return ret;
     }
 }
@@ -2193,6 +2202,17 @@ ERL_NIF_TERM enif_make_list_cell(ErlNifEnv* env, Eterm car, Eterm cdr)
 
 ERL_NIF_TERM enif_make_list(ErlNifEnv* env, unsigned cnt, ...)
 {
+    va_list ap;
+    ERL_NIF_TERM result;
+
+    va_start(ap, cnt);
+    result = erts_nif_vmake_list(env, cnt, ap);
+    va_end(ap);
+    return result;
+}
+
+ERL_NIF_TERM erts_nif_vmake_list(ErlNifEnv *env, unsigned cnt, va_list ap)
+{
     if (cnt == 0) {
 	return NIL;
     }
@@ -2203,9 +2223,6 @@ ERL_NIF_TERM enif_make_list(ErlNifEnv* env, unsigned cnt, ...)
 	Eterm* hp = alloc_heap(env,cnt*2);
 	Eterm ret = make_list(hp);
 	Eterm* last = &ret;
-	va_list ap;
-
-	va_start(ap,cnt);
 	while (cnt--) {
             Eterm term = va_arg(ap,Eterm);
 	    *last = make_list(hp);
@@ -2214,7 +2231,6 @@ ERL_NIF_TERM enif_make_list(ErlNifEnv* env, unsigned cnt, ...)
 	    last = ++hp;
 	    ++hp;
 	}
-	va_end(ap);
 	*last = NIL;
 	return ret;
     }
@@ -2982,6 +2998,32 @@ static int nif_resource_dtor_prologue(Binary* bin);
 int erts_nif_resource_binary(Binary *bin)
 {
     return bin && ERTS_MAGIC_BIN_DESTRUCTOR(bin) == NIF_RESOURCE_DTOR;
+}
+
+/* All Erlang readers and deferred literal transfers have stopped. Detach only
+ * native resource references while schedulers can still run their destructors;
+ * final literal reclamation will release the remaining off-heap entries. */
+void erts_bare_release_literal_nif_resources(ErtsLiteralArea *literal_area)
+{
+    struct erl_off_heap_header **previous;
+    if (!literal_area)
+        return;
+    previous = &literal_area->off_heap;
+    while (*previous) {
+        struct erl_off_heap_header *header = *previous;
+        if (thing_subtag(header->thing_word) == REF_SUBTAG &&
+            is_magic_ref_thing(header)) {
+            Binary *binary = (Binary *)((ErtsMRefThing *)header)->mb;
+            if (erts_nif_resource_binary(binary)) {
+                *previous = header->next;
+                header->next = NULL;
+                ((ErtsMRefThing *)header)->mb = NULL;
+                erts_bin_release(binary);
+                continue;
+            }
+        }
+        previous = &header->next;
+    }
 }
 
 static void run_resource_dtor(void* vbin);
@@ -4909,6 +4951,13 @@ static Eterm load_nif_selected(Process *c_p, ErtsCodePtr I, Eterm filename,
 	    }
 
             ci = this_mi->code_hdr->functions[func_ix];
+
+            if (beam_builtin_destination_selected(mod_atom,f_atom,f->arity)) {
+                ret = load_nif_error(c_p,bad_lib,
+                                     "Function has a selected native implementation %T:%s/%u",
+                                     mod_atom,f->name,f->arity);
+                break;
+            }
 
             if (!check_is_nifable(this_mi->code_hdr, func_ix)) {
                 ret = load_nif_error(c_p,bad_lib,"Function not declared as nif %T:%s/%u",

@@ -5,6 +5,7 @@
 #include <erl_driver.h>
 #include <dlfcn.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,16 +13,85 @@
 #include <zlib.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
+#ifdef BEAM_TEST_DRIVER_PROBE
+#include "builtin_bindings.h"
+#include "driver_bytecode.h"
+#endif
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #include "host_observe.h"
 #endif
+static const char *base_names[] = {
+    "beam", "beam_format", "beam_time", "beam_atomics", "beam_counters", "beam_persistent_term", "beam_binary", "beam_lists", "beam_maps", "beam_records", "beam_ets", "beam_string", "beam_unicode", "beam_runtime_unicode_util", "beam_math", "beam_ddll", "beam_debugger"
+};
+#ifdef BEAM_TEST_DRIVER_PROBE
+static int driver_check(const char *driver_path)
+{
+    const char *end = strrchr(driver_path, '/');
+    if (!end) return 15;
+    size_t length = (size_t)(end - driver_path);
+    if (length > UINT32_MAX) return 15;
+    unsigned char *arguments = malloc(length + 12);
+    if (!arguments) return 15;
+    const unsigned char head[] = {131,108,0,0,0,1,109};
+    memcpy(arguments, head, sizeof head);
+    arguments[7] = (unsigned char)(length >> 24);
+    arguments[8] = (unsigned char)(length >> 16);
+    arguments[9] = (unsigned char)(length >> 8);
+    arguments[10] = (unsigned char)length;
+    memcpy(arguments + 11, driver_path, length);
+    arguments[length + 11] = 106;
+    beam_composition_options spec = {.struct_size = sizeof spec,
+        .modules = driver_modules,
+        .module_count = sizeof driver_modules / sizeof *driver_modules,
+        .builtin_bindings = beam_test_modern_bindings,
+        .builtin_binding_count = BEAM_TEST_MODERN_BINDING_COUNT,
+        .native_admission = BEAM_NATIVE_DRIVERS | BEAM_NATIVE_PORTS};
+    beam_error error = {0};
+    beam_composition *composition = NULL;
+    beam_system *system = NULL;
+    beam_vm *vm = NULL;
+    if (beam_composition_prepare(&spec, &composition, &error) != BEAM_OK ||
+        beam_init(&system, &error) != BEAM_OK) goto failed;
+    beam_entry entry = {"driver_probe", "start", {arguments, length + 12}};
+    beam_vm_options options;
+    beam_vm_options_init(&options);
+    options.execution = BEAM_PROCESS_OWNED;
+    options.initial_root = &entry;
+    options.composition = composition;
+    if (beam_vm_init(system, &options, &vm, &error) != BEAM_OK) goto failed;
+    free(arguments);
+    arguments = NULL;
+    beam_composition_release(&composition);
+    beam_vm_enter(vm, &error);
+failed:
+    fprintf(stderr, "driver execution failed: %s\n", error.message);
+    free(arguments);
+    beam_vm_terminate(&vm, NULL);
+    beam_composition_release(&composition);
+    beam_terminate(&system);
+    return 15;
+}
+#endif
 int main(int argc, char **argv)
 {
-    if (argc != 2) return 7;
+    if (argc != 2 && argc != 3) return 7;
+#ifndef BEAM_TEST_DRIVER_PROBE
+    if (argc == 3) return 7;
+#endif
     const beam_sdk_inventory *base = beam_sdk_inventory_get(BEAM_SDK_INVENTORY_BASE);
-    if (!base || base->bytecode->count != 7 ||
+    if (!base || base->bytecode->count != sizeof base_names / sizeof base_names[0] ||
         strcmp(base->bytecode->build_id, beam_build_id())) return 14;
+    for (size_t i = 0; i < base->bytecode->count; ++i)
+        if (strcmp(base->bytecode->records[i].name, base_names[i])) return 14;
+    const beam_sdk_inventory *stdlib = beam_sdk_inventory_get(BEAM_SDK_INVENTORY_STDLIB);
+    static const char *stdlib_names[] = {"array", "dict", "graph", "gb_sets", "gb_trees",
+        "orddict", "ordsets", "proplists", "queue", "sets", "sofs", "digraph", "digraph_utils"};
+    if (!stdlib || stdlib->bytecode->count != sizeof stdlib_names / sizeof stdlib_names[0] ||
+        strcmp(stdlib->bytecode->build_id, beam_build_id()) ||
+        strcmp(stdlib->manifest_path, "lib/beam/stdlib/modules.txt")) return 14;
+    for (size_t i = 0; i < stdlib->bytecode->count; ++i)
+        if (strcmp(stdlib->bytecode->records[i].name, stdlib_names[i])) return 14;
     char path[PATH_MAX], executable[PATH_MAX];
     size_t required = 0;
     beam_error error = {0};
@@ -75,5 +145,12 @@ int main(int argc, char **argv)
     fclose(maps);
 #endif
     puts(beam_build_id());
+#ifdef BEAM_TEST_DRIVER_PROBE
+    if (argc == 3) {
+        if (strcmp(argv[2], "driver")) return 7;
+        fflush(stdout);
+        return driver_check(argv[1]);
+    }
+#endif
     return 0;
 }

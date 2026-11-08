@@ -4,6 +4,278 @@
     "../support/ts_install_cth.erl": {
       "source": "lib/common_test/test_server/ts_install_cth.erl",
       "sha256": "72ffadc4c6e67cbaf44e5f5afc5bd9a4aebbcdbc8f8e3a5081e5d8843bd8497a"
+    },
+    "../emulator/guard_SUITE.erl": {
+      "source": "erts/emulator/test/guard_SUITE.erl",
+      "sha256": "a77c45a74dde56adc370cdc3f063f60487242b184cdbcfa7f37455ca1f7937fa"
+    },
+    "../emulator/atomics_SUITE.erl": {
+      "source": "erts/emulator/test/atomics_SUITE.erl",
+      "sha256": "0809391f9a5df826d62be0260427b38ee203aaa976396eab0544b6840c2dcc75"
+    },
+    "../emulator/counters_SUITE.erl": {
+      "source": "erts/emulator/test/counters_SUITE.erl",
+      "sha256": "7f09358c81fbdab76fdc6fedc0cffb05a8ecb3be5b187a6d51068e783b9636f5"
+    },
+    "../emulator/bs_bincomp_SUITE.erl": {
+      "source": "erts/emulator/test/bs_bincomp_SUITE.erl",
+      "sha256": "8c1737078ab7c38086544e55f97ac4746469d169dcd5f345695f340f2a0f6a71"
+    },
+    "../emulator/bs_match_tail_SUITE.erl": {
+      "source": "erts/emulator/test/bs_match_tail_SUITE.erl",
+      "sha256": "3408380bb5e39dc1e282883a467d285265342f89c8e3a7e7c7bc1df0c865d1af"
+    },
+    "../emulator/persistent_term_SUITE.erl": {
+      "source": "erts/emulator/test/persistent_term_SUITE.erl",
+      "sha256": "f2639c4e9c8750b97387a3b684332bbe447b4e4e30d517e4431fcee8400f9ea2"
+    },
+    "../emulator/erts_test_destructor.erl": {
+      "source": "erts/emulator/test/erts_test_destructor.erl",
+      "sha256": "ba57e59add37aa31334174a9175010dd0dd84cd0498907bb7ec9aaa0107ddc58"
+    },
+    "../emulator/persistent_term_SUITE_data/erts_test_destructor.c": {
+      "source": "erts/emulator/test/persistent_term_SUITE_data/erts_test_destructor.c",
+      "sha256": "ab5d8fd889fcc7f59492b314dbc690ce58d07a5c1553b3aee374977a860c1383"
+    },
+    "../emulator/match_spec_SUITE.erl": {
+      "source": "erts/emulator/test/match_spec_SUITE.erl",
+      "sha256": "edd990af8bd021f950a1425624c4056821090f6b20820f9f6d015fe1da01c349"
+    },
+    "../emulator/trace_sessions.erl": {
+      "source": "erts/emulator/test/trace_sessions.erl",
+      "sha256": "a8d19f55747d26b639d3605eb941ee6d869b2e2158272668c08dea3d36b88ee4"
+    },
+    "../emulator/erts_test_utils.erl": {
+      "source": "erts/emulator/test/erts_test_utils.erl",
+      "sha256": "cd917bcdabdea11c15b07af65ed4c25cae4214beaa736bfce588c97472000e04"
+    },
+    "../emulator/time_SUITE.erl": {
+      "source": "erts/emulator/test/time_SUITE.erl",
+      "sha256": "bf94c6efb0ff5f8d5dc691e11e4578b9eec6e169e32976f2ec17d66852de41c6"
+    },
+    "../emulator/timer_bif_SUITE.erl": {
+      "source": "erts/emulator/test/timer_bif_SUITE.erl",
+      "sha256": "9e05d690e77cd990acb5074135fbc320633cef1c2986d9d41b2fbfae0a5d54c3"
+    },
+    "../emulator/bif_SUITE.erl": {
+      "source": "erts/emulator/test/bif_SUITE.erl",
+      "sha256": "4780a9e021c8a3239e32925ffa70703fe57f9a93e582dcb42adaebf3120babaf"
+    },
+    "../emulator/num_bif_SUITE.erl": {
+      "source": "erts/emulator/test/num_bif_SUITE.erl",
+      "sha256": "593b8f8d8df50fa7affb73da75cce889d7af20ba122080c1277f199e39f3c164"
+    },
+    "../emulator/big_SUITE.erl": {
+      "source": "erts/emulator/test/big_SUITE.erl",
+      "sha256": "1bfb1bfcc70973236671b53061640e104a68a8e4fcedcebf3467af08bd09c097"
+    },
+    "../emulator/big_SUITE_data/borders.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/borders.dat",
+      "sha256": "d05ffd8cfacb40f83c8cfa26f68f4627e3f5498c61615d463f9df70212d0176f"
+    },
+    "../emulator/big_SUITE_data/eq_28.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/eq_28.dat",
+      "sha256": "229633d5c2dcbda4dc860a88592de797859d0e986277159e146acf0e039d0b69"
+    },
+    "../emulator/big_SUITE_data/eq_32.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/eq_32.dat",
+      "sha256": "9dacd8c5be420f2ea22f5940c4f9809c22e7644db0ed823301b0a14c0472a7d6"
+    },
+    "../emulator/big_SUITE_data/eq_big.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/eq_big.dat",
+      "sha256": "6d2c43b34099ed1325ed9460bb742e75dac24a204c94d16a776825dfca60764f"
+    },
+    "../emulator/big_SUITE_data/eq_big_mul_div.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/eq_big_mul_div.dat",
+      "sha256": "8a9aa46e8c77840a410fad8353259b5ad4fe7c78da65e4bd419656d40b656bd0"
+    },
+    "../emulator/big_SUITE_data/eq_big_rem.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/eq_big_rem.dat",
+      "sha256": "2618fc5f3e239513a2c2c5232f0dce3762e92b3f0fe948db1d1e065eaf26a334"
+    },
+    "../emulator/big_SUITE_data/eq_math.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/eq_math.dat",
+      "sha256": "29a988db20ba22510f840d25af8a23935fbc174713a1804554cfeab6b47fcfed"
+    },
+    "../emulator/big_SUITE_data/gen_data": {
+      "source": "erts/emulator/test/big_SUITE_data/gen_data",
+      "sha256": "bcf2ce2dace12264488c9d3b3ba791469b96b79c0343bacd4a3b03bebdd5be4c"
+    },
+    "../emulator/big_SUITE_data/karatsuba.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/karatsuba.dat",
+      "sha256": "a02f6db9c2e60bc9059486e6ab0b75b6a855aab63f47a4b71ba8bbcff1adc70d"
+    },
+    "../emulator/big_SUITE_data/literal_test.erl": {
+      "source": "erts/emulator/test/big_SUITE_data/literal_test.erl",
+      "sha256": "49fc1bc470647710cb9f647e4c2a4067c170865a60804ff07b9cf5a4b3802bf3"
+    },
+    "../emulator/big_SUITE_data/negative.dat": {
+      "source": "erts/emulator/test/big_SUITE_data/negative.dat",
+      "sha256": "61a612d8734cf79bc8340152a74662d8e281d3930711366bbf205753d0ef5de8"
+    },
+    "../emulator/float_SUITE.erl": {
+      "source": "erts/emulator/test/float_SUITE.erl",
+      "sha256": "b1c56830a37dbf9865449798673972bb8f4595518975f97125eed084bbb47b69"
+    },
+    "../emulator/float_SUITE_data/fp_drv.c": {
+      "source": "erts/emulator/test/float_SUITE_data/fp_drv.c",
+      "sha256": "a0e4197fd9a135024d9a229d6ccc709b5e83d7943be2a4ae08bc10cca44e0d34"
+    },
+    "../emulator/float_SUITE_data/has_fpe_bug.erl": {
+      "source": "erts/emulator/test/float_SUITE_data/has_fpe_bug.erl",
+      "sha256": "438019218209eb661a123e24907cccbb6dab1742565e5e43c00c7ff7f81be1c9"
+    },
+    "../emulator/small_SUITE.erl": {
+      "source": "erts/emulator/test/small_SUITE.erl",
+      "sha256": "f51558d96a0a08701a8da338e1d4d72817c80436392410cb6570e348e99b89d4"
+    },
+    "../emulator/op_SUITE.erl": {
+      "source": "erts/emulator/test/op_SUITE.erl",
+      "sha256": "9c774d31e4ee0f2e01ddfc95eed9bcdd1bf60c17bfe4855f75d7cbe9895a753b"
+    },
+    "../emulator/exception_SUITE.erl": {
+      "source": "erts/emulator/test/exception_SUITE.erl",
+      "sha256": "bd4bad6fa49247c302b7ef70aaa530711f536f14bed5d3bedbfa7b654118a86d"
+    },
+    "../emulator/exception_SUITE_data/no_line_numbers.erl": {
+      "source": "erts/emulator/test/exception_SUITE_data/no_line_numbers.erl",
+      "sha256": "dcb5287b3817704f2c2066277398f6a87614910f5fb44e550b1d1bda6a4330b1"
+    },
+    "../emulator/error_info_lib.erl": {
+      "source": "lib/stdlib/test/error_info_lib.erl",
+      "sha256": "eac1dbbd36801cff352d357ff29e050ab2a599a07b6baccaa0ffa4e5c5e2fcb5"
+    },
+    "../emulator/fun_SUITE.erl": {
+      "source": "erts/emulator/test/fun_SUITE.erl",
+      "sha256": "7d5bc2508d11282d86b20a24ec01082e8ad628fff1c9fe1a0e10488ffe75f272"
+    },
+    "../emulator/process_SUITE.erl": {
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c"
+    },
+    "../emulator/process_SUITE_data/fwd_node.c": {
+      "source": "erts/emulator/test/process_SUITE_data/fwd_node.c",
+      "sha256": "0d3d91e8e2f9091cfcacf44d2cfae7f0f6a02fd314c6fcbcdd166a84b5e67401"
+    },
+    "../emulator/signal_SUITE.erl": {
+      "source": "erts/emulator/test/signal_SUITE.erl",
+      "sha256": "3b29de9db1449dd222a6bd907575ec849e0f0ec22ff9ec6bd155120b5f89c82e"
+    },
+    "../emulator/signal_SUITE_data/unlink_signal_drv.c": {
+      "source": "erts/emulator/test/signal_SUITE_data/unlink_signal_drv.c",
+      "sha256": "9d2ca8132ff28eeefe2d05eba06e15e2d02ae24046fb5a934e5ea4c1b51d0383"
+    },
+    "../emulator/dirty_bif_SUITE.erl": {
+      "source": "erts/emulator/test/dirty_bif_SUITE.erl",
+      "sha256": "169ce02cf6de69b36febf2e5b3da9e5a55f4973772b522f3871d036860ee0e8a"
+    },
+    "../emulator/code_SUITE.erl": {
+      "source": "erts/emulator/test/code_SUITE.erl",
+      "sha256": "3a1fc145fcb3238d1a77aa649a162584816c3b59740eef1db98c636f287f5f80"
+    },
+    "../emulator/code_SUITE_data/another_code_test.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/another_code_test.erl",
+      "sha256": "d2405c008c3d37115bf4bb5c7514a21772d77d7ffb25448c8ec886dc8e60d59b"
+    },
+    "../emulator/code_SUITE_data/call_fun_before_load.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/call_fun_before_load.erl",
+      "sha256": "9feab967057bca9a802c35a559c7421c43028a0ac40ae57cb5a40dfd6f18a280"
+    },
+    "../emulator/code_SUITE_data/call_purged_fun.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/call_purged_fun.erl",
+      "sha256": "8d12f7656df9097927b1833147081f763ec1705ea2b2e480d05ba4d7443d284f"
+    },
+    "../emulator/code_SUITE_data/call_purged_fun_altered.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/call_purged_fun_altered.erl",
+      "sha256": "2bfb07dc3d5bea1b3ebb1acee2b395707fc8f0d1a899f5afa9f9d460133cb394"
+    },
+    "../emulator/code_SUITE_data/call_purged_fun_tester.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/call_purged_fun_tester.erl",
+      "sha256": "943dba48c516acb13ce04e84fe85fdef79e041bfc1c29ba8709f7c79950656e4"
+    },
+    "../emulator/code_SUITE_data/cpbugx.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/cpbugx.erl",
+      "sha256": "657d567bbcd14c8a019c184b20e63905cc65e98ce27d08cc6171a9bbb7eba102"
+    },
+    "../emulator/code_SUITE_data/erl_544.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/erl_544.erl",
+      "sha256": "b4900fbe303c929f0477c4aa3618abbe04328428e7255caf071bb049c3a6755e"
+    },
+    "../emulator/code_SUITE_data/fun_confusion.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/fun_confusion.erl",
+      "sha256": "a477c0382a164c58d3ebb3ed1f37c905b70e9c330fe447530ac8213e9e5d31c6"
+    },
+    "../emulator/code_SUITE_data/literals.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/literals.erl",
+      "sha256": "51ad2c12bc240710e0d54c136cf42d6644abe89176166ec3a90c4fdcb1ad3d70"
+    },
+    "../emulator/code_SUITE_data/many_funs.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/many_funs.erl",
+      "sha256": "3b295f4752da7f03543b7461cd35d2e3d09f0490c7a44fdcf922d81277cf1900"
+    },
+    "../emulator/code_SUITE_data/my_code_test.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/my_code_test.erl",
+      "sha256": "b9a65fbe2e0ebc6f208b9d19f95068b8c6ec496dd9fa6d5b0decb7283b11eb4c"
+    },
+    "../emulator/code_SUITE_data/my_code_test2.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/my_code_test2.erl",
+      "sha256": "86789332d373a230dea7ae8ec466ad74ca4e7dfe0512f3d4f8ff4a43af4363cd"
+    },
+    "../emulator/code_SUITE_data/versions.erl": {
+      "source": "erts/emulator/test/code_SUITE_data/versions.erl",
+      "sha256": "0132a4cf7f5b4fcfdec1006f2d539b53c2a65dcf0af7f5eb3cea41a70c03cfcc"
+    },
+    "../emulator/code_parallel_load_SUITE.erl": {
+      "source": "erts/emulator/test/code_parallel_load_SUITE.erl",
+      "sha256": "371dbe27e40614ccadc317d32e7f239820c39a8590e667accd11af52cea15ce5"
+    },
+    "../emulator/hibernate_SUITE.erl": {
+      "source": "erts/emulator/test/hibernate_SUITE.erl",
+      "sha256": "b3293969160589c17ac38c22506ee5514f451f462a7fbf3acad1d66cf59ff537"
+    },
+    "../emulator/literal_area_collector_test.erl": {
+      "source": "erts/emulator/test/literal_area_collector_test.erl",
+      "sha256": "24bc1bd39313e6739274fe9aa6240df9657bd15afc68b562dbf861bafbb3abf5"
+    },
+    "../emulator/gen_tcp_dist.erl": {
+      "source": "lib/kernel/examples/gen_tcp_dist/src/gen_tcp_dist.erl",
+      "sha256": "232023072a7e5ee2f8f5691ec84e6b5ba174685e2f394c08ad74ff5d69f46bb5"
+    },
+    "../emulator/native_record_SUITE.erl": {
+      "source": "erts/emulator/test/native_record_SUITE.erl",
+      "sha256": "05b0f717a50eb26fa48f0ee5dba40828c95586b06b6cc834760dcf74906f34d2"
+    },
+    "../emulator/ext_records.erl": {
+      "source": "erts/emulator/test/ext_records.erl",
+      "sha256": "ebf2d1756631b3ab8a6e3acebff3a9c07847e000a74dfbe08465452bd6120a2e"
+    },
+    "../emulator/trace_session_SUITE.erl": {
+      "source": "erts/emulator/test/trace_session_SUITE.erl",
+      "sha256": "9c6e17c5e73ff57928f0159c4dccf356eb2c4adf3781426f242802f99fd9349f"
+    },
+    "../emulator/tracer_SUITE.erl": {
+      "source": "erts/emulator/test/tracer_SUITE.erl",
+      "sha256": "37f4fe267c3da7ad99fc529e83849c2757ca27f4c2c8bee72796f577d88f246e"
+    },
+    "../emulator/tracer_test.erl": {
+      "source": "erts/emulator/test/tracer_test.erl",
+      "sha256": "0e269b93f33127be623b4e7dbe5786fa1e508f99f9dcdbd18888ae17ec00dddc"
+    },
+    "../emulator/tracer_SUITE_data/tracer_test.c": {
+      "source": "erts/emulator/test/tracer_SUITE_data/tracer_test.c",
+      "sha256": "cf1cf555371440edbec49c299f45ea9d827620e00e8c2ef5619c03faae88a160"
+    },
+    "../emulator/seq_trace_SUITE.erl": {
+      "source": "lib/kernel/test/seq_trace_SUITE.erl",
+      "sha256": "89cc504d03a3e3b0e744bbd9938e089a701030f98edea3375d4cdfd375a19f29"
+    },
+    "../emulator/seq_trace_SUITE_data/echo_drv.c": {
+      "source": "lib/kernel/test/seq_trace_SUITE_data/echo_drv.c",
+      "sha256": "692c07e698450c21b053898899d63c480d09c011927e72117c7d153035197c63"
+    },
+    "../emulator/dummy.erl": {
+      "source": "erts/emulator/test/dummy.erl",
+      "sha256": "9e7a6f009b7c87b74ac2e857845775b06fa7dfff2b2dd9b04c71f0f18ad47e83"
     }
   }
 }

@@ -1,3 +1,5 @@
+set(BEAM_FRAMEWORK_NIF_HEADERS erl_nif erl_drv_nif erl_nif_api_funcs erl_int_sizes_config)
+
 function(beam_platform_library target name)
     set_target_properties(${target} PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
@@ -16,6 +18,12 @@ function(beam_platform_library target name)
                 target_sources(${target} PRIVATE "${_source}")
                 set_source_files_properties("${_source}" PROPERTIES
                     MACOSX_PACKAGE_LOCATION "Headers/beam/${_directory}")
+            endforeach()
+            foreach(_header IN LISTS BEAM_FRAMEWORK_NIF_HEADERS)
+                set(_source "${CMAKE_BINARY_DIR}/public-sdk/include/beam/nif/${_header}.h")
+                target_sources(${target} PRIVATE "${_source}")
+                set_source_files_properties("${_source}" PROPERTIES
+                    MACOSX_PACKAGE_LOCATION "Headers/beam/nif")
             endforeach()
             file(WRITE "${CMAKE_BINARY_DIR}/module.modulemap"
                 "framework module BEAM { header \"beam/beam.h\" export * }\n")

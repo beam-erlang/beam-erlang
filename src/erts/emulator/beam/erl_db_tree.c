@@ -1413,7 +1413,7 @@ int db_select_continue_tree_common(Process *p,
 	 sc.accum,
 	 tptr[7],
 	 make_small(sc.got));
-    RET_TO_BIF(bif_trap1(BIF_TRAP_EXPORT(BIF_ets_select_1), p, continuation),
+    RET_TO_BIF(bif_trap1(erts_ets_select_resume_export, p, continuation),
 	       DB_ERROR_NONE);
 
 #undef RET_TO_BIF
@@ -1558,7 +1558,7 @@ int db_select_tree_common(Process *p, DbTable *tb,
 	 make_small(sc.got));
 
     /* Don't free mpi.mp, so don't use macro */
-    *ret = bif_trap1(BIF_TRAP_EXPORT(BIF_ets_select_1), p, continuation);
+    *ret = bif_trap1(erts_ets_select_resume_export, p, continuation);
     return DB_ERROR_NONE;
 
 #undef RET_TO_BIF
@@ -1966,7 +1966,7 @@ int db_select_chunk_tree_common(Process *p, DbTable *tb,
 	 make_small(reverse),
 	 make_small(sc.got));
     /* Don't let RET_TO_BIF macro free mpi.mp*/
-    *ret = bif_trap1(BIF_TRAP_EXPORT(BIF_ets_select_1), p, continuation);
+    *ret = bif_trap1(erts_ets_select_resume_export, p, continuation);
     return DB_ERROR_NONE;
 
 #undef RET_TO_BIF
@@ -4426,3 +4426,8 @@ static int check_table_tree(DbTableTree* tb, TreeDbTerm *t)
 }
 	
 #endif
+
+int erts_db_tree_is_bif(const void *function)
+{
+    return function == (const void *)ets_select_reverse;
+}

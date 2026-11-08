@@ -4,6 +4,7 @@
 #include "native_counts.h"
 #include <beam/boot.h>
 #include "bytecode_input.h"
+#include "builtin_bindings.h"
 #include "host_observe.h"
 #include <unistd.h>
 #include <dirent.h>
@@ -61,8 +62,10 @@ int main(int argc,char **argv) {
     beam_buffer bytes=read_bytes(argv[2]);
     beam_module_spec module={"contract_worker",{bytes.data,bytes.size},"copied:contracts"};
     bytecode_input base = {0}; CHECK(bytecode_input_read(&base, argv[1], returning ? INPUT_RETURNING : INPUT_BASE | INPUT_SERVICES, &error)==BEAM_OK);
-    beam_module_spec modules[14]; memcpy(modules,base.modules,base.count * sizeof(*base.modules)); modules[base.count]=module;
-    beam_return_module returning_modules[14]={{0}};
+    if (1) bytecode_input_partition_network(&base);
+    beam_module_spec *modules=calloc(base.count+1,sizeof(*modules)); CHECK(modules);
+    memcpy(modules,base.modules,base.count * sizeof(*base.modules)); modules[base.count]=module;
+    beam_return_module *returning_modules=calloc(base.count+1,sizeof(*returning_modules)); CHECK(returning_modules);
     for(size_t i=0;i<base.count+1;++i) {
         returning_modules[i].name=modules[i].name; returning_modules[i].bytes=modules[i].bytes;
         returning_modules[i].origin=modules[i].origin;
@@ -77,6 +80,18 @@ int main(int argc,char **argv) {
     size_t size=strlen(argv[3]); unsigned char *arg=calloc(1,size+12); CHECK(arg);
     unsigned char header[]={131,108,0,0,0,1,109,size>>24,size>>16,size>>8,size};
     memcpy(arg,header,sizeof(header));memcpy(arg+sizeof(header),argv[3],size);arg[size+11]=106;
+    beam_builtin_binding payload_bindings[BEAM_TEST_NETWORK_BINDING_COUNT+
+        BEAM_TEST_FILE_BINDING_COUNT+BEAM_TEST_RETENTION_BINDING_COUNT+
+        BEAM_TEST_RETURNING_BINDING_COUNT];
+    size_t payload_count=0;
+    CHECK(beam_test_append_bindings(payload_bindings,sizeof payload_bindings/sizeof *payload_bindings,
+        &payload_count,beam_test_network_bindings,BEAM_TEST_NETWORK_BINDING_COUNT));
+    CHECK(beam_test_append_bindings(payload_bindings,sizeof payload_bindings/sizeof *payload_bindings,
+        &payload_count,beam_test_file_bindings,BEAM_TEST_FILE_BINDING_COUNT));
+    CHECK(beam_test_append_bindings(payload_bindings,sizeof payload_bindings/sizeof *payload_bindings,
+        &payload_count,beam_test_retention_bindings,BEAM_TEST_RETENTION_BINDING_COUNT));
+    CHECK(beam_test_append_bindings(payload_bindings,sizeof payload_bindings/sizeof *payload_bindings,
+        &payload_count,beam_test_returning_bindings,BEAM_TEST_RETURNING_BINDING_COUNT));
     beam_system *system=NULL; CHECK(beam_init(&system,&error)==BEAM_OK);
     int descriptors=entries("/proc/self/fd"),threads=entries("/proc/self/task");
     beam_result saved={0};
@@ -85,7 +100,10 @@ int main(int argc,char **argv) {
         if(returning) {
             beam_return_options options={.struct_size=sizeof(options)};
             beam_startup_action startup[]={{"beam_file","start",{0}},{"beam_socket","start",{0}}};
-            beam_host_options plan={.struct_size=sizeof(plan),.library_count=2,.libraries=libraries,.startup_count=2,.startup=startup};
+            beam_composition_options native={.struct_size=sizeof(native),
+                .builtin_binding_count=payload_count,
+                .builtin_bindings=payload_bindings};
+            beam_host_options plan={.struct_size=sizeof(plan),.composition=&native,.library_count=2,.libraries=libraries,.startup_count=2,.startup=startup};
             options.host=&plan;
             options.modules=returning_modules;options.module_count=base.count+1;
             options.entry_module="contract_worker";options.entry_function=faults ? "returning_fault" : "returning";options.arguments=(beam_bytes){arg,size+12};
@@ -97,7 +115,9 @@ int main(int argc,char **argv) {
             if(faults) CHECK(strstr(out.cleanup_error,"file close failed"));
             beam_outcome_release(&out);
         } else {
-            beam_composition_options prep={.struct_size=sizeof(prep),.modules=modules,.module_count=base.count+1};
+            beam_composition_options prep={.struct_size=sizeof(prep),.modules=modules,.module_count=base.count+1,
+                .builtin_binding_count=payload_count,
+                .builtin_bindings=payload_bindings};
             beam_startup_action startup[]={{"beam_file","start",{0}},{"beam_socket","start",{0}},{"beam_output","start",{0}},{"beam_code","start",{0}}};
             beam_host_options plan={.struct_size=sizeof(plan),.composition=&prep,.library_count=2,.libraries=libraries,.startup_count=4,.startup=startup};
             beam_host *comp=NULL;beam_vm *vm=NULL;beam_vm_options options;beam_vm_options_init(&options);
@@ -130,7 +150,7 @@ int main(int argc,char **argv) {
     }
     CHECK(beam_terminate(&system)==BEAM_OK);if(saved.value.data)check_result(&saved);
     if(faults && !returning) CHECK(saved_cleanup.cleanup.native_code==EIO && strstr(saved_cleanup.cleanup.message,"file close failed"));
-    beam_result_release(&saved);free(bytes.data);free(arg);bytecode_input_release(&base);
+    beam_result_release(&saved);free(bytes.data);free(arg);free(modules);free(returning_modules);bytecode_input_release(&base);
     for(size_t i=0;i<2;++i)beam_library_release(&libraries[i]);
     puts("service contracts passed");return 0;
 }

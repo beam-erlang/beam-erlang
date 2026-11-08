@@ -1,6 +1,6 @@
 # Native libraries
 
-BEAM/Erlang supplies three passive libraries containing Erlang modules and their
+BEAM/Erlang supplies four passive libraries containing Erlang modules and their
 native implementations. Each has shared and static delivery:
 
 | Library | CMake targets | Erlang interface |
@@ -8,6 +8,7 @@ native implementations. Each has shared and static delivery:
 | [File](file/README.md) | `BEAM::File`, `BEAM::FileStatic` | `beam_file` |
 | [Network](network/README.md) | `BEAM::Network`, `BEAM::NetworkStatic` | `beam_socket` |
 | [Zlib](zlib/README.md) | `BEAM::Zlib`, `BEAM::ZlibStatic` | `zlib` |
+| [Tracing](tracing/README.md) | `BEAM::Tracing`, `BEAM::TracingStatic` | `beam_trace` |
 
 ## Selection and startup
 
@@ -15,7 +16,7 @@ Include `<beam/library.h>` and link the optional `BEAM::Host` archive alongside
 one selected runtime. Open an exact shared path with `beam_library_open`, or
 include `<beam/libraries/file.h>` and pass `beam_file_library()` to
 `beam_library_from_static` for static file delivery. Network and zlib have the
-corresponding headers/accessors. Static library targets leave runtime linkage to
+corresponding headers/accessors, as does tracing. Static library targets leave runtime linkage to
 the host. Modern shared libraries require a shared VM; static libraries work with
 either VM form. The modern CLI uses shared delivery.
 
@@ -32,7 +33,8 @@ For a persistent host:
    `beam_host_prepare` to merge them with explicitly requested startup actions.
 3. Initialize and start the VM. Resident entry tables are validated at
    initialization; their load callbacks have not yet run.
-4. Invoke `beam_file:start/0`, `beam_socket:start/0` or `zlib:on_load/0` as selected.
+4. Invoke `beam_file:start/0`, `beam_socket:start/0`, `zlib:on_load/0` or private
+   `beam_trace:load_nif/0` as selected.
    `beam_host_start` can perform these explicit actions and complete any explicit
    NIF bindings before application entry. It requires supplied `beam_startup`
    bytecode for its startup controller.
@@ -55,6 +57,6 @@ module origins are diagnostic labels, not acquisition instructions.
 
 Selecting one library does not acquire another. Undefined calls remain undefined.
 Library startup creates real file/socket owners, whose loss closes availability
-and reports a generic terminal failure. Zlib needs no sentinel owner process.
+and reports a generic terminal failure. Zlib and tracing need no sentinel owner process.
 There is no hot native replacement. Failed startup stops the VM; inspect copied
 VM diagnostics and terminate before retrying with a fresh VM.

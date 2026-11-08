@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define _POSIX_C_SOURCE 200809L
 #include <beam/beam.h>
+#include <beam/process.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -9,6 +10,7 @@
 #include <time.h>
 #include "fixtures.h"
 #include "support.h"
+#include "builtin_bindings.h"
 
 #define CHECK(test) do { if (!(test)) { \
     fprintf(stderr, "bridge:%d: %s\n", __LINE__, #test); return 1; \
@@ -257,20 +259,45 @@ static beam_status handler(void *opaque, beam_bytes request, beam_host_reply *re
         beam_result nested = {0};
         beam_module_info module = {sizeof(module), 0};
         beam_module_list modules = {0};
+        beam_module_query query;
+        beam_module_snapshot snapshot = {0};
+        beam_module_name name = {"bare_bridge", sizeof("bare_bridge") - 1};
+        beam_module_query_init(&query);
         beam_scheduler_info schedulers = {sizeof(schedulers), 0};
         beam_vm_state_info state;
         int halt_status;
         CALLBACK_CHECK(beam_vm_call(host->vm, "bare_bridge", "answer", empty, &nested) == BEAM_INVALID_STATE);
-        CALLBACK_CHECK(beam_vm_load(host->vm, (beam_bytes){bare_bridge, sizeof bare_bridge}) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_load(host->vm, (beam_bytes){bare_bridge, sizeof bare_bridge}) == BEAM_INVALID_STATE);
         CALLBACK_CHECK(beam_vm_stop(host->vm, &halt_status) == BEAM_INVALID_STATE);
         CALLBACK_CHECK(beam_vm_start(host->vm, NULL) == BEAM_INVALID_STATE);
         CALLBACK_CHECK(beam_vm_terminate(&host->vm, &halt_status) == BEAM_INVALID_STATE);
         CALLBACK_CHECK(beam_vm_get_state(host->vm, &state) == BEAM_INVALID_STATE);
-        CALLBACK_CHECK(beam_vm_get_module(host->vm, "bare_bridge", &module) == BEAM_INVALID_STATE);
-        CALLBACK_CHECK(beam_vm_list_modules(host->vm, &modules) == BEAM_INVALID_STATE);
-        CALLBACK_CHECK(beam_vm_unload(host->vm, "bare_bridge", NULL) == BEAM_INVALID_STATE);
-        CALLBACK_CHECK(beam_vm_get_schedulers(host->vm, &schedulers) == BEAM_INVALID_STATE);
-        CALLBACK_CHECK(beam_vm_set_schedulers_online(host->vm, 1, 1, NULL) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_get_info(host->vm, "bare_bridge", &module) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_list_names(host->vm, &modules) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_unload(host->vm, "bare_bridge", NULL) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_inspect(host->vm, name, &query, &snapshot) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_inspect_all(host->vm, &query, &snapshot) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_replace(host->vm, (beam_bytes){bare_bridge, sizeof bare_bridge}, NULL) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_soft_purge(host->vm, name, NULL) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_module_delete(host->vm, name, NULL) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_scheduler_get_info(host->vm, &schedulers) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_scheduler_set_online(host->vm, 1, 1, NULL) == BEAM_INVALID_STATE);
+        beam_scheduler_snapshot scheduler_snapshot = {0};
+        beam_process_list process_list = {0};
+        beam_process_query process_query;
+        beam_process_snapshot process_snapshot = {0};
+        beam_process_spawn_options spawn_options;
+        BeamPid process_pid;
+        beam_enif_set_pid_undefined(&process_pid);
+        beam_process_query_init(&process_query);
+        beam_process_spawn_options_init(&spawn_options);
+        CALLBACK_CHECK(beam_scheduler_inspect_all(host->vm, &scheduler_snapshot) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_process_list_pids(host->vm, &process_list) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_process_inspect(host->vm, &process_pid, &process_query, &process_snapshot) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(beam_process_spawn(host->vm, "bare_bridge", "answer", NULL, 0,
+                                         &spawn_options, &process_pid, NULL) == BEAM_INVALID_STATE);
+        CALLBACK_CHECK(!scheduler_snapshot.items && !process_list.pids && !process_snapshot.fields &&
+                       beam_enif_is_pid_undefined(&process_pid));
         CALLBACK_CHECK(beam_vm_set_host_handler(host->vm, handler, host) == BEAM_INVALID_STATE);
     }
     if (!strcmp(operation, "dead_requester") || !strcmp(operation, "halt_in_callback") ||
@@ -322,18 +349,31 @@ int main(int argc, char **argv)
     CHECK(beam_vm_get_state(NULL, &info) == BEAM_INVALID_ARGUMENT);
     CHECK(info.state == BEAM_VM_HALT_REQUESTED && info.halt_status == 123);
     OK(beam_init(&system, NULL));
+    beam_composition *composition = NULL;
+    beam_builtin_binding bindings[BEAM_TEST_BRIDGE_BINDING_COUNT+BEAM_TEST_IO_BINDING_COUNT];
+    size_t binding_count=0;
+    CHECK(beam_test_append_bindings(bindings,sizeof bindings/sizeof *bindings,&binding_count,
+        beam_test_bridge_bindings,BEAM_TEST_BRIDGE_BINDING_COUNT));
+    if (!strcmp(mode,"io"))
+        CHECK(beam_test_append_bindings(bindings,sizeof bindings/sizeof *bindings,&binding_count,
+            beam_test_io_bindings,BEAM_TEST_IO_BINDING_COUNT));
+    beam_composition_options preparation = {.struct_size=sizeof preparation,
+        .builtin_bindings=bindings,.builtin_binding_count=binding_count};
+    OK(beam_composition_prepare(&preparation,&composition,NULL));
+    options.composition=composition;
     OK(beam_vm_init(system, &options, &host.vm, NULL));
+    beam_composition_release(&composition);
     CHECK(beam_vm_get_state(host.vm, NULL) == BEAM_INVALID_ARGUMENT);
     OK(beam_vm_get_state(host.vm, &info));
     CHECK(info.state == BEAM_VM_INITIALIZED && info.halt_status == 0);
-    CHECK(beam_vm_load(host.vm, (beam_bytes){empty_data, sizeof empty_data}) == BEAM_INVALID_BEAM);
+    CHECK(beam_module_load(host.vm, (beam_bytes){empty_data, sizeof empty_data}) == BEAM_INVALID_BEAM);
     OK(beam_vm_get_state(host.vm, &info));
     CHECK(info.state == BEAM_VM_INITIALIZED && info.halt_status == 0);
     CHECK(pthread_create(&thread, NULL, wrong_thread, &host) == 0);
     CHECK(pthread_join(thread, NULL) == 0 && !host.failed);
-    OK(beam_vm_load(host.vm, (beam_bytes){host_module, sizeof host_module}));
-    OK(beam_vm_load(host.vm, (beam_bytes){bare_bridge, sizeof bare_bridge}));
-    OK(beam_vm_load(host.vm, (beam_bytes){bare_observe, sizeof bare_observe}));
+    OK(beam_module_load(host.vm, (beam_bytes){host_module, sizeof host_module}));
+    OK(beam_module_load(host.vm, (beam_bytes){bare_bridge, sizeof bare_bridge}));
+    OK(beam_module_load(host.vm, (beam_bytes){bare_observe, sizeof bare_observe}));
     OK(beam_vm_start(host.vm, NULL));
     if (!strcmp(mode, "no-handler")) {
         CHECK(call_atom(host.vm, "bare_bridge", "no_handler", "ok") == 0);
@@ -381,11 +421,11 @@ int main(int argc, char **argv)
                 beam_module_info module = {sizeof(module), 0};
                 beam_module_list modules = {0};
                 beam_scheduler_info schedulers = {sizeof(schedulers), 0};
-                OK(beam_vm_get_module(host.vm, "bare_bridge", &module));
-                OK(beam_vm_list_modules(host.vm, &modules));
-                CHECK(beam_vm_unload(host.vm, "absent_bridge_module", NULL) == BEAM_NOT_FOUND);
-                OK(beam_vm_get_schedulers(host.vm, &schedulers));
-                OK(beam_vm_set_schedulers_online(host.vm, 1, 1, NULL));
+                OK(beam_module_get_info(host.vm, "bare_bridge", &module));
+                OK(beam_module_list_names(host.vm, &modules));
+                CHECK(beam_module_unload(host.vm, "absent_bridge_module", NULL) == BEAM_NOT_FOUND);
+                OK(beam_scheduler_get_info(host.vm, &schedulers));
+                OK(beam_scheduler_set_online(host.vm, 1, 1, NULL));
                 beam_module_list_release(&modules);
                 CHECK(host.calls == 0);
             }
@@ -448,9 +488,9 @@ int main(int argc, char **argv)
             static const unsigned char name[] = {131,108,0,0,0,1,109,0,0,0,8,'M',0xc3,0xbc,'n','c','h','e','n',106};
             static const unsigned char ascii[] = "Hello, World!\n";
             static const unsigned char expected[] = "Hello, M\303\274nchen!\n";
-            OK(beam_vm_load(host.vm, (beam_bytes){bare_io, sizeof bare_io}));
+            OK(beam_module_load(host.vm, (beam_bytes){bare_io, sizeof bare_io}));
             for (size_t i = 0; i < sizeof io_modules / sizeof *io_modules; ++i)
-                OK(beam_vm_load(host.vm, io_modules[i]));
+                OK(beam_module_load(host.vm, io_modules[i]));
             OK(beam_vm_call(host.vm, "bare_io", "hello", (beam_bytes){world, sizeof world}, &result));
             CHECK(result_atom(&result, "ok"));
             beam_result_release(&result);

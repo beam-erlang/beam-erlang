@@ -69,7 +69,7 @@ def main():
                       f'deployed native header differs: {name}')
             core = {key: record for key, record in manifest['artifacts'].items()
                     if record['kind'] == 'core-module'}
-            check(len(core) == 9, 'incorrect core inventory size')
+            check(len(core) == 6, 'incorrect core inventory size')
             for key, record in core.items():
                 relative = 'core/ebin/' + Path(record['path']).name
                 expected.add(relative)
@@ -101,6 +101,18 @@ def main():
             finally:
                 unavailable.rename(sdk)
 
+        canonical_core = sorted(key.removeprefix('core.') for key in core
+                                if key != 'core.beam_internal')
+        subset = configure('canonical-core', CORE_MODULES=';'.join(canonical_core))
+        subset_prefix = root / 'canonical-core-deployment'
+        run([args.cmake, '--install', subset, '--prefix', subset_prefix],
+            cwd=root, env=env, timeout=30)
+        check({p.stem for p in (subset_prefix/'core/ebin').glob('*.beam')} == set(canonical_core),
+              'filtered deployment did not preserve the five canonical core identities')
+        for selection in ('unknown', 'erlang;erlang'):
+            configure('invalid-core-' + selection.replace(';', '-'), status=1,
+                      diagnostic='Unknown or duplicate embedded-core module', CORE_MODULES=selection)
+        configure('empty-core', status=1, diagnostic='requires DESTINATION', CORE_MODULES='')
         configure('wrong-version', status=1, diagnostic='VERSION mismatch',
                   EXPECTED_VERSION=expected_version() + '.wrong')
         configure('wrong-flavor', status=1, diagnostic='FLAVOR mismatch',
@@ -190,10 +202,18 @@ def main():
                           diagnostic='does not match its build inventory')
             finally:
                 path.write_bytes(original)
+        driver_bytecode = root / 'driver-bytecode'
+        driver_bytecode.mkdir()
+        result = run([sdk / 'bin/beam', 'compile', '--deterministic', '-o', driver_bytecode,
+                      '--', args.source_dir / 'driver_probe.erl'],
+                     cwd=root, env=env, timeout=30, text=True)
+        check(not result.stdout and not result.stderr, 'driver fixture compilation produced diagnostics')
         # Static discovery and core inspection acquisition need no shared VM/CLI.
         artifact(sdk,'runtime').unlink()
         shutil.rmtree(sdk / 'bin')
-        static = configure('static-only', STATIC_PROBE='ON')
+        static = configure('static-only', STATIC_PROBE='ON',
+                           DRIVER_PROBE_BEAM=driver_bytecode / 'driver_probe.beam',
+                           BASE_EBIN_DIR=sdk / 'lib/beam/library/ebin')
         run([args.cmake, '--build', static], cwd=root, env=env, timeout=60)
         unavailable = root / 'static-sdk-unavailable'
         sdk.rename(unavailable)
@@ -201,6 +221,10 @@ def main():
             result = run(['./static-only/static_probe', static / 'sdk_driver_probe.so'], cwd=root, env=env, timeout=15, text=True)
             check(result.stdout.strip() == manifest['build-id'] and not result.stderr,
                   'static host identity or image discovery failed')
+            result = run(['./static-only/static_probe', static / 'sdk_driver_probe.so', 'driver'],
+                         cwd=root, env=env, timeout=15, text=True)
+            check(result.stdout.strip() == manifest['build-id'] and not result.stderr,
+                  'installed process-owned base APIs or driver lifecycle failed')
         finally:
             unavailable.rename(sdk)
         print(f'Runtime artifact SDK checks passed: {flavor}')

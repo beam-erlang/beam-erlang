@@ -18,10 +18,14 @@ void library_mode(const char *root, const char *fixture)
     beam_bytes arguments = list_of_binaries(dummy_items, dummy_sizes, 1);
     check(beam_init(&system, &error) == BEAM_OK, "init");
     beam_vm_options_init(&vm_options);
+    vm_options.schedulers = 2;
+    vm_options.schedulers_online = 1;
 
     bytecode_input base = {0};
     check(bytecode_input_read(&base, root, INPUT_BASE, &error) == BEAM_OK, error.message);
-    beam_composition_options preparation = {.struct_size = sizeof(preparation), .modules = base.modules, .module_count = 7};
+    beam_composition_options preparation = {.struct_size = sizeof(preparation), .modules = base.modules, .module_count = base.count,
+        .builtin_binding_count = BEAM_TEST_MODERN_BINDING_COUNT,
+        .builtin_bindings = beam_test_modern_bindings};
     beam_composition *composition = NULL;
     check(beam_composition_prepare(&preparation, &composition, &error) == BEAM_OK, error.message);
     bytecode_input_release(&base);
@@ -31,10 +35,16 @@ void library_mode(const char *root, const char *fixture)
     snprintf(path, sizeof(path), "%s/returning_programs.beam", fixture);
     program = read_file(path, &program_size);
     check(program != NULL, "program");
-    check(beam_vm_load(vm, (beam_bytes){program, program_size}) == BEAM_OK, "load program");
+    check(beam_module_load(vm, (beam_bytes){program, program_size}) == BEAM_OK, "load program");
     free(program);
     check(beam_vm_start(vm, &error) == BEAM_OK, "start");
     check(beam_vm_call(vm, "returning_programs", "library", arguments, &result) == BEAM_OK, "call");
+    if (result.kind != BEAM_RETURN) {
+        size_t diagnostic_size = result.value.size < 4096 ? result.value.size : 4096;
+        fprintf(stderr, "library result kind %d term ", result.kind);
+        fwrite(result.value.data, 1, diagnostic_size, stderr);
+        fputc('\n', stderr);
+    }
     check(result.kind == BEAM_RETURN, "library result kind");
     {
         const unsigned char *text = NULL;

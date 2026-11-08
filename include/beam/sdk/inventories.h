@@ -16,7 +16,8 @@ typedef enum beam_sdk_inventory_kind {
     BEAM_SDK_INVENTORY_STARTUP,
     BEAM_SDK_INVENTORY_HOST,
     BEAM_SDK_INVENTORY_OUTPUT,
-    BEAM_SDK_INVENTORY_CODE
+    BEAM_SDK_INVENTORY_CODE,
+    BEAM_SDK_INVENTORY_STDLIB
 } beam_sdk_inventory_kind;
 
 typedef struct beam_sdk_inventory {

@@ -83,7 +83,7 @@ def build_cases(prefix, root, cmake):
                         '[build.native]\ncmake = "."\noutputs = ["acceptance"]\n')
     source = work / 'pkg_acceptance.erl'
     source.write_text('-module(pkg_acceptance).\n-export([load/1, value/0]).\n'
-                      'load(P)->erlang:load_nif(P,0).\nvalue()->erlang:nif_error(unloaded).\n')
+                      'load(P)->beam:load_nif(P,0).\nvalue()->beam:nif_error(unloaded).\n')
     (work / 'native.c').write_text('#include <erl_nif.h>\n'
         'static ERL_NIF_TERM value(ErlNifEnv* e,int n,const ERL_NIF_TERM a[]){return enif_make_int(e,19);}\n'
         'static ErlNifFunc f[]={{"value",0,value,0}};\nERL_NIF_INIT(pkg_acceptance,f,NULL,NULL,NULL,NULL)\n')
@@ -159,13 +159,30 @@ def project_shell_cases(prefix, root, env):
     current.write_text('format = 1\ngeneration = "../escape"\n')
     invoke(shell, cwd=root, env=env, status=1)
     current.write_bytes(saved)
+    # User package names coexist with independently named shell algorithms.
+    modules = ['dict', 'queue', 'sets', 'proplists', 'gb_trees', 'orddict']
+    manifest.write_text(base + '[build]\nsources = [' +
+                        ', '.join(f'"{module}.erl"' for module in modules) + ']\n')
+    for module in modules:
+        (work / (module + '.erl')).write_text(
+            f'-module({module}).\n-export([value/0]).\nvalue()->{{package,{module}}}.\n')
+    invoke([pkg, 'build', work], cwd=root, env=env, timeout=60)
+    invoke([pkg, 'install', work], cwd=root, env=env, timeout=60)
+    expected = '[' + ','.join('{package,' + module + '}' for module in modules) + ']'
+    expressions = (expected + ' = [M:value() || M <- [' + ','.join(modules) + ']], '
+                   '{package,sets} = (fun sets:value/0)(), '
+                   '{package,queue} = beam:apply(queue,value,[]), '
+                   'UserModule = orddict, {package,orddict} = UserModule:value(), '
+                   'io:format("PKG_COLLECTIONS_OK~n",[]).\nq().\n')
+    result = invoke(shell, cwd=root, env=env, input_data=expressions.encode(), text=True)
+    assert 'PKG_COLLECTIONS_OK\n' in result.stdout and not result.stderr, result.stdout + result.stderr
     # An interactive helper is an actual provider, even though run does not load it.
-    manifest.write_text(base + '[build]\nsources = ["sets.erl"]\n')
-    (work / 'sets.erl').write_text('-module(sets).\n-export([value/0]).\nvalue()->42.\n')
+    manifest.write_text(base + '[build]\nsources = ["beam_runtime_sets.erl"]\n')
+    (work / 'beam_runtime_sets.erl').write_text('-module(beam_runtime_sets).\n-export([value/0]).\nvalue()->42.\n')
     invoke([pkg, 'build', work], cwd=root, env=env, timeout=60)
     invoke([pkg, 'install', work], cwd=root, env=env, timeout=60)
     result = invoke(shell, cwd=root, env=env, status=1, text=True)
-    assert 'package conflicts with host module: sets' in result.stderr, result.stderr
+    assert 'package conflicts with host module: beam_runtime_sets' in result.stderr, result.stderr
 
 
 def main():

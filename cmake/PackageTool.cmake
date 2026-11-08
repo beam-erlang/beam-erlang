@@ -6,7 +6,7 @@ option(BEAM_BUNDLE_PACKAGE_TOOL "Bundle the independently maintained package app
 if(NOT BEAM_BUNDLE_PACKAGE_TOOL)
     return()
 endif()
-# Build the selected package-tool sources using the distribution bootstrap.
+# Build the selected package-tool sources using the verified modern build compiler.
 set(BEAM_PACKAGE_SOURCE_DIR "" CACHE PATH
     "Local beam-erlang-package source checkout (required; never downloaded)")
 get_filename_component(_package_source "${BEAM_PACKAGE_SOURCE_DIR}" ABSOLUTE
@@ -23,8 +23,8 @@ endif()
 set(_pkg_root "${CMAKE_BINARY_DIR}/lib/beam/apps/beam-pkg")
 beam_package_build(beam_pkg_support
     OUTPUT_DIRECTORY "${_pkg_root}"
-    COMPILER_COMMAND $<TARGET_FILE:beam_bootstrap> --deterministic
-    COMPILER_DEPENDS beam_bootstrap
+    COMPILER_COMMAND $<TARGET_FILE:beam_modern_build_compiler> --deterministic
+    COMPILER_DEPENDS beam_modern_build_compiler
     DESCRIPTOR_TOOL "${CMAKE_SOURCE_DIR}/tools/beam-application.py"
     RUNTIME_BUILD_ID "${BEAM_COMPONENT_BUILD_ID}")
 get_target_property(_modules beam_pkg_support BEAM_PACKAGE_MODULES)

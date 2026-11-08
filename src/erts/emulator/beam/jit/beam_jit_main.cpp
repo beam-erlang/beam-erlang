@@ -25,6 +25,7 @@
 extern "C"
 {
 #include "bif.h"
+#include "beam_builtin_catalog.h"
 #include "beam_common.h"
 #include "code_ix.h"
 #include "export.h"
@@ -109,10 +110,8 @@ static void init_cache_info() {
 /*
  * Enter all BIFs into the export table.
  *
- * Note that they will all call the error_handler until their modules have been
- * loaded, which may prevent the system from booting if BIFs from non-preloaded
- * modules are apply/3'd while loading code. Ordinary BIF calls will work fine
- * however since they won't go through export entries.
+ * Host-bound optional implementations are callable before ordinary module code
+ * is supplied. Mandatory BIFs retain their existing module-loading policy.
  */
 static void install_bifs(void) {
     typedef Eterm (*bif_func_type)(Process *, Eterm *, ErtsCodePtr);
@@ -120,6 +119,7 @@ static void install_bifs(void) {
 
     ASSERT(beam_export_trampoline != NULL);
     ASSERT(beam_save_calls_export != NULL);
+    beam_builtin_init_private_exports();
 
     for (i = 0; i < BIF_SIZE; i++) {
         BifEntry *entry;
@@ -127,8 +127,15 @@ static void install_bifs(void) {
         int j;
 
         entry = &bif_table[i];
+        if (!is_atom(entry->module))
+            continue;
 
         ERTS_ASSERT(entry->arity <= MAX_BIF_ARITY);
+
+        /* Native-only exports still participate in module tracing/loading
+         * accounting. A metadata record does not load ordinary code. */
+        if (*bif_descriptors[i].implementation)
+            erts_put_module(entry->module);
 
         ep = erts_export_put(entry->module, entry->name, entry->arity);
 
@@ -137,6 +144,7 @@ static void install_bifs(void) {
         ep->info.mfa.function = entry->name;
         ep->info.mfa.arity = entry->arity;
         ep->bif_number = i;
+
 
         for (j = 0; j < ERTS_NUM_CODE_IX; j++) {
             erts_activate_export_trampoline(ep, j);
@@ -149,6 +157,10 @@ static void install_bifs(void) {
                               entry->name,
                               entry->arity,
                               (bif_func_type)entry->f);
+        if (*bif_descriptors[i].implementation) {
+            for (j = 0; j < ERTS_NUM_CODE_IX; j++)
+                ep->dispatch.addresses[j] = (ErtsCodePtr)beam_builtin_export_address(i);
+        }
     }
 }
 
@@ -261,6 +273,8 @@ void beamasm_init() {
         int arity;
         BeamInstr operand;
         ErtsCodePtr *target;
+        Eterm module = THE_NON_VALUE;
+        bool returns = false;
     };
 
     std::vector<struct operands> operands = {
@@ -277,6 +291,15 @@ void beamasm_init() {
              0,
              op_i_call_trace_return,
              &beam_call_trace_return}};
+
+    ErtsCodePtr instruction_addresses[BEAM_NATIVE_INSTRUCTION_COUNT] = {};
+#define BEAM_NATIVE_INSTRUCTION(id,f,a,entry,ret) do { \
+    int slot = BEAM_INSTRUCTION_##id; \
+    auto mfa = static_cast<const ErtsCodeMFA *>(beam_builtin_instruction_mfa(slot)); \
+    operands.push_back({mfa->function,a,op_##entry,&instruction_addresses[slot],mfa->module,ret}); \
+} while (0);
+#include "beam_native_instructions.def"
+#undef BEAM_NATIVE_INSTRUCTION
 
     Eterm mod_name;
     ERTS_DECL_AM(erts_beamasm);
@@ -339,7 +362,7 @@ void beamasm_init() {
         bma->emit(op_aligned_label_Lt, Span(args.data(), args.size()));
 
         args = {ArgVal(ArgVal::Type::Word, func_label),
-                ArgVal(ArgVal::Type::Immediate, mod_name),
+                ArgVal(ArgVal::Type::Immediate, op.module == THE_NON_VALUE ? mod_name : op.module),
                 ArgVal(ArgVal::Type::Immediate, op.name),
                 ArgVal(ArgVal::Type::Word, op.arity)};
         bma->emit(op_i_func_info_IaaI, Span(args.data(), args.size()));
@@ -349,7 +372,11 @@ void beamasm_init() {
         bma->emit(op_aligned_label_Lt, Span(args.data(), args.size()));
 
         args = {};
+        if (op.module != THE_NON_VALUE)
+            bma->emit(op_i_test_yield, Span(args.data(), args.size()));
         bma->emit(op.operand, Span(args.data(), args.size()));
+        if (op.returns)
+            bma->emit(op_return, Span(args.data(), args.size()));
 
         op.operand = entry_label;
     }
@@ -379,6 +406,11 @@ void beamasm_init() {
                      &code_hdr_ro,
                      &_ignored_code_hdr_rw);
         bma->register_metadata(code_hdr_ro);
+        for (int i = 0; i < BEAM_NATIVE_INSTRUCTION_COUNT; ++i) {
+            size_t index = operands.size() - BEAM_NATIVE_INSTRUCTION_COUNT + i;
+            beam_builtin_set_instruction_bounds(i,code_hdr_ro->functions[index],
+                                                  code_hdr_ro->functions[index+1]);
+        }
     }
 
     for (auto op : operands) {
@@ -386,6 +418,8 @@ void beamasm_init() {
             *op.target = bma->getCode(op.operand);
         }
     }
+    for (int i = 0; i < BEAM_NATIVE_INSTRUCTION_COUNT; ++i)
+        beam_builtin_set_instruction_address(i,instruction_addresses[i]);
 
     /* These instructions rely on register contents, and can only be reached
      * from a `call_ext_*`-instruction or trapping from the emulator, hence the
@@ -429,6 +463,7 @@ bool BeamAssemblerCommon::hasCpuFeature(uint32_t featureId) {
 
 void init_emulator(void) {
     install_bifs();
+    beam_builtin_install_instruction_exports();
 }
 
 void process_main(ErtsSchedulerData *esdp) {

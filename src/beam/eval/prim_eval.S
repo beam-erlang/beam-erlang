@@ -26,7 +26,8 @@
 
 {exports, [{'receive',2},{module_info,0},{module_info,1}]}.
 
-{attributes, []}.
+%% Calls in this VM message-queue mechanism resolve by implementation ID.
+{attributes, [{beam_native_calls, []}]}.
 
 {labels, 14}.
 

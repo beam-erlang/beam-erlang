@@ -1522,6 +1522,7 @@ typedef struct {
     int flags;
     int error_code;		/* Error code returned from create_process(). */
     void *bare_call;
+    Eterm local_group_leader;   /* THE_NON_VALUE inherits the local parent. */
     Eterm mref;			/* Monitor ref returned (if SPO_MONITOR was given).
                                    (output if local; input if distributed) */
 
@@ -1562,6 +1563,7 @@ typedef struct {
     do {                                                                \
         (SOP)->flags = erts_default_spo_flags;                          \
         (SOP)->bare_call = NULL;                                       \
+        (SOP)->local_group_leader = THE_NON_VALUE;                      \
         (SOP)->opts = NIL;                                              \
         (SOP)->tag = am_spawn_reply;                                    \
         (SOP)->monitor_tag = THE_NON_VALUE;                             \

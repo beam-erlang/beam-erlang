@@ -34,6 +34,18 @@ FORBIDDEN_TYPES=hQ
 # instruction transformations; thus, they never occur in BEAM files.
 #
 
+# Compiler selection constants contain no executable native call.
+bif0 Import=u Dst | is_native_selection(Import) => native_selection(Import, Dst)
+
+# Guard binding requirements are resolved once, before executable publication.
+bif0 Import=u Dst | is_native_guard(Import) => native_guard0(Import, Dst)
+gc_bif1 Fail Live Import=u A0 Dst | is_native_guard(Import) =>
+    native_guard1(Fail, Live, Import, A0, Dst)
+gc_bif2 Fail Live Import=u A0 A1 Dst | is_native_guard(Import) =>
+    native_guard2(Fail, Live, Import, A0, A1, Dst)
+gc_bif3 Fail Live Import=u A0 A1 A2 Dst | is_native_guard(Import) =>
+    native_guard3(Fail, Live, Import, A0, A1, A2, Dst)
+
 func_info a a u | never() => _
 
 %cold
@@ -561,11 +573,11 @@ call_light_bif/1
 # The load_nif/2 BIF is an instruction.
 #
 
-call_ext u==2 u$func:erlang:load_nif/2 =>
+call_ext u==2 u$impl:vm_load_nif_2 =>
     i_load_nif
-call_ext_last u==2 u$func:erlang:load_nif/2 D =>
+call_ext_last u==2 u$impl:vm_load_nif_2 D =>
     i_load_nif | deallocate D | return
-call_ext_only u==2 u$func:erlang:load_nif/2 =>
+call_ext_only u==2 u$impl:vm_load_nif_2 =>
     i_load_nif | return
 
 %cold
@@ -576,11 +588,11 @@ i_load_nif
 # The call_on_load_function/1 BIF is an instruction.
 #
 
-call_ext u==1 u$func:erlang:call_on_load_function/1 =>
+call_ext u==1 u$impl:vm_call_on_load_function_1 =>
     i_call_on_load_function
-call_ext_last u==1 u$func:erlang:call_on_load_function/1 D =>
+call_ext_last u==1 u$impl:vm_call_on_load_function_1 D =>
     i_call_on_load_function | deallocate D | return
-call_ext_only u==1 u$func:erlang:call_on_load_function/1 =>
+call_ext_only u==1 u$impl:vm_call_on_load_function_1 =>
     i_call_on_load_function | return
 
 %cold
@@ -591,38 +603,38 @@ i_call_on_load_function
 # apply/2 is an instruction, not a BIF.
 #
 
-call_ext u==2 u$func:erlang:apply/2 => i_apply_fun
-call_ext_last u==2 u$func:erlang:apply/2 D => i_apply_fun_last D
-call_ext_only u==2 u$func:erlang:apply/2 => i_apply_fun_only
+call_ext u==2 Func=u | is_vm_apply_2(Func) => i_apply_fun
+call_ext_last u==2 Func=u D | is_vm_apply_2(Func) => i_apply_fun_last D
+call_ext_only u==2 Func=u | is_vm_apply_2(Func) => i_apply_fun_only
 
 #
 # The apply/3 BIF is an instruction.
 #
 
-call_ext u==3 u$func:erlang:apply/3 => i_apply
-call_ext_last u==3 u$func:erlang:apply/3 D => i_apply_last D
-call_ext_only u==3 u$func:erlang:apply/3 => i_apply_only
+call_ext u==3 Func=u | is_vm_apply_3(Func) => i_apply
+call_ext_last u==3 Func=u D | is_vm_apply_3(Func) => i_apply_last D
+call_ext_only u==3 Func=u | is_vm_apply_3(Func) => i_apply_only
 
 #
 # The yield/0 BIF is an instruction
 #
 
-call_ext u==0 u$func:erlang:yield/0 => i_yield
-call_ext_last u==0 u$func:erlang:yield/0 D => i_yield | deallocate D | return
-call_ext_only u==0 u$func:erlang:yield/0 => i_yield | return
+call_ext u==0 Func=u | is_vm_yield_0(Func) => i_yield
+call_ext_last u==0 Func=u D | is_vm_yield_0(Func) => i_yield | deallocate D | return
+call_ext_only u==0 Func=u | is_vm_yield_0(Func) => i_yield | return
 
 #
 # The hibernate/0 BIF is an instruction.
 #
-call_ext u==0 u$func:erlang:hibernate/0 => i_hibernate
-call_ext_last u==0 u$func:erlang:hibernate/0 D => i_hibernate | deallocate D | return
-call_ext_only u==0 u$func:erlang:hibernate/0 => i_hibernate | return
+call_ext u==0 Func=u | is_vm_hibernate_0(Func) => i_hibernate
+call_ext_last u==0 Func=u D | is_vm_hibernate_0(Func) => i_hibernate | deallocate D | return
+call_ext_only u==0 Func=u | is_vm_hibernate_0(Func) => i_hibernate | return
 
-call_ext u==0 u$func:os:perf_counter/0 =>
+call_ext u==0 u$impl:vm_os_perf_counter_0 =>
     i_perf_counter
-call_ext_last u==0 u$func:os:perf_counter/0 D =>
+call_ext_last u==0 u$impl:vm_os_perf_counter_0 D =>
     i_perf_counter | deallocate D | return
-call_ext_only u==0 u$func:os:perf_counter/0 =>
+call_ext_only u==0 u$impl:vm_os_perf_counter_0 =>
     i_perf_counter | return
 
 #
@@ -692,50 +704,50 @@ i_perf_counter
 # Calls to non-building and guard BIFs.
 #
 
-bif0 u$bif:erlang:self/0 Dst=d => self Dst
-bif0 u$bif:erlang:node/0 Dst=d => node Dst
+bif0 u$impl:vm_self_0 Dst=d => self Dst
+bif0 u$impl:vm_node_0 Dst=d => node Dst
 
-bif1 Fail=f _Bif=u$bif:erlang:hd/1 Src=xy Dst =>
+bif1 Fail=f _Bif=u$impl:vm_hd_1 Src=xy Dst =>
     is_nonempty_list Fail Src | get_hd Src Dst
-bif1 _Fail=p _Bif=u$bif:erlang:hd/1 Src Dst =>
+bif1 _Fail=p _Bif=u$impl:vm_hd_1 Src Dst =>
     bif_hd Src Dst
 
 bif_hd s d
 
-bif1 Fail=f _Bif=u$bif:erlang:tl/1 Src=xy Dst =>
+bif1 Fail=f _Bif=u$impl:vm_tl_1 Src=xy Dst =>
     is_nonempty_list Fail Src | get_tl Src Dst
 
-bif1 _Fail _Bif=u$bif:erlang:get/1 Src=s Dst=d => get(Src, Dst)
+bif1 _Fail _Bif=u$impl:vm_get_1 Src=s Dst=d => get(Src, Dst)
 
-bif2 Fail u$bif:erlang:element/2 S1=ixy S2 Dst => bif_element Fail S1 S2 Dst
+bif2 Fail u$impl:vm_element_2 S1=ixy S2 Dst => bif_element Fail S1 S2 Dst
 bif_element j s s d
 
-bif1 Fail _Bif=u$bif:erlang:node/1 Src=d Dst=d => bif_node Fail Src Dst
+bif1 Fail _Bif=u$impl:vm_node_1 Src=d Dst=d => bif_node Fail Src Dst
 bif_node j S d
 
-gc_bif1 Fail _Live Bif=u$bif:erlang:bit_size/1 Src Dst=d =>
+gc_bif1 Fail _Live Bif=u$impl:vm_bit_size_1 Src Dst=d =>
     bif_bit_size Bif Fail Src Dst
 bif_bit_size b j s d
 
-gc_bif1 Fail _Live Bif=u$bif:erlang:byte_size/1 Src Dst=d =>
+gc_bif1 Fail _Live Bif=u$impl:vm_byte_size_1 Src Dst=d =>
     bif_byte_size Bif Fail Src Dst
 bif_byte_size b j s d
 
-bif1 Fail Bif=u$bif:erlang:tuple_size/1 Src=d Dst=d =>
+bif1 Fail Bif=u$impl:vm_tuple_size_1 Src=d Dst=d =>
     bif_tuple_size Bif Fail Src Dst
 bif_tuple_size b j S d
 
-bif2 Fail _Bif=u$bif:erlang:map_get/2 Src1 Src2=xy Dst=d =>
+bif2 Fail _Bif=u$impl:vm_map_get_2 Src1 Src2=xy Dst=d =>
     bif_map_get Fail Src1 Src2 Dst
 bif_map_get j s s d
 
-bif2 Fail Bif=u$bif:erlang:is_map_key/2 Key Map=xy Dst=d =>
+bif2 Fail Bif=u$impl:vm_is_map_key_2 Key Map=xy Dst=d =>
     bif_is_map_key Bif Fail Key Map Dst
 bif_is_map_key b j s s d
 
-bif2 _Fail _Bif=u$bif:erlang:max/2 Src1 Src2 Dst =>
+bif2 _Fail _Bif=u$impl:vm_max_2 Src1 Src2 Dst =>
     bif_max Src1 Src2 Dst
-bif2 _Fail _Bif=u$bif:erlang:min/2 Src1 Src2 Dst =>
+bif2 _Fail _Bif=u$impl:vm_min_2 Src1 Src2 Dst =>
     bif_min Src1 Src2 Dst
 bif_max s s d
 bif_min s s d
@@ -823,6 +835,9 @@ is_function f S
 is_function Fail=f c => jump Fail
 
 # The start and end of a function.
+int_native_instruction/3
+int_native_instruction M F A => native_instruction_body(M, F, A)
+
 int_func_start/5
 int_func_end/2
 
@@ -837,6 +852,18 @@ int_func_start Func_Label Func_Line M F A |
   label Entry_Label =>
     int_func_start Func_Label Func_Line M F A |
     func_prologue Entry_Label n
+
+int_func_start Func_Label Func_Line M F A |
+  func_prologue Entry_Label Entry_Line |
+  is_mfa_instruction(M, F, A) =>
+    i_func_label Func_Label |
+    func_line Func_Line |
+    i_func_info Func_Label M F A |
+      aligned_label Entry_Label u=4 |
+      i_breakpoint_trampoline |
+      line Entry_Line |
+      i_test_yield |
+      int_native_instruction M F A
 
 int_func_start Func_Label Func_Line M F A |
   func_prologue Entry_Label Entry_Line |
@@ -1129,49 +1156,49 @@ i_get_map_element f S S S
 gen_plus/5
 gen_minus/5
 
-gc_bif1 Fail Live u$bif:erlang:splus/1 Src Dst =>
+gc_bif1 Fail Live u$impl:vm_splus_1 Src Dst =>
     gen_plus Fail Live Src i Dst
-gc_bif2 Fail Live u$bif:erlang:splus/2 S1 S2 Dst =>
+gc_bif2 Fail Live u$impl:vm_splus_2 S1 S2 Dst =>
     gen_plus Fail Live S1 S2 Dst
 
-gc_bif1 Fail _Live u$bif:erlang:sminus/1 Src Dst =>
+gc_bif1 Fail _Live u$impl:vm_sminus_1 Src Dst =>
     i_unary_minus Src Fail Dst
-gc_bif2 Fail Live u$bif:erlang:sminus/2 S1 S2 Dst =>
+gc_bif2 Fail Live u$impl:vm_sminus_2 S1 S2 Dst =>
     gen_minus Fail Live S1 S2 Dst
 
 #
 # Arithmetic instructions.
 #
 
-gc_bif2 Fail1 _Live1 u$bif:erlang:stimes/2 S1 S2 Dst1 |
-  gc_bif2 Fail2 _Live2 u$bif:erlang:splus/2 S3 S4 Dst2 |
+gc_bif2 Fail1 _Live1 u$impl:vm_stimes_2 S1 S2 Dst1 |
+  gc_bif2 Fail2 _Live2 u$impl:vm_splus_2 S3 S4 Dst2 |
   equal(Dst1, S3) |
   equal(Dst1, Dst2) |
   equal(Fail1, Fail2) |
   distinct(S3, S4) =>
     i_mul_add Fail1 S1 S2 S3 S4 Dst1
 
-gc_bif2 Fail1 _Live1 u$bif:erlang:stimes/2 S1 S2 Dst1 |
-  gc_bif2 Fail2 _Live2 u$bif:erlang:splus/2 S3 S4 Dst2 |
+gc_bif2 Fail1 _Live1 u$impl:vm_stimes_2 S1 S2 Dst1 |
+  gc_bif2 Fail2 _Live2 u$impl:vm_splus_2 S3 S4 Dst2 |
   equal(Dst1, S4) |
   equal(Dst1, Dst2) |
   equal(Fail1, Fail2) |
   distinct(S3, S4) =>
     i_mul_add Fail1 S1 S2 S4 S3 Dst1
 
-gc_bif2 Fail _Live u$bif:erlang:stimes/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_stimes_2 S1 S2 Dst =>
     i_mul_add Fail S1 S2 Dst i Dst
 
 gen_plus Fail _Live S1 S2 Dst => i_plus S1 S2 Fail Dst
 
 gen_minus Fail _Live S1 S2 Dst => i_minus S1 S2 Fail Dst
 
-gc_bif2 Fail _Live u$bif:erlang:div/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_div_2 S1 S2 Dst =>
     i_m_div Fail S1 S2 Dst
 
 # Fused 'rem'/'div' pair.
-gc_bif2 Fail _Live u$bif:erlang:rem/2 LHS1 RHS1 Remainder |
-  gc_bif2 _A _B u$bif:erlang:intdiv/2 LHS2 RHS2 Quotient |
+gc_bif2 Fail _Live u$impl:vm_rem_2 LHS1 RHS1 Remainder |
+  gc_bif2 _A _B u$impl:vm_intdiv_2 LHS2 RHS2 Quotient |
   equal(LHS1, LHS2) |
   equal(RHS1, RHS2) |
   distinct(LHS1, Remainder) |
@@ -1179,9 +1206,9 @@ gc_bif2 Fail _Live u$bif:erlang:rem/2 LHS1 RHS1 Remainder |
     i_rem_div LHS1 RHS1 Fail Remainder Quotient
 
 # As above but with a `line` in between
-gc_bif2 Fail _Live u$bif:erlang:rem/2 LHS1 RHS1 Remainder |
+gc_bif2 Fail _Live u$impl:vm_rem_2 LHS1 RHS1 Remainder |
   line _Loc |
-  gc_bif2 _A _B u$bif:erlang:intdiv/2 LHS2 RHS2 Quotient |
+  gc_bif2 _A _B u$impl:vm_intdiv_2 LHS2 RHS2 Quotient |
   equal(LHS1, LHS2) |
   equal(RHS1, RHS2) |
   distinct(LHS1, Remainder) |
@@ -1189,8 +1216,8 @@ gc_bif2 Fail _Live u$bif:erlang:rem/2 LHS1 RHS1 Remainder |
     i_rem_div LHS1 RHS1 Fail Remainder Quotient
 
 # Fused 'div'/'rem' pair
-gc_bif2 Fail _Live u$bif:erlang:intdiv/2 LHS1 RHS1 Quotient |
-  gc_bif2 _A _B u$bif:erlang:rem/2 LHS2 RHS2 Remainder |
+gc_bif2 Fail _Live u$impl:vm_intdiv_2 LHS1 RHS1 Quotient |
+  gc_bif2 _A _B u$impl:vm_rem_2 LHS2 RHS2 Remainder |
   equal(LHS1, LHS2) |
   equal(RHS1, RHS2) |
   distinct(LHS1, Quotient) |
@@ -1198,35 +1225,35 @@ gc_bif2 Fail _Live u$bif:erlang:intdiv/2 LHS1 RHS1 Quotient |
     i_div_rem LHS1 RHS1 Fail Quotient Remainder
 
 # As above but with a `line` in between
-gc_bif2 Fail _Live u$bif:erlang:intdiv/2 LHS1 RHS1 Quotient |
+gc_bif2 Fail _Live u$impl:vm_intdiv_2 LHS1 RHS1 Quotient |
   line _Loc |
-  gc_bif2 _A _B u$bif:erlang:rem/2 LHS2 RHS2 Remainder |
+  gc_bif2 _A _B u$impl:vm_rem_2 LHS2 RHS2 Remainder |
   equal(LHS1, LHS2) |
   equal(RHS1, RHS2) |
   distinct(LHS1, Quotient) |
   distinct(RHS1, Quotient) =>
     i_div_rem LHS1 RHS1 Fail Quotient Remainder
 
-gc_bif2 Fail _Live u$bif:erlang:intdiv/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_intdiv_2 S1 S2 Dst =>
     i_int_div Fail S1 S2 Dst
-gc_bif2 Fail _Live u$bif:erlang:rem/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_rem_2 S1 S2 Dst =>
     i_rem S1 S2 Fail Dst
 
-gc_bif2 Fail _Live u$bif:erlang:bsl/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_bsl_2 S1 S2 Dst =>
     i_bsl S1 S2 Fail Dst
-gc_bif2 Fail _Live u$bif:erlang:bsr/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_bsr_2 S1 S2 Dst =>
     i_bsr S1 S2 Fail Dst
 
-gc_bif2 Fail _Live u$bif:erlang:band/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_band_2 S1 S2 Dst =>
     i_band S1 S2 Fail Dst
 
-gc_bif2 Fail _Live u$bif:erlang:bor/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_bor_2 S1 S2 Dst =>
     i_bor Fail S1 S2 Dst
 
-gc_bif2 Fail _Live u$bif:erlang:bxor/2 S1 S2 Dst =>
+gc_bif2 Fail _Live u$impl:vm_bxor_2 S1 S2 Dst =>
     i_bxor Fail S1 S2 Dst
 
-gc_bif1 Fail _Live u$bif:erlang:bnot/1 Src Dst =>
+gc_bif1 Fail _Live u$impl:vm_bnot_1 Src Dst =>
     i_bnot Fail Src Dst
 
 i_plus s s j d
@@ -1256,7 +1283,7 @@ i_bnot j s d
 # Handle the length/1 guard BIF specially to make it trappable.
 #
 
-gc_bif1 Fail=j Live u$bif:erlang:length/1 Src Dst =>
+gc_bif1 Fail=j Live u$impl:vm_length_1 Src Dst =>
     i_length_setup Fail Live Src | i_length Fail Live Dst
 
 i_length_setup j t s
@@ -1266,7 +1293,7 @@ i_length j t d
 # Specialized guard BIFs.
 #
 
-gc_bif1 Fail _Live _Bif=u$bif:erlang:map_size/1 Src Dst=d =>
+gc_bif1 Fail _Live _Bif=u$impl:vm_map_size_1 Src Dst=d =>
     bif_map_size Fail Src Dst
 bif_map_size j s d
 

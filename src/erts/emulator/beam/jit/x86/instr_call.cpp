@@ -21,6 +21,7 @@
  */
 
 #include "beam_asm.hpp"
+#include "beam_builtin_catalog.h"
 
 extern "C"
 {
@@ -142,8 +143,6 @@ void BeamModuleAssembler::emit_i_call_ext_last(const ArgExport &Exp,
     a.jmp(destination);
 }
 
-static ErtsCodeMFA apply3_mfa = {am_erlang, am_apply, 3};
-
 x86::Mem BeamModuleAssembler::emit_variable_apply(bool includeI) {
     Label dispatch = a.new_label(), entry = a.new_label();
 
@@ -170,7 +169,8 @@ x86::Mem BeamModuleAssembler::emit_variable_apply(bool includeI) {
 
     a.test(RET, RET);
     a.short_().jne(dispatch);
-    emit_raise_exception(entry, &apply3_mfa);
+    emit_raise_exception(entry, static_cast<const ErtsCodeMFA *>(
+        beam_builtin_instruction_mfa(BEAM_INSTRUCTION_vm_apply_3)));
     a.bind(dispatch);
 
     return emit_setup_dispatchable_call(RET);
@@ -222,7 +222,7 @@ x86::Mem BeamModuleAssembler::emit_fixed_apply(const ArgWord &Arity,
     a.test(RET, RET);
     a.short_().jne(dispatch);
 
-    emit_raise_exception(entry, &apply3_mfa);
+    emit_raise_exception_from_current(entry);
     a.bind(dispatch);
 
     return emit_setup_dispatchable_call(RET);

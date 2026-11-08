@@ -63,6 +63,7 @@
 #include "erl_record.h"
 #include "beam_internal.h"
 #include "beam_embedded_dependencies.h"
+#include "beam_process_management.h"
 
 #ifdef ERTS_ENABLE_LOCK_COUNT
 #include "erl_lock_count.h"
@@ -1196,6 +1197,137 @@ pi_setup_grow(int **arr, int *def_arr, Eterm **extra_arr,
 static void
 pi_setup_init_extra(Eterm **extra_arr, Eterm *def_extra_arr, Uint sz);
 
+
+int
+erts_bare_process_inspection_flags(unsigned fields)
+{
+    int flags = ERTS_PI_FLAG_ALWAYS_WRAP | ERTS_PI_FLAG_REQUEST_FOR_OTHER;
+    if (fields & BEAM_PROCESS_FIELD_MEMORY)
+        flags |= pi_ix2flags(ERTS_PI_IX_MEMORY);
+    return flags;
+}
+
+/* These selected fields contain only atoms, one MFA tuple and three Uint
+ * counters. Their largest possible result fits this static term factory on
+ * both 32- and 64-bit targets. No requester heap or message allocation is used. */
+beam_status
+erts_bare_process_observe(Process *process, unsigned fields,
+                          beam_process_observation *out, Uint *reds)
+{
+    Eterm heap[6 * 5 + 4 + 3 * BIG_UINT_HEAP_SIZE];
+    ErlOffHeap off_heap;
+    ErtsHeapFactory factory;
+    beam_process_observation observation = {0};
+    int items[6], count = 0, i;
+    Uint reserve_size = 0;
+    Eterm result, list;
+    beam_status status = BEAM_SYSTEM_ERROR;
+
+    ASSERT(fields == (fields & BEAM_PROCESS_FIELDS_ALL));
+    ERTS_LC_ASSERT(erts_proc_lc_my_proc_locks(process) == ERTS_PROC_LOCK_MAIN);
+
+#define ADD_PROCESS_FIELD(FIELD, INDEX)                                  \
+    do {                                                               \
+        if (fields & (FIELD)) {                                         \
+            items[count++] = (INDEX);                                  \
+            reserve_size += 5 + pi_ix2rsz(INDEX);                       \
+        }                                                              \
+    } while (0)
+    ADD_PROCESS_FIELD(BEAM_PROCESS_FIELD_STATE, ERTS_PI_IX_STATUS);
+    ADD_PROCESS_FIELD(BEAM_PROCESS_FIELD_REDUCTIONS, ERTS_PI_IX_REDUCTIONS);
+    ADD_PROCESS_FIELD(BEAM_PROCESS_FIELD_MEMORY, ERTS_PI_IX_MEMORY);
+    ADD_PROCESS_FIELD(BEAM_PROCESS_FIELD_MESSAGE_QUEUE, ERTS_PI_IX_MESSAGE_QUEUE_LEN);
+    ADD_PROCESS_FIELD(BEAM_PROCESS_FIELD_INITIAL_CALL, ERTS_PI_IX_INITIAL_CALL);
+    ADD_PROCESS_FIELD(BEAM_PROCESS_FIELD_REGISTERED_NAME, ERTS_PI_IX_REGISTERED_NAME);
+#undef ADD_PROCESS_FIELD
+
+    ERTS_INIT_OFF_HEAP(&off_heap);
+    erts_factory_static_init(&factory, heap, sizeof(heap)/sizeof(heap[0]), &off_heap);
+    result = erts_process_info(process, &factory, process, ERTS_PROC_LOCK_MAIN,
+                               items, NULL, count,
+                               erts_bare_process_inspection_flags(fields),
+                               reserve_size, reds);
+    observation.pid = process->common.id;
+    observation.is_system_process =
+        !!(process->static_flags & ERTS_STC_FLG_SYSTEM_PROC);
+    observation.fields = fields;
+
+    for (i = 0, list = result; i < count; ++i) {
+        Eterm *tuple, value;
+        Uint number;
+        if (!is_list(list) || !is_tuple_arity(CAR(list_val(list)), 2))
+            goto done;
+        tuple = tuple_val(CAR(list_val(list)));
+        if (tuple[1] != pi_ix2arg(NULL, items[i], THE_NON_VALUE))
+            goto done;
+        value = tuple[2];
+        switch (items[i]) {
+        case ERTS_PI_IX_STATUS:
+            if (value == am_runnable)
+                observation.state = BEAM_PROCESS_RUNNABLE;
+            else if (value == am_running)
+                observation.state = BEAM_PROCESS_RUNNING;
+            else if (value == am_waiting)
+                observation.state = BEAM_PROCESS_WAITING;
+            else if (value == am_garbage_collecting)
+                observation.state = BEAM_PROCESS_GARBAGE_COLLECTING;
+            else if (value == am_suspended)
+                observation.state = BEAM_PROCESS_SUSPENDED;
+            else if (value == am_exiting)
+                observation.state = BEAM_PROCESS_EXITING;
+            else
+                goto done;
+            break;
+        case ERTS_PI_IX_REDUCTIONS:
+            if (!term_to_Uint(value, &number))
+                goto done;
+            observation.reductions = (uint64_t)number;
+            break;
+        case ERTS_PI_IX_MEMORY:
+            if (!term_to_Uint(value, &number))
+                goto done;
+            observation.memory_bytes = (size_t)number;
+            break;
+        case ERTS_PI_IX_MESSAGE_QUEUE_LEN:
+            if (!term_to_Uint(value, &number))
+                goto done;
+            observation.message_queue_len = (size_t)number;
+            break;
+        case ERTS_PI_IX_INITIAL_CALL: {
+            Eterm *mfa;
+            if (!is_tuple_arity(value, 3))
+                goto done;
+            mfa = tuple_val(value);
+            if (!is_atom(mfa[1]) || !is_atom(mfa[2]) ||
+                !is_small(mfa[3]) || signed_val(mfa[3]) < 0)
+                goto done;
+            observation.module = mfa[1];
+            observation.function = mfa[2];
+            observation.arity = (unsigned)unsigned_val(mfa[3]);
+            break;
+        }
+        case ERTS_PI_IX_REGISTERED_NAME:
+            if (is_atom(value)) {
+                observation.has_registered_name = 1;
+                observation.registered_name = value;
+            }
+            else if (!is_nil(value))
+                goto done;
+            break;
+        default:
+            goto done;
+        }
+        list = CDR(list_val(list));
+    }
+    if (!is_nil(list))
+        goto done;
+    *out = observation;
+    status = BEAM_OK;
+done:
+    ASSERT(!off_heap.first);
+    erts_factory_undo(&factory);
+    return status;
+}
 
 static ERTS_INLINE int
 pi_maybe_flush_signals(Process *c_p, int pi_flags)
@@ -2766,7 +2898,8 @@ static Eterm build_snif_term(Eterm **hpp, Uint *szp, int ix, Eterm res) {
 static Eterm build_snifs_term(Eterm **hpp, Uint *szp, Eterm res) {
     int i;
     for (i = 0; i < BIF_SIZE; i++) {
-	if (is_snif_term(bif_table[i].module)) {
+	if (is_atom(bif_table[i].module) &&
+            (*bif_descriptors[i].implementation || is_snif_term(bif_table[i].module))) {
 	    res = build_snif_term(hpp, szp, i, res);
 	}
     }
@@ -4524,36 +4657,6 @@ BIF_RETTYPE erts_debug_get_internal_state_1(BIF_ALIST_1)
             return am_false;
 #endif
         }
-        else if (ERTS_IS_ATOM_STR("re_yield_coverage", BIF_ARG_1)) {
-#ifdef DEBUG
-            extern const int erts_dbg_pcre_cost_chk_lines[];
-            extern uint64_t erts_dbg_pcre_cost_chk_visits[];
-            extern uint64_t erts_dbg_pcre_cost_chk_yields[];
-            extern const int erts_dbg_pcre_cost_chk_cnt;
-            const Uint hsz = ((2 + 1+3 + 2*ERTS_MAX_UINT64_HEAP_SIZE)
-                              * erts_dbg_pcre_cost_chk_cnt);
-            Eterm *hp = HAlloc(BIF_P, hsz);
-            Eterm *hp_end = hp + hsz;
-            Eterm list = NIL;
-            for (int i=erts_dbg_pcre_cost_chk_cnt-1; i>=0; i--) {
-                Eterm line = make_small(erts_dbg_pcre_cost_chk_lines[i]);
-                Eterm visits = erts_bld_uint64(&hp, NULL, erts_dbg_pcre_cost_chk_visits[i]);
-                Eterm yields = erts_bld_uint64(&hp, NULL, erts_dbg_pcre_cost_chk_yields[i]);
-                Eterm tuple = TUPLE3(hp, line, visits, yields);
-                hp += 1+3;
-                list = CONS(hp, tuple, list);
-                hp += 2;
-
-                erts_dbg_pcre_cost_chk_visits[i] = 0;
-                erts_dbg_pcre_cost_chk_yields[i] = 0;
-            }
-            ERTS_ASSERT(hp <= hp_end);
-            HRelease(BIF_P, hp_end, hp);
-            return list;
-#else
-            return am_undefined;
-#endif
-        }
         else if (ERTS_IS_ATOM_STR("debugger_support", BIF_ARG_1)) {
             return erts_debugger_flags & ERTS_DEBUGGER_ENABLED ? am_true : am_false;
         }
@@ -5170,17 +5273,6 @@ BIF_RETTYPE erts_debug_set_internal_state_2(BIF_ALIST_2)
 		BIF_RET(make_small(max_loops));
 	    } else if (term_to_Uint(BIF_ARG_2, &max_loops) != 0) {
 		max_loops = erts_binary_set_loop_limit(max_loops);
-		BIF_RET(make_small(max_loops));
-	    }
-	}
-	else if (ERTS_IS_ATOM_STR("re_loop_limit", BIF_ARG_1)) {
-	    /* Used by re_SUITE (stdlib) */
-	    Uint max_loops;
-	    if (ERTS_IS_ATOM_STR("default", BIF_ARG_2)) {
-		max_loops = erts_re_set_loop_limit(-1);
-		BIF_RET(make_small(max_loops));
-	    } else if (term_to_Uint(BIF_ARG_2, &max_loops) != 0) {
-		max_loops = erts_re_set_loop_limit(max_loops);
 		BIF_RET(make_small(max_loops));
 	    }
 	}

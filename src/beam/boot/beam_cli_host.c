@@ -824,6 +824,7 @@ int beam_boot_main(const char *command, const char *value, int plain_count, char
                        BEAM_CLI_PROGRAM | BEAM_CLI_SOCKET | BEAM_CLI_ZLIB;
     options.runtime_root = root;
     options.profile = compiled.module ? BEAM_CLI_RUN : BEAM_CLI_INTERACTIVE;
+    options.tracing = 1;
     options.entry_module = compiled.module ? "beam_source_run" : "beam_interactive";
     options.entry_function = "main";
     options.arguments = (beam_bytes){arguments.data, arguments.size};
@@ -1168,7 +1169,7 @@ int beam_application_main(const char *descriptor, int argc, char **argv)
                     !buffer_binary(&args,app.root) || !buffer_binary(&args,cwd) || !buffer_binary(&args,search ? search : "") ||
                     !buffer_binary(&args,CLI_HOST_PLATFORM) || !buffer_u8(&args,ETF_BINARY) || !buffer_u32(&args,(unsigned)app.descriptor.size) ||
                     !buffer_bytes(&args,app.descriptor.data,app.descriptor.size)) goto failed;
-                options.profile=BEAM_CLI_NONE; options.entry_module=app.module; options.entry_function=app.function;
+                options.profile=BEAM_CLI_COMMAND; options.entry_module=app.module; options.entry_function=app.function;
             } else {
                 if (!buffer_u8(&args,ETF_SMALL_TUPLE) || !buffer_u8(&args,3) || !buffer_binary(&args,app.module) || !buffer_binary(&args,app.function)) goto failed;
                 options.profile=BEAM_CLI_APPLICATION; options.entry_module="beam_application_run"; options.entry_function="main";

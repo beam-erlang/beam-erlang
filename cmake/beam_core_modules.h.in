@@ -3,4 +3,6 @@
 #define BEAM_CORE_MODULES_H
 static const char *const beam_core_module_names[] = {
 @BEAM_CORE_MODULE_INITIALIZERS@};
+static const char *const beam_private_core_module_names[] = {
+@BEAM_PRIVATE_CORE_MODULE_INITIALIZERS@};
 #endif

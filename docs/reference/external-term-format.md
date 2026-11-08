@@ -27,8 +27,8 @@ limitations under the License.
 
 The External Term Format (ETF) represents Erlang values as bytes. BEAM/Erlang
 uses it at the C embedding boundary for arguments, results and host-service
-messages. Erlang code can encode values with `erlang:term_to_binary/1,2` and
-decode them with `erlang:binary_to_term/1,2`. An application still defines the
+messages. Erlang code can encode values with `beam:term_to_binary/1,2` and
+decode them with `beam:binary_to_term/1,2`. An application still defines the
 meaning and accepted shape of its terms.
 
 This reference separates standalone term encoding from
@@ -105,8 +105,8 @@ Atoms sent over node distribution are always encoded in UTF-8 using either
 [`SMALL_ATOM_UTF8_EXT`](#small_atom_utf8_ext) or
 [`ATOM_CACHE_REF`](#atom_cache_ref).
 
-Atoms encoded with `erlang:term_to_binary/1,2` or
-`erlang:term_to_iovec/1,2` are by default
+Atoms encoded with `beam:term_to_binary/1,2` or
+`beam:term_to_iovec/1,2` are by default
 also always encoded in UTF-8 using either
 [`ATOM_UTF8_EXT`](#atom_utf8_ext) or
 [`SMALL_ATOM_UTF8_EXT`](#small_atom_utf8_ext).
@@ -295,7 +295,7 @@ proper list, but can be any type if the list is improper (for example, `[a|b]`).
 | `109` | `Len` | `Data` |
 
 Binaries are generated with bit syntax expression or with
-`erlang:list_to_binary/1`, `erlang:term_to_binary/1`, or as input from binary
+`beam:list_to_binary/1`, `beam:term_to_binary/1`, or as input from binary
 ports. The `Len` length field is an unsigned 4 byte integer (big-endian).
 
 ## SMALL_BIG_EXT
@@ -354,7 +354,7 @@ _except_:
 | ---- | ----- | ------ | ---------- | -------- |
 | `90` | `Len` | `Node` | `Creation` | `ID ...` |
 
-Encodes a reference term generated with `erlang:make_ref/0`.
+Encodes a reference term generated with `beam:make_ref/0`.
 
 - **`Node`** - The name of the originating node,
   [encoded as an atom](#utf8_atoms).

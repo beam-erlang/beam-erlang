@@ -1,6 +1,9 @@
 %% SPDX-License-Identifier: Apache-2.0
 %% Only declared compiler modules and explicit client paths can supply code.
 -module(code).
+%% Explicit native selections coexist with the compiler support functions.
+-export([coverage_support/0, get_coverage_mode/0, get_coverage_mode/1, get_coverage/2, reset_coverage/1, set_coverage_mode/1, get_debug_info/1]).
+
 -export([root_dir/0,lib_dir/0,lib_dir/1,lib_dir/2,priv_dir/1,
          which/1,is_loaded/1,all_loaded/0,get_path/0,ensure_loaded/1,
          ensure_modules_loaded/1,load_binary/3,load_file/1,get_object_code/1,
@@ -88,3 +91,12 @@ publish(Module,Bytes) ->
                     end
             end
     end.
+
+%% Native implementation declarations.
+coverage_support() -> erlang:nif_error(undefined).
+get_coverage_mode() -> erlang:nif_error(undefined).
+get_coverage_mode(_) -> erlang:nif_error(undefined).
+get_coverage(_,_) -> erlang:nif_error(undefined).
+reset_coverage(_) -> erlang:nif_error(undefined).
+set_coverage_mode(_) -> erlang:nif_error(undefined).
+get_debug_info(_) -> erlang:nif_error(undefined).

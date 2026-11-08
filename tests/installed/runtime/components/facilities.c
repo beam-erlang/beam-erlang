@@ -9,6 +9,7 @@
 #include <beam/native.h>
 enum { TEST_OUTPUT=1, TEST_CODE=2, TEST_ZLIB=4, TEST_PROGRAM=32 };
 #include "bytecode_input.h"
+#include "builtin_bindings.h"
 #include "host_observe.h"
 #include <unistd.h>
 #include <dirent.h>
@@ -105,7 +106,7 @@ int main(int argc, char **argv)
     beam_module_spec module = {"facility_worker", {code.data, code.size}, "copied:facility-worker"};
     bytecode_input base = {0};
     CHECK(bytecode_input_read(&base, argv[1], INPUT_BASE | INPUT_SERVICES, &error) == BEAM_OK);
-    beam_module_spec modules[14];
+    beam_module_spec modules[32];
     memcpy(modules, base.modules, base.count * sizeof(*base.modules)); modules[base.count] = module;
     char zlib_path[4096], helper[4096];
     CHECK(snprintf(zlib_path, sizeof(zlib_path), "%s/" BEAM_TEST_ZLIB_RELATIVE, argv[1]) < (int)sizeof(zlib_path));
@@ -120,7 +121,14 @@ int main(int argc, char **argv)
         CHECK(beam_library_open(zlib_path,&library,&error)==BEAM_OK);
 #endif
     }
+    beam_builtin_binding selected[BEAM_TEST_RETENTION_BINDING_COUNT+BEAM_TEST_RETURNING_BINDING_COUNT];
+    size_t selected_count=0;
+    if (!beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+            beam_test_retention_bindings,BEAM_TEST_RETENTION_BINDING_COUNT) ||
+        !beam_test_append_bindings(selected,sizeof selected/sizeof *selected,&selected_count,
+            beam_test_returning_bindings,BEAM_TEST_RETURNING_BINDING_COUNT)) abort();
     beam_composition_options preparation={.struct_size=sizeof(preparation),.modules=modules,.module_count=base.count+1,
+        .builtin_bindings=selected,.builtin_binding_count=selected_count,
         .native_admission=services==TEST_PROGRAM?BEAM_NATIVE_MANAGED_PORTS:0,
         .program_helper=services==TEST_PROGRAM?helper:NULL};
     beam_startup_action startup[2];size_t startup_count=0;

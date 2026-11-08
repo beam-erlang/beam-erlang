@@ -1,15 +1,39 @@
 # Refresh candidates are reviewable and never replace tracked seeds automatically.
-foreach(_required IN ITEMS MODULES SOURCES)
+foreach(_required IN ITEMS MODULES SOURCES DIRECT_SOURCES HEADERS PYTHON ATTEST SDK ATTESTATION)
     if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
         message(FATAL_ERROR "${_required} is required from the base producer")
     endif()
 endforeach()
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
-execute_process(COMMAND "${BOOTSTRAP}" --deterministic -o "${OUTPUT_DIR}" -- ${SOURCES}
+get_filename_component(_attestation_directory "${ATTESTATION}" DIRECTORY)
+file(MAKE_DIRECTORY "${_attestation_directory}")
+set(_snapshot "${ATTESTATION}.inputs.json")
+set(_attest_arguments --root "${SOURCE_DIR}" --compiler "${BOOTSTRAP}" --sdk "${SDK}"
+    --beam-directory "${OUTPUT_DIR}" --resources ${HEADERS} --direct-sources ${DIRECT_SOURCES})
+execute_process(COMMAND "${PYTHON}" "${ATTEST}" ${_attest_arguments}
+    --output "${_snapshot}" --capture-inputs RESULT_VARIABLE _status)
+if(NOT _status EQUAL 0)
+    message(FATAL_ERROR "Failed to capture ordinary library inputs: ${_status}")
+endif()
+set(_includes)
+foreach(_include IN LISTS INCLUDE_DIRECTORIES)
+    list(APPEND _includes -I "${_include}")
+endforeach()
+execute_process(COMMAND "${BOOTSTRAP}" --deterministic --modern-target ${_includes}
+    -o "${OUTPUT_DIR}" -- ${SOURCES}
     RESULT_VARIABLE _status)
 if(NOT _status EQUAL 0)
     message(FATAL_ERROR "Failed to compile embedded BEAM base candidates: ${_status}")
 endif()
+foreach(_module IN LISTS PROJECTED_MODULES)
+    file(COPY_FILE "${PROJECTED_DIR}/${_module}.beam" "${OUTPUT_DIR}/${_module}.beam" ONLY_IF_DIFFERENT)
+endforeach()
+execute_process(COMMAND "${PYTHON}" "${ATTEST}" ${_attest_arguments}
+    --output "${ATTESTATION}" --input-snapshot "${_snapshot}" RESULT_VARIABLE _status)
+if(NOT _status EQUAL 0)
+    message(FATAL_ERROR "Failed to attest ordinary library bytecode: ${_status}")
+endif()
+file(REMOVE "${_snapshot}")
 if(VERIFY)
     foreach(_module IN LISTS MODULES)
         execute_process(COMMAND "${CMAKE_COMMAND}" -E compare_files

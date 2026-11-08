@@ -38,6 +38,8 @@
 #include "beam_internal.h"
 
 #include "beam_common.h"
+#include "beam_builtin_catalog.h"
+#include "erl_bif_table.h"
 #include "jit/beam_asm.h"
 
 
@@ -335,6 +337,9 @@ int erts_export_is_bif_traced(const Export *ep)
     }
     else {
         ErtsCodePtr code = ep->dispatch.addresses[erts_active_code_ix()];
+        if (*bif_descriptors[ep->bif_number].implementation &&
+            code == beam_builtin_export_address(ep->bif_number))
+            return 0;
         const ErtsCodeInfo *ci = erts_code_to_codeinfo(code);
         ASSERT(ci->mfa.module == ep->info.mfa.module);
         ASSERT(ci->mfa.function == ep->info.mfa.function);

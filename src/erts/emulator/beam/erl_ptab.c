@@ -34,6 +34,8 @@
 #define ERTS_PTAB_WANT_DEBUG_FUNCS__
 #include "erl_ptab.h"
 #include "erl_binary.h"
+#include "beam_process_management.h"
+#include "beam_internal.h"
 
 typedef struct ErtsPTabListBifData_ ErtsPTabListBifData;
 
@@ -734,14 +736,57 @@ erts_ptab_delete_element(ErtsPTab *ptab,
 						ptab->r.o.element_size);
 }
 
-/*
- * erts_ptab_list() implements BIFs listing the content of the table,
- * e.g. erlang:processes/0.
- */
+beam_status
+erts_bare_process_list_capture(BeamPid *pids, size_t capacity, size_t *count)
+{
+    size_t required, copied = 0;
+    int ix;
+    if (!count || (capacity && !pids))
+        return BEAM_INVALID_ARGUMENT;
+    if (erts_bare_stop_requested())
+        return BEAM_STOPPED;
+
+    /* Table insertion and deletion both acquire the shared side of this lock.
+     * No allocation, process lock, or yielding operation belongs inside it. */
+    erts_ptab_rwlock(&erts_proc);
+    if (erts_bare_stop_requested()) {
+        erts_ptab_rwunlock(&erts_proc);
+        return BEAM_STOPPED;
+    }
+    /* The count can include a legacy inserter between its shared/exclusive
+     * lock transition. Count published entries while exclusively locked. */
+    required = 0;
+    for (ix = 0; ix < erts_proc.r.o.max; ++ix) {
+        ErtsPTabElementCommon *element =
+            (ErtsPTabElementCommon *)erts_ptab_pix2intptr_nob(&erts_proc, ix);
+        if (element && element != erts_proc.r.o.invalid_element)
+            ++required;
+    }
+    if (required <= capacity) {
+        for (ix = 0; ix < erts_proc.r.o.max; ++ix) {
+            ErtsPTabElementCommon *element =
+                (ErtsPTabElementCommon *)erts_ptab_pix2intptr_nob(&erts_proc, ix);
+            if (!element || element == erts_proc.r.o.invalid_element)
+                continue;
+            ASSERT(copied < required);
+            ASSERT(is_internal_pid(element->id));
+            pids[copied++].pid = element->id;
+        }
+        ASSERT(copied == required);
+    }
+    erts_ptab_rwunlock(&erts_proc);
+    *count = required;
+    return BEAM_OK;
+}
+
 static int cleanup_ptab_list_bif_data(Binary *bp);
 static int ptab_list_bif_engine(Process *c_p, Eterm *res_accp, Binary *mbp);
 
 
+/*
+ * erts_ptab_list() implements BIFs listing the content of the table,
+ * e.g. erlang:processes/0.
+ */
 BIF_RETTYPE
 erts_ptab_list(Process *c_p, ErtsPTab *ptab)
 {

@@ -1,14 +1,15 @@
 %% SPDX-License-Identifier: Apache-2.0
 -module(beam_format).
+-compile({beam_private_native_mfas,[{beam,error,2}]}).
 -export([integer/1, term/2]).
 
 -define(MARK, <<"...">>).
 
 -spec integer(integer()) -> binary().
 integer(Value) when is_integer(Value) ->
-    erlang:integer_to_binary(Value);
+    beam:integer_to_binary(Value);
 integer(Value) ->
-    erlang:error(badarg, [Value]).
+    beam:error(badarg, [Value]).
 
 -spec term(term(), #{depth := non_neg_integer(), bytes := non_neg_integer()}) -> binary().
 term(Value, #{depth := Depth, bytes := Bytes} = Limits)
@@ -16,7 +17,7 @@ term(Value, #{depth := Depth, bytes := Bytes} = Limits)
     {Text, _} = emit(Value, Depth, Bytes),
     Text;
 term(Value, Limits) ->
-    erlang:error(badarg, [Value, Limits]).
+    beam:error(badarg, [Value, Limits]).
 
 emit(_Value, _Depth, Budget) when Budget =< 0 ->
     {<<>>, 0};
@@ -29,7 +30,7 @@ emit(Value, _Depth, Budget) when is_atom(Value) ->
 emit(Value, _Depth, Budget) when is_float(Value) ->
     emit_float(Value, Budget);
 emit(Value, _Depth, Budget) when is_binary(Value) ->
-    emit_text(<<"<<", (erlang:integer_to_binary(byte_size(Value)))/binary, " bytes>>">>, Budget);
+    emit_text(<<"<<", (beam:integer_to_binary(byte_size(Value)))/binary, " bytes>>">>, Budget);
 emit(Value, _Depth, Budget) when is_pid(Value) ->
     emit_text(<<"<pid>">>, Budget);
 emit(Value, _Depth, Budget) when is_reference(Value) ->
@@ -113,7 +114,7 @@ emit_float(Value, Budget) ->
     %% Short form only. Fixed-point decimals raise badarg for magnitudes such
     %% as 1.0e300 because the digit buffer cannot hold them. A short text that
     %% does not fit is replaced by the marker and is not sliced.
-    try erlang:float_to_binary(Value, [short]) of
+    try beam:float_to_binary(Value, [short]) of
         Text when byte_size(Text) =< Budget ->
             {Text, Budget - byte_size(Text)};
         _Text ->
@@ -134,7 +135,7 @@ emit_integer(Value, Budget) ->
     %% does not fit never builds that text.
     case Size =< Budget of
         true ->
-            Text = erlang:integer_to_binary(Value),
+            Text = beam:integer_to_binary(Value),
             case byte_size(Text) =< Budget of
                 true -> {Text, Budget - byte_size(Text)};
                 false -> limited_integer(Sign, Absolute, Budget)
@@ -150,7 +151,7 @@ limited_integer(Sign, Absolute, Budget) ->
         false ->
             {Mark, 0};
         true ->
-            Leading = erlang:integer_to_binary(leading_digits(Absolute, Room)),
+            Leading = beam:integer_to_binary(leading_digits(Absolute, Room)),
             Prefix = case Sign of
                          true -> <<"-", Leading/binary>>;
                          false -> Leading

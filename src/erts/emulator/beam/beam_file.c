@@ -1742,6 +1742,10 @@ beamfile_read(const byte *data, size_t size, BeamFile *beam) {
     beam->attributes.data = chunks[ATTR_CHUNK].data;
     beam->attributes.size = chunks[ATTR_CHUNK].size;
 
+    /* The loader recognizes native requirements in checksum-covered Meta. */
+    beam->native_metadata.data = chunks[META_CHUNK].data;
+    beam->native_metadata.size = chunks[META_CHUNK].size;
+
     beam->compile_info.data = chunks[COMPILE_CHUNK].data;
     beam->compile_info.size = chunks[COMPILE_CHUNK].size;
 

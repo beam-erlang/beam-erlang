@@ -98,14 +98,27 @@ static void reject_preparation(beam_return_options *options, beam_status expecte
 
 static void library_options(const char *root, beam_return_options *options,
                             beam_host_options *host, beam_library **libraries,
-                            char paths[2][4096], beam_return_module *modules)
+                            char paths[2][4096], beam_return_module *modules,
+                            size_t module_count)
 {
+    static beam_builtin_binding bindings[BEAM_TEST_NETWORK_BINDING_COUNT+
+        BEAM_TEST_FILE_BINDING_COUNT+BEAM_TEST_RETURNING_BINDING_COUNT];
+    static beam_composition_options selection;
+    size_t count=0;
+    check(beam_test_append_bindings(bindings,sizeof bindings/sizeof *bindings,&count,
+        beam_test_network_bindings,BEAM_TEST_NETWORK_BINDING_COUNT), "network bindings");
+    check(beam_test_append_bindings(bindings,sizeof bindings/sizeof *bindings,&count,
+        beam_test_file_bindings,BEAM_TEST_FILE_BINDING_COUNT), "file bindings");
+    check(beam_test_append_bindings(bindings,sizeof bindings/sizeof *bindings,&count,
+        beam_test_returning_bindings,BEAM_TEST_RETURNING_BINDING_COUNT), "controller bindings");
+    selection = (beam_composition_options){.struct_size=sizeof(selection),
+        .builtin_bindings=bindings,.builtin_binding_count=count};
     static const char *names[]={"file","network"};
     static const beam_startup_action startup[]={{"beam_file","start",{0}},{"beam_socket","start",{0}}};
     beam_error error={0};
     *options=(beam_return_options){.struct_size=sizeof(*options),.entry_module="returning_programs",
-        .entry_function="ret",.modules=modules,.module_count=13,.host=host};
-    *host=(beam_host_options){.struct_size=sizeof(*host),.library_count=2,.libraries=libraries,.startup_count=2,.startup=startup};
+        .entry_function="ret",.modules=modules,.module_count=module_count,.host=host};
+    *host=(beam_host_options){.struct_size=sizeof(*host),.library_count=2,.libraries=libraries,.startup_count=2,.startup=startup,.composition=&selection};
     for(int i=0;i<2;++i){
         snprintf(paths[i],4096,"%s/%s",root,beam_test_component(names[i]));
         check(beam_library_open(paths[i],&libraries[i],&error)==BEAM_OK,error.message);
@@ -115,13 +128,15 @@ static void library_options(const char *root, beam_return_options *options,
 static void component_validation(const char *root, const char *fixture)
 {
     beam_return_options options;beam_host_options host;beam_library *libraries[2]={0};
-    beam_return_module modules[15]={{0}};
-    beam_return_module *module=&modules[13];
+    beam_return_module *modules=NULL, *module;
     beam_return_boot *boot=NULL;beam_error error={0};
     char paths[2][4096],path[4096];bytecode_input base={0};
     check(bytecode_input_read(&base,root,INPUT_RETURNING,&error)==BEAM_OK,error.message);
+    bytecode_input_partition_network(&base);
+    modules=calloc(base.count+2,sizeof(*modules));check(modules!=NULL,"module storage");
+    module=&modules[base.count];
     for(size_t i=0;i<base.count;++i){modules[i].name=base.modules[i].name;modules[i].bytes=base.modules[i].bytes;modules[i].origin=base.modules[i].origin;}
-    library_options(root,&options,&host,libraries,paths,modules);
+    library_options(root,&options,&host,libraries,paths,modules,base.count);
     --options.struct_size;reject_preparation(&options,BEAM_INVALID_ARGUMENT);++options.struct_size;
     host.libraries=NULL;reject_preparation(&options,BEAM_INVALID_ARGUMENT);host.libraries=libraries;
     beam_library *bad=NULL;
@@ -131,23 +146,23 @@ static void component_validation(const char *root, const char *fixture)
     beam_library *duplicate[]={libraries[0],libraries[0]};host.libraries=duplicate;
     reject_preparation(&options,BEAM_INVALID_ARGUMENT);host.libraries=libraries;
     snprintf(path,sizeof(path),"%s/returning_programs.beam",fixture);
-    *module=module_from_file(path,"returning_programs",0);options.module_count=14;
-    const char *conflicts[]={"beam_map","erlang","beam_boot","beam_host","prim_file"};
+    *module=module_from_file(path,"returning_programs",0);options.module_count=base.count+1;
+    const char *conflicts[]={"beam_maps","erlang","beam_boot","beam_host","prim_file"};
     for(size_t i=0;i<5;++i){module->name=conflicts[i];reject_preparation(&options,BEAM_INVALID_ARGUMENT);}
     module->name="wrong_identity";reject_preparation(&options,BEAM_INVALID_BEAM);
-    module->name="returning_programs";modules[14]=*module;options.module_count=15;
-    reject_preparation(&options,BEAM_INVALID_ARGUMENT);options.module_count=14;
+    module->name="returning_programs";modules[base.count+1]=*module;options.module_count=base.count+2;
+    reject_preparation(&options,BEAM_INVALID_ARGUMENT);options.module_count=base.count+1;
     beam_bytes original=module->bytes;module->bytes=(beam_bytes){(const unsigned char*)"invalid bytecode",16};
     reject_preparation(&options,BEAM_INVALID_BEAM);module->bytes=original;
     /* Deferred code still participates in conflict and bytecode validation. */
-    modules[14]=*module;modules[14].deferred=1;options.module_count=15;
-    reject_preparation(&options,BEAM_INVALID_ARGUMENT);options.module_count=14;
+    modules[base.count+1]=*module;modules[base.count+1].deferred=1;options.module_count=base.count+2;
+    reject_preparation(&options,BEAM_INVALID_ARGUMENT);options.module_count=base.count+1;
     check(beam_return_prepare(&options,&boot,&error)==BEAM_OK,error.message);
     beam_return_boot *retained=boot;
     check(beam_return_prepare(&options,&boot,&error)==BEAM_INVALID_ARGUMENT&&boot==retained,"occupied output changed");
     check(beam_return_discard(&boot)==BEAM_OK&&!boot,"discard passive preparation");
     for(size_t i=0;i<2;++i)beam_library_release(&libraries[i]);
-    free((void*)module->bytes.data);bytecode_input_release(&base);
+    free((void*)module->bytes.data);free(modules);bytecode_input_release(&base);
 }
 
 void components_mode(const char *root, const char *fixture)
@@ -155,8 +170,8 @@ void components_mode(const char *root, const char *fixture)
     beam_return_options options;
     beam_library *libraries[2]={0};
     beam_host_options host;
-    beam_return_module modules[15] = {{0}};
-    size_t count = 13;
+    beam_return_module *modules = NULL;
+    size_t count;
     bytecode_input base = {0};
     char paths[2][4096], hidden[2][4112], rejected[4096];
     beam_error error = {0};
@@ -165,14 +180,18 @@ void components_mode(const char *root, const char *fixture)
     beam_bytes arguments = list_of_binaries(items, sizes, 1);
     component_validation(root, fixture);
     check(bytecode_input_read(&base, root, INPUT_RETURNING, &error) == BEAM_OK, error.message);
+    bytecode_input_partition_network(&base);
+    modules = calloc(base.count + 2, sizeof(*modules));
+    check(modules != NULL, "module storage");
+    count = base.count;
     for (size_t i = 0; i < base.count; ++i) {
         modules[i].name = base.modules[i].name; modules[i].bytes = base.modules[i].bytes;
         modules[i].origin = base.modules[i].origin;
     }
-    library_options(root, &options, &host, libraries, paths, modules);
+    library_options(root, &options, &host, libraries, paths, modules, base.count);
     add_program(modules, &count, fixture);
     snprintf(rejected, sizeof rejected, "%s/onload_rejected.beam", fixture);
-    modules[14] = module_from_file(rejected, "onload_rejected", 1);
+    modules[count] = module_from_file(rejected, "onload_rejected", 1);
     options.module_count = count;
     options.modules = modules;
     options.arguments = arguments;
@@ -183,20 +202,21 @@ void components_mode(const char *root, const char *fixture)
         int descriptors[1024], descriptor_count, tasks = task_count();
         snapshot_fds(descriptors, 1024, &descriptor_count);
         options.entry_function = failure == 1 ? "boom" : "ret";
-        options.module_count = failure == 2 ? 15 : 14;
+        options.module_count = failure == 2 ? count + 1 : count;
         check(beam_return_prepare(&options, &first, &error) == BEAM_OK, error.message);
         options.entry_function = "ret";
         /* Generic preloads are already loaded by VM initialization. The Host
          * must preserve that input without attempting a second ordinary load. */
-        beam_composition_options preloaded = {.struct_size=sizeof(preloaded),
-            .preload_count=1,.preloads=&base.modules[0]};
+        const beam_composition_options *selected = host.composition;
+        beam_composition_options preloaded = *selected;
+        preloaded.preload_count=1; preloaded.preloads=&base.modules[0];
         host.composition = &preloaded;
         options.modules = modules + 1;
-        options.module_count = 13;
+        options.module_count = count - 1;
         check(beam_return_prepare(&options, &second, &error) == BEAM_OK, error.message);
-        host.composition = NULL;
+        host.composition = selected;
         options.modules = modules;
-        options.module_count = 14;
+        options.module_count = count;
         check(task_count() == tasks, "preparation started workers");
         check_fds(descriptors, descriptor_count);
         for (int index = 0; index < 2; ++index) {
@@ -224,8 +244,9 @@ void components_mode(const char *root, const char *fixture)
     stop_system();
     for(size_t i=0;i<2;++i)beam_library_release(&libraries[i]);
     free((void *)arguments.data);
-    free((void *)modules[13].bytes.data);
-    free((void *)modules[14].bytes.data);
+    free((void *)modules[count - 1].bytes.data);
+    free((void *)modules[count].bytes.data);
+    free(modules);
     bytecode_input_release(&base);
     puts("components ok");
 }

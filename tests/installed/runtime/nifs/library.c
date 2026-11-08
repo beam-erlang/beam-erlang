@@ -2,6 +2,7 @@
 #include <beam/runtime.h>
 #include <beam/library.h>
 #include LIBRARY_HEADER
+#include "builtin_bindings.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -42,6 +43,8 @@ int main(int argc, char **argv)
         beam_library_inputs inputs = {.struct_size = sizeof(inputs)};
         CHECK(beam_library_get_inputs(library, &inputs) == BEAM_OK);
         beam_composition_options selection = {.struct_size = sizeof(selection),
+            .builtin_binding_count = inputs.nif_count ? BEAM_TEST_NIFS_BINDING_COUNT : 0,
+            .builtin_bindings = inputs.nif_count ? beam_test_nifs_bindings : NULL,
             .module_count = inputs.module_count, .modules = inputs.modules,
             .builtin_nif_count = inputs.nif_count, .builtin_nifs = inputs.nifs,
             .native_owner_count = 1, .native_owners = &inputs.owner};

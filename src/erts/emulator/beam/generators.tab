@@ -53,6 +53,107 @@ NativeEndian(flags) {
 #endif
 }
 
+// A target-selection decision is immutable for the lifetime of this code.
+gen.native_selection(Import, Dst) {
+    int selected = beam_load_native_selection(S,Import.val);
+    BeamOp *op;
+    if (selected < 0) return NULL;
+    $NewBeamOp(S,op);
+    $BeamOpNameArity(op,move,2);
+    op->a[0].type = TAG_a;
+    op->a[0].val = selected ? am_true : am_false;
+    op->a[1] = Dst;
+    return op;
+}
+
+// Resolve a qualified guard requirement before publishing executable code.
+gen.native_guard0(Import, Dst) {
+    BeamOp *op;
+    int binding = beam_load_native_guard_binding(S,Import.val);
+    if (binding < 0) return NULL;
+    $NewBeamOp(S,op);
+    if (binding) {
+        S->native_guards[Import.val].binding = 2;
+        $BeamOpNameArity(op,bif0,2);
+        op->a[0] = Import;
+        op->a[1] = Dst;
+    } else {
+        $BeamOpNameArity(op,jump,1);
+        op->a[0].type = TAG_f;
+        op->a[0].val = S->native_guards[Import.val].failure;
+    }
+    return op;
+}
+
+gen.native_guard1(Fail, Live, Import, A0, Dst) {
+    BeamOp *op;
+    int binding = beam_load_native_guard_binding(S,Import.val);
+    if (binding < 0) return NULL;
+    if (Fail.type != TAG_f || Fail.val != S->native_guards[Import.val].failure) return NULL;
+    $NewBeamOp(S,op);
+    if (binding) {
+        S->native_guards[Import.val].binding = 2;
+        $BeamOpNameArity(op,gc_bif1,5);
+        op->a[0] = Fail;
+        op->a[1] = Live;
+        op->a[2] = Import;
+        op->a[3] = A0;
+        op->a[4] = Dst;
+    } else {
+        $BeamOpNameArity(op,jump,1);
+        op->a[0].type = TAG_f;
+        op->a[0].val = S->native_guards[Import.val].failure;
+    }
+    return op;
+}
+
+gen.native_guard2(Fail, Live, Import, A0, A1, Dst) {
+    BeamOp *op;
+    int binding = beam_load_native_guard_binding(S,Import.val);
+    if (binding < 0) return NULL;
+    if (Fail.type != TAG_f || Fail.val != S->native_guards[Import.val].failure) return NULL;
+    $NewBeamOp(S,op);
+    if (binding) {
+        S->native_guards[Import.val].binding = 2;
+        $BeamOpNameArity(op,gc_bif2,6);
+        op->a[0] = Fail;
+        op->a[1] = Live;
+        op->a[2] = Import;
+        op->a[3] = A0;
+        op->a[4] = A1;
+        op->a[5] = Dst;
+    } else {
+        $BeamOpNameArity(op,jump,1);
+        op->a[0].type = TAG_f;
+        op->a[0].val = S->native_guards[Import.val].failure;
+    }
+    return op;
+}
+
+gen.native_guard3(Fail, Live, Import, A0, A1, A2, Dst) {
+    BeamOp *op;
+    int binding = beam_load_native_guard_binding(S,Import.val);
+    if (binding < 0) return NULL;
+    if (Fail.type != TAG_f || Fail.val != S->native_guards[Import.val].failure) return NULL;
+    $NewBeamOp(S,op);
+    if (binding) {
+        S->native_guards[Import.val].binding = 2;
+        $BeamOpNameArity(op,gc_bif3,7);
+        op->a[0] = Fail;
+        op->a[1] = Live;
+        op->a[2] = Import;
+        op->a[3] = A0;
+        op->a[4] = A1;
+        op->a[5] = A2;
+        op->a[6] = Dst;
+    } else {
+        $BeamOpNameArity(op,jump,1);
+        op->a[0].type = TAG_f;
+        op->a[0].val = S->native_guards[Import.val].failure;
+    }
+    return op;
+}
+
 // Generate an instruction to fetch a float from a binary.
 gen.get_float2(Fail, Ms, Live, Size, Unit, Flags, Dst) {
     BeamOp* op;

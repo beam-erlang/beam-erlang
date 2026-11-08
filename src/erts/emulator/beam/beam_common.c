@@ -26,6 +26,7 @@
 
 #include <stddef.h> /* offsetof() */
 #include "sys.h"
+#include "beam_builtin_catalog.h"
 #include "erl_vm.h"
 #include "global.h"
 #include "beam_internal.h"
@@ -914,24 +915,9 @@ save_stacktrace(Process* c_p, ErtsCodePtr pc, Eterm* reg,
 	Eterm *hp;
         Eterm format_module = THE_NON_VALUE;
 
-	if (bif_mfa->module == am_erlang) {
-	    switch (bif_mfa->function) {
-	    case am_error:
-		if (bif_mfa->arity == 1 || bif_mfa->arity == 2 || bif_mfa->arity == 3)
-		    goto non_bif_stacktrace;
-		break;
-	    case am_exit:
-		if (bif_mfa->arity == 1)
-		    goto non_bif_stacktrace;
-		break;
-	    case am_throw:
-		if (bif_mfa->arity == 1)
-		    goto non_bif_stacktrace;
-		break;
-	    default:
-		break;
-	    }
-	}
+        if (beam_builtin_mfa_traits(bif_mfa) & BEAM_NATIVE_HIDE_EXCEPTION_FRAME)
+            goto non_bif_stacktrace;
+
 	s->current = bif_mfa;
 	/* Save first stack entry */
 	ASSERT(pc);
@@ -946,7 +932,7 @@ save_stacktrace(Process* c_p, ErtsCodePtr pc, Eterm* reg,
          * storage constraints.
          */
 
-        switch (bif_mfa->module) {
+        switch (beam_builtin_error_module(bif_mfa)) {
             /* Erts */
         case am_atomics:
             format_module = am_erl_erts_errors;
@@ -988,15 +974,11 @@ save_stacktrace(Process* c_p, ErtsCodePtr pc, Eterm* reg,
         case am_math:
             format_module = am_erl_stdlib_errors;
             break;
-        case am_re:
-            format_module = am_erl_stdlib_errors;
-            break;
         case am_unicode:
             format_module = am_erl_stdlib_errors;
             break;
 
         default:
-            ASSERT((c_p->freason & EXF_HAS_EXT_INFO) == 0);
             break;
         }
 
@@ -1009,6 +991,13 @@ save_stacktrace(Process* c_p, ErtsCodePtr pc, Eterm* reg,
             } else {
                 hp = HAlloc(c_p, MAP1_SZ);
                 error_info = MAP1(hp, am_module, format_module);
+            }
+        } else if (c_p->freason & EXF_HAS_EXT_INFO) {
+            if (is_map(c_p->fvalue)) {
+                error_info = c_p->fvalue;
+            } else {
+                hp = HAlloc(c_p, MAP1_SZ);
+                error_info = MAP1(hp, am_cause, c_p->fvalue);
             }
         }
 
@@ -1367,11 +1356,11 @@ apply_bif_error_adjustment(Process *p, const Export *ep,
      * from the instructions i_apply_only, i_apply_last_P,
      * and apply_last_IP.
      */
-    if (!(I && (ep->bif_number == BIF_error_1 ||
-                ep->bif_number == BIF_error_2 ||
-                ep->bif_number == BIF_error_3 ||
-                ep->bif_number == BIF_exit_1 ||
-                ep->bif_number == BIF_throw_1))) {
+    if (!(I && (ep->bif_number == BIF_IMPL_vm_error_1 ||
+                ep->bif_number == BIF_IMPL_vm_error_2 ||
+                ep->bif_number == BIF_IMPL_vm_error_3 ||
+                ep->bif_number == BIF_IMPL_vm_exit_1 ||
+                ep->bif_number == BIF_IMPL_vm_throw_1))) {
         return;
     }
 
@@ -1471,10 +1460,12 @@ apply(Process* p, Eterm* reg, ErtsCodePtr I, Uint stack_offset)
 
     while (1) {
 	Eterm m, f, a;
+        const Export *apply_export = beam_native_instruction_exports[BEAM_INSTRUCTION_vm_apply_3];
 
 	if (is_not_atom(module)) goto error;
 
-	if (module != am_erlang || function != am_apply)
+	if (!apply_export || module != apply_export->info.mfa.module ||
+            function != apply_export->info.mfa.function)
 	    break;
 
 	/* Adjust for multiple apply of apply/3... */
@@ -1552,6 +1543,8 @@ fixed_apply(Process* p, Eterm* reg, Uint arity,
         bad_args = make_arglist(p, reg, arity);
 
         p->freason = BADARG;
+        static const ErtsCodeMFA language_apply = {am_erlang, am_apply, 3};
+        p->current = &language_apply;
         reg[0] = module;
         reg[1] = function;
         reg[2] = bad_args;
@@ -1562,8 +1555,12 @@ fixed_apply(Process* p, Eterm* reg, Uint arity,
     if (is_not_atom(module)) goto error;
 
     /* Handle apply of apply/3... */
-    if (module == am_erlang && function == am_apply && arity == 3) {
-	return apply(p, reg, I, stack_offset);
+    const Export *apply_export = beam_native_instruction_exports[BEAM_INSTRUCTION_vm_apply_3];
+    if (arity == 3 && apply_export && module == apply_export->info.mfa.module &&
+        function == apply_export->info.mfa.function) {
+        ep = apply(p, reg, I, stack_offset);
+        if (!ep) p->current = &apply_export->info.mfa;
+        return ep;
     }
 
     /* Call the referenced function, if any: should the function not be found,
@@ -1759,12 +1756,16 @@ apply_fun(Process* p, Eterm fun, Eterm args, Eterm* reg)
 	    tmp = CDR(list_val(tmp));
 	} else {
 	    p->freason = SYSTEM_LIMIT;
+	    reg[0] = fun;
+	    reg[1] = args;
 	    return NULL;
 	}
     }
 
     if (is_not_nil(tmp)) {	/* Must be well-formed list */
 	p->freason = EXC_BADARG;
+	reg[0] = fun;
+	reg[1] = args;
 	return NULL;
     }
     reg[arity] = fun;
@@ -2371,17 +2372,9 @@ erts_is_builtin(Eterm Mod, Eterm Name, int arity)
     const Export *ep;
     Export e;
 
-    if (Mod == am_erlang) {
-        /*
-         * Special case for built-in functions that are implemented
-         * as instructions as opposed to SNIFs.
-         */
-        if (Name == am_apply && (arity == 2 || arity == 3)) {
-            return 1;
-        } else if (Name == am_yield && arity == 0) {
-            return 1;
-        }
-    }
+    int instruction = beam_builtin_selected_instruction(Mod,Name,arity);
+    if (instruction >= 0)
+        return instruction != BEAM_INSTRUCTION_vm_hibernate_0;
 
     e.info.mfa.module = Mod;
     e.info.mfa.function = Name;

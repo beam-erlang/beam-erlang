@@ -48,7 +48,7 @@ int main(void)
         goto cleanup;
 
     /* The VM has no workers yet. Loading copies these module bytes. */
-    if (failed(beam_vm_load(vm, answer_beam), "beam_vm_load", NULL))
+    if (failed(beam_module_load(vm, answer_beam), "beam_module_load", NULL))
         goto cleanup;
     if (failed(beam_vm_start(vm, &error), "beam_vm_start", &error))
         goto cleanup;

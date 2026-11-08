@@ -30,11 +30,12 @@ parse_transform(Forms, _) ->
     lists:foreach(fun(Name) -> undefined = whereis(Name) end,
         [code_server,file_server_2,application_controller,inet_db,user,standard_error]),
     undefined = ets:whereis(ac_tab),
-    Core = lists:sort([atomics,counters,persistent_term,erlang,erts_internal,
-        erts_code_purger,erts_literal_area_collector,erts_trace_cleaner,
+    Core = lists:sort([erlang,erts_internal,
+        erts_code_purger,erts_literal_area_collector,
         erts_dirty_process_signal_handler]),
     Core = lists:sort(erlang:pre_loaded()),
     lists:foreach(fun
+        ({{beam_internal,non_existing}}) -> true = erlang:module_loaded(beam_internal);
         ({{Module,preloaded}}) -> true = lists:member(Module,Core);
         ({{compiler_context_transform,Origin}}) ->
             {erl_string(c.work / "compiler_context_transform.beam")} = Origin;
@@ -67,7 +68,7 @@ parse_transform(Forms, _) ->
     ok = file:write_file({erl_string(marker)}, <<"called\\n">>, [append]),
     Forms.
 ''')
-    c.compile("--deterministic", transform)
+    c.compile("--native-bindings=canonical", "--deterministic", transform)
     header = c.work / "explicit headers/file.hrl"
     header.parent.mkdir()
     header.write_text("-record(file_info, {size}).\n")
@@ -78,9 +79,10 @@ parse_transform(Forms, _) ->
     depfile = output / "standalone_compiled.d"
     language_source = write(c.work / "compiler_language_fixture.erl", '''
 -module(compiler_language_fixture).
--export([value/0]).
+-export([value/0,map_cases/1,fixed_value/2]).
 -record(packet, {tag = sample, payload}).
 value() ->
+    ok = map_cases([1,2,1]),
     Packet = #packet{payload = <<1,2,3>>},
     Map = #{tag => Packet#packet.tag, payload => Packet#packet.payload},
     Pairs = [{N,N*N} || N <- [1,2,3,4], N rem 2 =:= 0],
@@ -88,10 +90,28 @@ value() ->
     self() ! {selected,Map},
     Received = receive
         {selected,#{tag := sample,payload := <<Head,Rest/binary>>}} -> {Head,Rest}
-    after 1000 -> erlang:error(receive_timeout)
+    after 1000 -> beam:error(receive_timeout)
     end,
-    Exception = try erlang:error(sample) catch error:sample -> caught end,
+    Exception = try beam:error(sample) catch error:sample -> caught end,
     {Packet#packet.tag,Incremented,Pairs,Received,Exception}.
+map_cases(Keys) ->
+    #{1 := true,2 := true} = #{K => true || K <- Keys},
+    #{1 := same,2 := same} = fixed_value(Keys,same),
+    #{1 := 2,2 := 3} = #{K => K+1 || K <- Keys},
+    #{a := 3,b := 2} = #{K => V || {K,V} <- [{a,1},{b,2},{a,3}]},
+    #{} = #{K => true || K <- []},
+    #{a := 1,b := 2} = #{K => V || K <- [a,b] && V <- [1,2]},
+    #{1 := 2,2 := 3} = #{K => V+1 || K := V <- #{1=>1,2=>2}},
+    #{1 := 1,2 := 2} = #{N => N || <<N>> <= <<1,2>>},
+    put(map_order,[]),
+    #{a := 3,b := 2} = #{mark(K) => mark(V) || {K,V} <- [{a,1},{b,2},{a,3}]},
+    [a,3,b,2,a,1] = erase(map_order),
+    bad_generator = try #{K => true || K <- invalid} catch error:{bad_generator,invalid} -> bad_generator end,
+    Maker = fun maps:from_keys/2,
+    undef = try Maker(Keys,true) catch error:undef -> undef end,
+    ok.
+fixed_value(Keys,Value) -> #{K => Value || K <- Keys}.
+mark(X) -> put(map_order,[X|get(map_order)]), X.
 ''')
     # The header above is an explicit client input. No application bytecode,
     # startup artifact, optional native component or helper can supply execution.
@@ -99,7 +119,7 @@ value() ->
                        prefix / "lib/beam/ebin", prefix / "libexec/beam",
                        *(prefix / "lib/beam" / inventory for inventory in ("library", "boot", "services")),
                        *(artifact(prefix, "library." + unit + ".shared")
-                         for unit in ("file", "network", "zlib"))]):
+                         for unit in ("file", "network", "zlib", "tracing"))]):
         c.compile("--deterministic", "--depfile", depfile, "-I", header.parent,
                   "-o", output, source)
         check(marker.read_text() == "called\n", "standalone compiler probe did not run once")
@@ -126,12 +146,12 @@ value() ->
 -compile({parse_transform,compiler_context_transform}).
 -export([main/1]).
 main(["literal; argument"]) ->
-    absent = persistent_term:get({compiler_context_transform,state}, absent),
+    absent = beam_persistent_term:get({compiler_context_transform,state}, absent),
     undefined = whereis(compiler_context_worker),
-    undefined = ets:whereis(compiler_context_table),
-    false = erlang:module_loaded(compiler_context_transform),
+    undefined = beam_ets:whereis(compiler_context_table),
+    false = beam:module_loaded(compiler_context_transform),
     io:format("compiler isolation ok~n"),
-    erlang:halt(0).
+    beam:halt(0).
 ''')
     stdout, stderr = run([*c.command, "run", run_source, "--", "literal; argument"], c.work, c.env)
     check(stdout == "compiler isolation ok\n" and not stderr,
@@ -174,10 +194,15 @@ parse_transform(Forms, _) ->
     Key = {{compiler_sequence_transform,count}},
     Count = persistent_term:get(Key,0) + 1,
     persistent_term:put(Key,Count),
+    {{ok,Tokens,_}} = erl_scan:string("fun() -> erlang:put(expr_entry_probe,42) end."),
+    {{ok,[Expr]}} = erl_parse:parse_exprs(Tokens),
+    {{value,Fun,[]}} = erl_eval:expr(Expr,[]),
+    undefined = Fun(),
+    42 = erase(expr_entry_probe),
     ok = file:write_file({erl_string(marker)}, integer_to_binary(Count), [append]),
     Forms.
 ''')
-    c.compile(transform)
+    c.compile("--native-bindings=canonical", transform)
     sources = [module(c.work / f"sequential_{name}.erl", name,
                       '-compile({parse_transform,compiler_sequence_transform}).\n')
                for name in ("one", "two")]
@@ -185,6 +210,19 @@ parse_transform(Forms, _) ->
     check(marker.read_text() == "12", "one compiler command did not retain state between sources")
     for source, expected in zip(sources, ("one", "two")):
         c.value(source.with_suffix(".beam"), expected)
+
+    appended = write(c.work / "compiler_append_transform.erl", '''
+-module(compiler_append_transform).
+-export([parse_transform/2]).
+parse_transform(Forms, _) ->
+    Forms ++ [{function,0,generated_value,0,
+               [{clause,0,[],[],[{integer,0,42}]}]}].
+''')
+    c.compile("--native-bindings=canonical", appended)
+    source = module(c.work / "compiler_appended.erl", "generated_value()",
+                    '-compile({parse_transform,compiler_append_transform}).\n')
+    c.compile(source)
+    c.value(source.with_suffix(".beam"), "42")
 
 
 def compiler_failure_cases(c):
@@ -204,7 +242,7 @@ def compiler_failure_cases(c):
 -export([parse_transform/2]).
 parse_transform(_, _) -> throw(compiler_transform_failed).
 ''')
-    c.compile(transform)
+    c.compile("--native-bindings=canonical", transform)
     failures = [
         (header + 'main(_) -> malformed(.\nvalue() -> retained.\n', "compiler_failure_probe.erl"),
         (header + '-include("missing_compiler_header.hrl").\n' + body, "missing_compiler_header.hrl"),
@@ -239,13 +277,13 @@ def compiler_resolution_cases(c):
     for directory in (c.work, c.prefix / "lib/beam/ebin"):
         installed_helper = directory / "compiler_resolution_helper.beam"
         try:
-            c.compile("-o", directory, helper)
+            c.compile("--native-bindings=canonical", "-o", directory, helper)
             module(consumer, "retained")
             c.compile("--depfile", depfile, consumer)
             previous = bytecode.read_bytes(), depfile.read_bytes()
             write(transform, transform_header +
                   'parse_transform(Forms, _) -> resolved = compiler_resolution_helper:value(), Forms.\n')
-            c.compile(transform)
+            c.compile("--native-bindings=canonical", transform)
             module(consumer, "explicit",
                    '-compile({parse_transform,compiler_resolution_transform}).\n')
             diagnostic = c.compile("--depfile", depfile, consumer, status=1)
@@ -257,7 +295,7 @@ def compiler_resolution_cases(c):
                   'parse_transform(Forms, _) -> '
                   '{module,compiler_resolution_helper} = code:ensure_loaded(compiler_resolution_helper), '
                   'resolved = compiler_resolution_helper:value(), Forms.\n')
-            c.compile(transform)
+            c.compile("--native-bindings=canonical", transform)
             c.compile("--depfile", depfile, consumer)
             c.value(bytecode, "explicit")
         finally:
@@ -272,8 +310,10 @@ def compiler_lifetime_case(prefix, work, cmake, build, source, project):
     compiler_sources = project / "src/beam/compiler"
     copied_compiler = client / "host/beam/compiler"
     copied_compiler.mkdir(parents=True)
-    for name in ("beam_compiler_host.c", "beam_compiler_host.h", "beam_compiler_files.h"):
+    for name in ("beam_compiler_host.c", "beam_compiler_host.h", "beam_compiler_files.h", "native_bindings.def"):
         shutil.copyfile(compiler_sources / name, copied_compiler / name)
+    shutil.copyfile(project / "src/beam/modern_native_bindings.def",
+                    copied_compiler.parent / "modern_native_bindings.def")
     for name in ("beam_platform.h", "beam_windows_dll.h"):
         shutil.copyfile(project / "src" / name, client / "host" / name)
     shutil.copyfile(build / "compiler/include/beam_compiler_inventory.h",
@@ -282,7 +322,7 @@ def compiler_lifetime_case(prefix, work, cmake, build, source, project):
     run([cmake, "-S", client, "-B", client_build, f"-DCMAKE_PREFIX_PATH={prefix}", f"-DTEST_SUPPORT_DIR={TEST_SUPPORT_DIR}"],
         work, env, timeout=60)
     run([cmake, "--build", client_build, "--parallel", "2"], work, env, timeout=60)
-    stdout, stderr = run([prefix / "bin/beam", "compile", "--deterministic",
+    stdout, stderr = run([prefix / "bin/beam", "compile", "--native-bindings=canonical", "--deterministic",
                           "-o", client, "--", client / "compiler_lifetime_transform.erl"],
                          client, env)
     check(not stdout and not stderr, "compiler lifetime transform compilation produced diagnostics")
@@ -290,7 +330,7 @@ def compiler_lifetime_case(prefix, work, cmake, build, source, project):
                        prefix / "lib/beam/ebin", prefix / "libexec/beam",
                        *(prefix / "lib/beam" / inventory for inventory in ("library", "boot", "services")),
                        *(artifact(prefix, "library." + unit + ".shared")
-                         for unit in ("file", "network", "zlib"))]):
+                         for unit in ("file", "network", "zlib", "tracing"))]):
         stdout, stderr = run([client_build / "compiler_lifetime", prefix,
                               client / "compiler_lifetime_fixture.erl"], client, env, timeout=60)
     check(not stderr and re.fullmatch(

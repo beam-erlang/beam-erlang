@@ -181,6 +181,7 @@ sub beam_strip {
 			'StrT' => 1,
 			'FunT' => 1,
 			'LitT' => 1,
+			'Meta' => 1,
 			'Type' => 1
         );
 

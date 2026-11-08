@@ -2115,6 +2115,17 @@ mc_tq(Line, Pairs, Qs, Mc, St0) ->
     {LcVar, St2} = new_var(St1),
     Anno = #a{anno=lineno_anno(Line, St2)},
     Pre = Pre0 ++ [#iset{var=LcVar,arg=Lc}],
+    case member(beam_modern_map_comprehensions, St2#core.opts) of
+        true ->
+            {Build,St3} = mc_build_map(LcVar, OptInfo, Anno, St2),
+            {Build,Pre,St3};
+        false ->
+            mc_native_map(LcVar, OptInfo, Anno, Pre, St2)
+    end.
+
+%% Canonical compilation retains the native facade calls and their allocation
+%% policy. Modern language construction must also work in a core-only VM.
+mc_native_map(LcVar, OptInfo, Anno, Pre, St2) ->
     case OptInfo of
         {from_keys, ValueExpr} ->
             Call = #icall{anno=Anno,
@@ -2129,6 +2140,28 @@ mc_tq(Line, Pairs, Qs, Mc, St0) ->
                           args=[LcVar]},
             {Call, Pre, St2}
     end.
+
+%% The comprehension's existing traversal produces a proper list before this
+%% fold starts. Keep generator validation, evaluation order and last-key wins;
+%% use ordinary map construction instead of an optional library export.
+mc_build_map(List, OptInfo, #a{anno=LA}=Anno, St0) ->
+    {Name,St1} = new_fun_name("mc", St0),
+    {[Input,MapInput,Key,Value,Tail,Acc,Updated,FailList,FailMap],St2} = new_vars(9, St1),
+    F = #c_var{anno=LA,name={Name,2}},
+    {Head,Val} = case OptInfo of
+                     {from_keys,V} -> {Key,V};
+                     from_list -> {ann_c_tuple(LA,[Key,Value]),Value}
+                 end,
+    Pair = cerl:ann_c_map_pair(LA,#c_literal{val=assoc},Key,Val),
+    Map = ann_c_map(LA,Acc,[Pair]),
+    Step = make_clause(LA,[ann_c_cons(LA,Head,Tail),Acc],[],
+                       [#iset{var=Updated,arg=Map},
+                        #iapply{anno=Anno,op=F,args=[Tail,Updated]}]),
+    Done = make_clause(LA,[#c_literal{val=[]},Acc],[],[Acc]),
+    Fun = #ifun{anno=Anno,id=[],vars=[Input,MapInput],clauses=[Step,Done],
+                fc=function_clause([FailList,FailMap],LA)},
+    {#iletrec{anno=Anno#a{anno=[compiler_generated|LA]},defs=[{{Name,2},Fun}],
+              body=[#iapply{anno=Anno,op=F,args=[List,#c_literal{val=#{}}]}]},St2}.
 
 make_refill([nomatch|RefillPats], Index, [_|Bodies], Args) ->
     make_refill(RefillPats, Index + 1, Bodies, Args);

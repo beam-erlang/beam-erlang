@@ -13,12 +13,14 @@ file(READ "${_file}/prim_file.erl" _prim)
 string(REPLACE "-nifs([" "-export([beam_test_io/1]).\n-nifs([beam_test_io/1," _prim "${_prim}")
 string(APPEND _prim "\nbeam_test_io(_) -> erlang:nif_error(undefined).\n")
 file(CONFIGURE OUTPUT "${_fault}/prim_file.erl" CONTENT "${_prim}" NEWLINE_STYLE UNIX @ONLY)
-beam_add_erlang_component(beam_file_fault_modules SOURCES "${_fault}/prim_file.erl"
+beam_add_runtime_component(beam_file_fault_modules SOURCES "${_fault}/prim_file.erl"
+    STAGE_DIRECTORY "${_fault}/projected"
     INCLUDE_DIRECTORIES "${_file}" "${BEAM_SUPPORT_INCLUDE_DIRECTORY}"
     OUTPUT_DIRECTORY "${_fault}/ebin")
 set_source_files_properties("${_file}/prim_buffer_nif.c" PROPERTIES COMPILE_DEFINITIONS "STATIC_ERLANG_NIF_LIBNAME=beam_prim_buffer")
 set_source_files_properties("${_file}/prim_file_nif.c" PROPERTIES COMPILE_DEFINITIONS "STATIC_ERLANG_NIF_LIBNAME=beam_prim_file")
 beam_add_library(beam_file_fault_component NAME file-contract-test TEST_ONLY
+    RESOURCE_COUNTER beam_file_descriptor_count
     MODULES beam_file prim_buffer prim_file
     BEAM_FILES "${CMAKE_BINARY_DIR}/components/file/ebin/beam_file.beam"
         "${CMAKE_BINARY_DIR}/components/file/ebin/prim_buffer.beam" "${_fault}/ebin/prim_file.beam"

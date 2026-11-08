@@ -38,6 +38,7 @@
 #include "erl_binary.h"
 #include "erl_bif_unique.h"
 #include "erl_map.h"
+#include "erl_bif_shared_data.h"
 
 /*
  * Each logical counter consists of one 64-bit atomic instance per scheduler
@@ -74,7 +75,7 @@ static UWord ERTS_INLINE div_ceil(UWord dividend, UWord divisor)
     return (dividend + divisor - 1) / divisor;
 }
 
-BIF_RETTYPE erts_internal_counters_new_1(BIF_ALIST_1)
+Eterm erts_counter_array_new(Process *process, Eterm arg1)
 {
     CountersRef* p;
     Binary* mbin;
@@ -82,17 +83,20 @@ BIF_RETTYPE erts_internal_counters_new_1(BIF_ALIST_1)
     Uint bytes, cache_lines;
     Eterm* hp;
 
-    if (!term_to_UWord(BIF_ARG_1, &cnt)) {
-        BIF_ERROR(BIF_P, cnt);
+    if (!term_to_UWord(arg1, &cnt)) {
+        BIF_ERROR(process, cnt);
     }
     if (cnt == 0) {
-        BIF_ERROR(BIF_P, BADARG);
+        BIF_ERROR(process, BADARG);
     }
 
     if (cnt > (ERTS_UWORD_MAX / (sizeof(erts_atomic64_t)*2*ATOMICS_PER_COUNTER)))
-        BIF_ERROR(BIF_P, SYSTEM_LIMIT);
+        BIF_ERROR(process, SYSTEM_LIMIT);
 
     cache_lines = ATOMICS_PER_COUNTER * div_ceil(cnt, ATOMICS_PER_CACHE_LINE);
+    if (cache_lines > (ERTS_UWORD_MAX - ERTS_MAGIC_BIN_SIZE(0) -
+                       offsetof(CountersRef, u)) / ERTS_CACHE_LINE_SIZE)
+        BIF_ERROR(process, SYSTEM_LIMIT);
     bytes = offsetof(CountersRef, u) + cache_lines * ERTS_CACHE_LINE_SIZE;
     mbin = erts_create_magic_binary_x(bytes,
                                       counters_destructor,
@@ -108,8 +112,13 @@ BIF_RETTYPE erts_internal_counters_new_1(BIF_ALIST_1)
     for (ui=0; ui < cache_lines; ui++)
         for (vi=0; vi < ATOMICS_PER_CACHE_LINE; vi++)
             erts_atomic64_init_nob(&p->u[ui].v[vi], 0);
-    hp = HAlloc(BIF_P, ERTS_MAGIC_REF_THING_SIZE);
-    return erts_mk_magic_ref(&hp, &MSO(BIF_P), mbin);
+    hp = HAlloc(process, ERTS_MAGIC_REF_THING_SIZE);
+    return erts_mk_magic_ref(&hp, &MSO(process), mbin);
+}
+
+BIF_RETTYPE erts_internal_counters_new_1(BIF_ALIST_1)
+{
+    return erts_counter_array_new(BIF_P, BIF_ARG_1);
 }
 
 static ERTS_INLINE int get_ref(Eterm ref, CountersRef** pp)
@@ -177,39 +186,49 @@ static ERTS_INLINE Eterm bld_counter(Process* proc, CountersRef* p,
     }
 }
 
-BIF_RETTYPE erts_internal_counters_get_2(BIF_ALIST_2)
+Eterm erts_counter_array_get(Process *process, Eterm arg1, Eterm arg2)
 {
     CountersRef* p;
     erts_atomic64_t* ap;
     erts_aint64_t acc = 0;
     int j;
 
-    if (!get_ref_first_cnt(BIF_ARG_1, BIF_ARG_2, &p, &ap)) {
-        BIF_ERROR(BIF_P, BADARG);
+    if (!get_ref_first_cnt(arg1, arg2, &p, &ap)) {
+        BIF_ERROR(process, BADARG);
     }
     for (j = ATOMICS_PER_COUNTER; j ; --j) {
         acc += erts_atomic64_read_nob(ap);
         ap = (erts_atomic64_t*) ((byte*)ap + ERTS_CACHE_LINE_SIZE);
     }
-    return bld_counter(BIF_P, p, acc);
+    return bld_counter(process, p, acc);
 }
 
-BIF_RETTYPE erts_internal_counters_add_3(BIF_ALIST_3)
+BIF_RETTYPE erts_internal_counters_get_2(BIF_ALIST_2)
+{
+    return erts_counter_array_get(BIF_P, BIF_ARG_1, BIF_ARG_2);
+}
+
+Eterm erts_counter_array_add(Process *process, Eterm arg1, Eterm arg2, Eterm arg3)
 {
     CountersRef* p;
     erts_atomic64_t* ap;
     erts_aint64_t incr, sum;
 
-    if (!get_ref_my_cnt(BIF_ARG_1, BIF_ARG_2, &p, &ap)
-        || !get_incr(p, BIF_ARG_3, &incr)) {
-        BIF_ERROR(BIF_P, BADARG);
+    if (!get_ref_my_cnt(arg1, arg2, &p, &ap)
+        || !get_incr(p, arg3, &incr)) {
+        BIF_ERROR(process, BADARG);
     }
     sum = incr + erts_atomic64_read_nob(ap);
     erts_atomic64_set_nob(ap, sum);
     return am_ok;
 }
 
-BIF_RETTYPE erts_internal_counters_put_3(BIF_ALIST_3)
+BIF_RETTYPE erts_internal_counters_add_3(BIF_ALIST_3)
+{
+    return erts_counter_array_add(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
+}
+
+Eterm erts_counter_array_put(Process *process, Eterm arg1, Eterm arg2, Eterm arg3)
 {
     CountersRef* p;
     erts_atomic64_t* first_ap;
@@ -218,9 +237,9 @@ BIF_RETTYPE erts_internal_counters_put_3(BIF_ALIST_3)
     erts_aint64_t val;
     int j;
 
-    if (!get_ref_first_cnt(BIF_ARG_1, BIF_ARG_2, &p, &first_ap)
-        || !term_to_Sint64(BIF_ARG_3, &val)) {
-        BIF_ERROR(BIF_P, BADARG);
+    if (!get_ref_first_cnt(arg1, arg2, &p, &first_ap)
+        || !term_to_Sint64(arg3, &val)) {
+        BIF_ERROR(process, BADARG);
     }
 
     ap = first_ap;
@@ -235,7 +254,12 @@ BIF_RETTYPE erts_internal_counters_put_3(BIF_ALIST_3)
     return am_ok;
 }
 
-BIF_RETTYPE erts_internal_counters_info_1(BIF_ALIST_1)
+BIF_RETTYPE erts_internal_counters_put_3(BIF_ALIST_3)
+{
+    return erts_counter_array_put(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
+}
+
+Eterm erts_counter_array_info(Process *process, Eterm arg1)
 {
     CountersRef* p;
     Uint hsz = MAP2_SZ;
@@ -243,17 +267,84 @@ BIF_RETTYPE erts_internal_counters_info_1(BIF_ALIST_1)
     UWord memory;
     Eterm sz_val, mem_val;
 
-    if (!get_ref(BIF_ARG_1, &p))
-        BIF_ERROR(BIF_P, BADARG);
+    if (!get_ref(arg1, &p))
+        BIF_ERROR(process, BADARG);
 
-    memory = erts_magic_ref2bin(BIF_ARG_1)->orig_size;
+    memory = erts_magic_ref2bin(arg1)->orig_size;
     erts_bld_uword(NULL, &hsz, p->arity);
     erts_bld_uword(NULL, &hsz, memory);
 
-    hp = HAlloc(BIF_P, hsz);
+    hp = HAlloc(process, hsz);
     sz_val  = erts_bld_uword(&hp, NULL, p->arity);
     mem_val = erts_bld_uword(&hp, NULL, memory);
 
     return MAP2(hp, am_memory, mem_val,
                 am_size, sz_val);
+}
+
+BIF_RETTYPE erts_internal_counters_info_1(BIF_ALIST_1)
+{
+    return erts_counter_array_info(BIF_P, BIF_ARG_1);
+}
+
+
+static int modern_counter_ref(Eterm ref, Eterm *kind, Eterm *raw)
+{
+    Eterm *tuple;
+    if (!is_tuple(ref) || arityval((tuple = tuple_val(ref))[0]) != 2 ||
+        (tuple[1] != am_atomics && tuple[1] != am_write_concurrency))
+        return 0;
+    *kind = tuple[1]; *raw = tuple[2];
+    return 1;
+}
+
+BIF_RETTYPE counter_array_new_list_modern_2(BIF_ALIST_2)
+{
+    Eterm kind = am_atomics, ref;
+    Eterm *hp;
+    if (is_list(BIF_ARG_2) && is_nil(CDR(list_val(BIF_ARG_2))) &&
+        (CAR(list_val(BIF_ARG_2)) == am_atomics ||
+         CAR(list_val(BIF_ARG_2)) == am_write_concurrency)) {
+        kind = CAR(list_val(BIF_ARG_2));
+    } else if (!is_nil(BIF_ARG_2)) {
+        BIF_P->fvalue = am_badopt;
+        BIF_ERROR(BIF_P, BADARG | EXF_HAS_EXT_INFO);
+    }
+    ref = kind == am_atomics ? erts_atomic_array_new(BIF_P, BIF_ARG_1, make_small(1)) :
+                              erts_counter_array_new(BIF_P, BIF_ARG_1);
+    if (is_non_value(ref)) return ref;
+    hp = HAlloc(BIF_P, 3);
+    BIF_RET(TUPLE2(hp, kind, ref));
+}
+
+BIF_RETTYPE counter_array_get_modern_2(BIF_ALIST_2)
+{
+    Eterm kind, raw;
+    if (!modern_counter_ref(BIF_ARG_1, &kind, &raw)) BIF_ERROR(BIF_P, BADARG);
+    return kind == am_atomics ? erts_atomic_array_get(BIF_P, raw, BIF_ARG_2) :
+                                erts_counter_array_get(BIF_P, raw, BIF_ARG_2);
+}
+
+BIF_RETTYPE counter_array_put_modern_3(BIF_ALIST_3)
+{
+    Eterm kind, raw;
+    if (!modern_counter_ref(BIF_ARG_1, &kind, &raw)) BIF_ERROR(BIF_P, BADARG);
+    return kind == am_atomics ? erts_atomic_array_put(BIF_P, raw, BIF_ARG_2, BIF_ARG_3) :
+                                erts_counter_array_put(BIF_P, raw, BIF_ARG_2, BIF_ARG_3);
+}
+
+BIF_RETTYPE counter_array_add_modern_3(BIF_ALIST_3)
+{
+    Eterm kind, raw;
+    if (!modern_counter_ref(BIF_ARG_1, &kind, &raw)) BIF_ERROR(BIF_P, BADARG);
+    return kind == am_atomics ? erts_atomic_array_add(BIF_P, raw, BIF_ARG_2, BIF_ARG_3) :
+                                erts_counter_array_add(BIF_P, raw, BIF_ARG_2, BIF_ARG_3);
+}
+
+BIF_RETTYPE counter_array_info_modern_1(BIF_ALIST_1)
+{
+    Eterm kind, raw;
+    if (!modern_counter_ref(BIF_ARG_1, &kind, &raw)) BIF_ERROR(BIF_P, BADARG);
+    return kind == am_atomics ? erts_atomic_array_info(BIF_P, raw) :
+                                erts_counter_array_info(BIF_P, raw);
 }

@@ -1,6 +1,9 @@
 %% SPDX-License-Identifier: Apache-2.0
 %% Compiler diagnostics and source scanning use explicit host and buffer APIs.
 -module(io).
+%% Explicit native selections coexist with the compiler support functions.
+-export([printable_range/0]).
+
 -export([format/1,format/2,format/3,fwrite/1,fwrite/2,fwrite/3,
          put_chars/1,put_chars/2,put_chars/3,getopts/0,getopts/1,setopts/1,setopts/2,
          scan_erl_form/2,scan_erl_form/3,scan_erl_form/4,columns/0,columns/1,
@@ -61,3 +64,6 @@ columns() -> {error,enotsup}.
 columns(_) -> columns().
 rows() -> {error,enotsup}.
 rows(_) -> rows().
+
+%% Native implementation declarations.
+printable_range() -> erlang:nif_error(undefined).

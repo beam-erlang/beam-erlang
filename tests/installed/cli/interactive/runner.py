@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import time
 
-from support.bytecode import RETURNING_ASSETS, copy_bytecode
+from support.bytecode import RETURNING_ASSETS, STDLIB_ASSETS, copy_bytecode
 from support.files import hidden
 from support.artifacts import artifact, relative as artifact_relative
 from support.process import child_process, run as capture, isolated_environment, check
@@ -22,14 +22,13 @@ from ..scenarios import terminal, provenance
 
 
 CLI_MODULES = {"beam_run_io", "error_handler", "io", "io_lib", "io_lib_pretty", "erl_scan",
-               "binary", "io_lib_format", "io_lib_fread", "records", "string", "unicode",
-               "unicode_util", "lists", "maps"}
+               "io_lib_format", "io_lib_fread", "beam_runtime_string_legacy"}
 INTERACTIVE_MODULES = {"beam_interactive", "shell", "shell_default", "erl_eval", "erl_parse",
-                       "erl_pp", "erl_features", "erl_lint", "erl_expand_records", "dict",
-                       "digraph", "digraph_utils", "erl_anno", "erl_bits", "erl_error",
-                       "erl_internal", "erl_stdlib_errors", "erl_posix_msg", "ets", "eval_bits", "math",
-                       "gb_sets", "gb_trees", "orddict", "ordsets", "otp_internal", "proplists",
-                       "queue", "sets", "sofs", "prim_eval"}
+                       "erl_pp", "erl_features", "erl_lint", "erl_expand_records",
+                         "erl_anno", "erl_bits", "erl_error",
+                       "erl_internal", "erl_stdlib_errors", "erl_posix_msg", "ms_transform", "eval_bits",
+                        "beam_runtime_orddict",  "otp_internal", "beam_runtime_proplists",
+                       "beam_runtime_queue", "beam_runtime_sets",  "prim_eval"}
 
 
 def run(command, cwd, env, status=0, stdin=None, timeout=60):
@@ -52,12 +51,27 @@ def evaluate(prefix, expression, work, env, status=0):
 def language_expression():
     return (
         'F = fun(N) when is_integer(N) -> N + 1 end, 42 = F(41), '
-        '150.0 = 1.5e2, 0.01 = 1.0e-2, 255 = 16#ff, 3.0 = math:sqrt(9), '
+        '150.0 = 1.5e2, 0.01 = 1.0e-2, 255 = 16#ff, 3.0 = beam_math:sqrt(9), '
         'Fac = fun Loop(0) -> 1; Loop(N) -> N * Loop(N-1) end, 120 = Fac(5), '
         '#{answer := 42} = #{answer => F(41)}, <<1,2,3>> = << <<N>> || N <- [1,2,3] >>, '
         '[2,4,6] = [N*2 || <<N>> <= <<1,2,3>>], '
         'caught = try throw(expected) catch throw:expected -> caught after put(after_ran,true) end, '
         'true = erase(after_ran), '
+        'false = beam:module_loaded(ets), false = beam:is_builtin(ets,new,2), '
+        'T = beam_ets:new(interactive_algorithms,[ordered_set]), '
+        'true = beam_ets:insert(T,[{a,1},{b,2},{c,3}]), '
+        'true = beam_lists:member(T,beam_ets:all()), '
+        '6 = beam_ets:foldl(fun({_,N},A) -> A+N end,0,T), '
+        '6 = beam_ets:foldr(fun({_,N},A) -> A+N end,0,T), '
+        'MS = [{\'_\',[],[\'$_\']}], MP = beam_ets:match_spec_compile(MS), '
+        '[{a,1}] = beam_ets:match_spec_run([{a,1}],MP), '
+        '{[_],Cont} = beam_ets:select(T,MS,1), '
+        'Cont = beam_ets:repair_continuation(Cont,MS), '
+        '{[_],_} = beam_ets:select(Cont), true = beam_ets:delete(T), '
+        'Limit = 2, ShellMS = beam_ets:fun2ms(fun({K,N}) when N >= Limit -> K end), '
+        '[b] = beam_ets:match_spec_run([{a,1},{b,2}],beam_ets:match_spec_compile(ShellMS)), '
+        '{\'EXIT\',{badarg,{beam_ets,fun2ms,_}}} = (catch beam_ets:fun2ms(Fac)), '
+        '{error,transform_error} = beam_ets:fun2ms(fun(X) -> beam:display(X) end), '
         'Parent = self(), {Child,Ref} = spawn_monitor(fun() -> Parent ! {answer,F(41)} end), '
         'self() ! preserved, 42 = receive {answer,V} -> V after 3000 -> timeout end, '
         'receive {\'DOWN\',Ref,process,Child,normal} -> ok after 3000 -> error(child_timeout) end, '
@@ -96,16 +110,16 @@ def service_expression(path):
 
 def code_expression(fixture, directory):
     return (
-        'false = erlang:module_loaded(interactive_probe), '
+        'false = beam:module_loaded(interactive_probe), '
         'undef = try interactive_probe:value() catch error:undef -> undef end, '
-        'false = erlang:module_loaded(interactive_probe), '
+        'false = beam:module_loaded(interactive_probe), '
         f'Origin = {binary(fixture)}, '
         '{ok,Bytes} = beam_code:fetch(Origin,interactive_probe,infinity), '
         'ok = beam_code:load(interactive_probe,Bytes,Origin), 42 = interactive_probe:value(), '
-        '{interactive_probe,Origin} = lists:keyfind(interactive_probe,1,persistent_term:get(beam_boot_origins)), '
+        '{interactive_probe,Origin} = beam_lists:keyfind(interactive_probe,1,beam_persistent_term:get(beam_boot_origins)), '
         '{error,#{kind := invalid_data}} = beam_code:load(interactive_probe,<<"bad module">>,<<"bad-origin">>), '
         '42 = interactive_probe:value(), '
-        '{interactive_probe,Origin} = lists:keyfind(interactive_probe,1,persistent_term:get(beam_boot_origins)), '
+        '{interactive_probe,Origin} = beam_lists:keyfind(interactive_probe,1,beam_persistent_term:get(beam_boot_origins)), '
         '{error,#{kind := invalid_data}} = beam_code:fetch(<<"relative.beam">>,interactive_probe,infinity), '
         '{error,#{kind := invalid_data}} = beam_code:fetch(<<Origin/binary,0>>,interactive_probe,infinity), '
         '{error,#{kind := invalid_data}} = beam_code:fetch(<<Origin/binary,255>>,interactive_probe,infinity), '
@@ -236,12 +250,19 @@ def prefix_cases(prefix, fixture, work):
                         'io:put_chars(standard_error,"diagnostic é\\n").', work, env)
     check(out == "value 42 λ 日本語\n".encode() and err == "diagnostic é\n".encode(),
           f"Unicode evaluation I/O: {out!r} {err!r}")
-    for expression in ('1 + .', 'erlang:error(eval_failure).', 'unknown_interactive_helper:missing().',
+    out, err = evaluate(prefix, 'S=beam_trace:session_create(cli_probe,self(),[]), '
+                        'true=beam_trace:session_destroy(S).', work, env)
+    check(not out and not err, 'full profile did not activate tracing')
+    out, err = evaluate(prefix, 'beam_trace:process(invalid_session,self(),true,[]).',
+                        work, env, status=1)
+    check(not out and b'invalid trace session' in err,
+          f'tracing formatter diagnostic missing: {out!r} {err!r}')
+    for expression in ('1 + .', 'beam:error(eval_failure).', 'unknown_interactive_helper:missing().',
                        'compile:forms([]).', 'code:which(erlang).', 'file:read_file("missing").',
                        'os:cmd("must not execute").', 'inet:gethostbyname("localhost").'):
         out, err = evaluate(prefix, expression, work, env, status=1)
         check(not out and err, f"failed evaluation omitted its diagnostic: {expression}")
-    evaluate(prefix, 'erlang:halt(7).', work, env, status=7)
+    evaluate(prefix, 'beam:halt(7).', work, env, status=7)
     collector_case(prefix, work, env)
     split_invalid_shell_case(prefix, work, env)
     for arguments in (["shell"], []):
@@ -253,11 +274,20 @@ def prefix_cases(prefix, fixture, work):
                        stdin=b'X=41.\n\xff\nX+1.\nq().\n')
         check(b"invalid_unicode" in out and re.search(rb"(?:^|\n)(?:\d+> )?42\n", out),
               f"piped shell did not recover after malformed input: {out!r} {err!r}")
+        out, err = run([prefix / "bin/beam", *arguments], work, env, stdin=(
+            b'rd(ms_person,{name,age}).\n'
+            b'beam_ets:fun2ms(fun(X) -> beam:display(X) end).\n'
+            b'Limit=18, MSRecord=beam_ets:fun2ms(fun(#ms_person{name=Name,age=Age}) '
+            b'when Age>=Limit -> Name end).\n'
+            b'[alice]=beam_ets:match_spec_run([{ms_person,alice,25},{ms_person,bob,16}],'
+            b'beam_ets:match_spec_compile(MSRecord)), io:put_chars("record match ok\\n").\nq().\n'))
+        check(b'{error,transform_error}' in out and b'record match ok\n' in out and not err,
+              f"shell match-spec records, diagnostics or recovery failed: {out!r} {err!r}")
     for ebin in (prefix / "lib/beam/runtime/beam/cli/ebin", prefix / "lib/beam/runtime/beam/interactive/ebin"):
         extra = ebin / "unrelated_corrupt.beam"
         extra.write_bytes(b"not bytecode")
         try:
-            out, err = evaluate(prefix, 'false = erlang:module_loaded(unrelated_corrupt).', work, env)
+            out, err = evaluate(prefix, 'false = beam:module_loaded(unrelated_corrupt).', work, env)
             check(not out and not err, "unlisted helper was acquired")
         finally:
             extra.unlink()
@@ -298,10 +328,10 @@ def missing_assets(prefix, fixture, work, env):
     root = prefix / "lib/beam/runtime/beam"
     assets = [root / "cli", root / "interactive",
               prefix / "libexec/beam/erl_child_setup",
-               *(artifact(prefix, "library." + unit + ".shared") for unit in ("file", "network", "zlib"))]
+               *(artifact(prefix, "library." + unit + ".shared") for unit in ("file", "network", "zlib", "tracing"))]
     assets.extend(prefix / relative for relative in RETURNING_ASSETS)
     assets.extend(root.joinpath("interactive/ebin").glob("*.beam"))
-    assets.extend(path for path in root.joinpath("cli/ebin").glob("*.beam") if path.stem not in {"lists", "maps"})
+    assets.extend(path for path in root.joinpath("cli/ebin").glob("*.beam") if path.stem != "beam_runtime_string_legacy")
     for asset in assets:
         with hidden(asset):
             try:
@@ -377,13 +407,13 @@ def main():
         minimal = root / "minimal output prefix"
         (minimal / "bin").mkdir(parents=True)
         (minimal / "lib").mkdir()
-        copy_bytecode(prefix, minimal)
+        copy_bytecode(prefix, minimal, RETURNING_ASSETS + STDLIB_ASSETS)
         shutil.copy2(prefix / "bin/interactive_acceptance", minimal / "bin/interactive_acceptance")
         shutil.copy2(artifact(prefix, "runtime"), minimal / artifact_relative(prefix, "runtime"))
         for name in ("cli", "interactive"):
             relative = Path("lib/beam/runtime/beam") / name
             shutil.copytree(prefix / relative, minimal / relative)
-        expected = set(RETURNING_ASSETS) | {"bin/interactive_acceptance", artifact_relative(prefix, "runtime")} | {
+        expected = set(RETURNING_ASSETS + STDLIB_ASSETS) | {"bin/interactive_acceptance", artifact_relative(prefix, "runtime")} | {
             str(Path("lib/beam/runtime/beam") / name / path.relative_to(prefix / "lib/beam/runtime/beam" / name))
             for name in ("cli", "interactive")
             for path in (prefix / "lib/beam/runtime/beam" / name).rglob("*") if path.is_file()}
@@ -391,7 +421,7 @@ def main():
               "output-only deployment contains extra runtime files")
         isolated = dict(env, PATH=str(root / "empty path"))
         host_case(minimal, fixture, root, isolated, minimal=True)
-        for name in ("lists", "maps"):
+        for name in ("beam_runtime_string_legacy",):
             with hidden(minimal / "lib/beam/runtime/beam/cli/ebin" / f"{name}.beam"):
                 _, err = run([minimal / "bin/interactive_acceptance", minimal, fixture, "minimal"], root, isolated, status=1)
                 check(err, f"missing output-only {name} fallback was ignored")

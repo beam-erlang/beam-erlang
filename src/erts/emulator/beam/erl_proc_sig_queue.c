@@ -48,6 +48,10 @@
 #include "erl_global_literals.h"
 #include "erl_map.h"
 #include "dtrace-wrapper.h"
+#include "beam_process_management.h"
+#include "beam_internal.h"
+
+#include <stdlib.h>
 
 #define ERTS_SIG_REDS_CNT_FACTOR 4
 #define ERTS_PROC_SIG_TRACE_COUNT_LIMIT 200
@@ -208,6 +212,15 @@ typedef struct {
     Eterm *item_extra;
     ErlHeapFragment *extra_hfrag;
 } ErtsProcessInfoSig;
+
+/* This reservation belongs to the owner thread. Signal retirement drops its
+ * native reference; only the owner later releases the allocation. */
+typedef struct {
+    ErtsProcessInfoSig info;
+    void *context;
+    unsigned fields;
+    int submitted;
+} ErtsNativeProcessInfoSig;
 
 typedef struct {
     ErtsNonMsgSignal common;
@@ -594,6 +607,16 @@ destroy_sig_group_leader(ErtsSigGroupLeader *sgl)
 static void
 destroy_process_info_sig(ErtsProcessInfoSig *pis)
 {
+    if (ERTS_PROC_SIG_TYPE(pis->common.tag)
+        == ERTS_SIG_Q_TYPE_NATIVE_PROCESS_INFO) {
+        ErtsNativeProcessInfoSig *native = (ErtsNativeProcessInfoSig *) pis;
+        void *context = native->context;
+        ASSERT(native->submitted && context);
+        native->context = NULL;
+        /* The owner may free the reservation as soon as release returns. */
+        erts_bare_process_inspection_release(context);
+        return;
+    }
     if (pis->extra_hfrag)
         erts_cleanup_offheap(&pis->extra_hfrag->off_heap);
     erts_free(ERTS_ALC_T_SIG_DATA, pis);
@@ -3188,6 +3211,54 @@ erts_proc_sig_send_process_info_request(Process *c_p,
     return res;
 }
 
+beam_status
+erts_bare_process_inspection_prepare(unsigned fields, void *context,
+                                     void **out_signal)
+{
+    ErtsNativeProcessInfoSig *native;
+    if (!context || !out_signal || (fields & ~BEAM_PROCESS_FIELDS_ALL))
+        return BEAM_INVALID_ARGUMENT;
+    native = calloc(1, sizeof(*native));
+    if (!native)
+        return BEAM_OUT_OF_MEMORY;
+    native->info.common.tag = ERTS_PROC_SIG_MAKE_TAG(
+        ERTS_SIG_Q_OP_PROCESS_INFO, ERTS_SIG_Q_TYPE_NATIVE_PROCESS_INFO, 0);
+    native->info.flags = erts_bare_process_inspection_flags(fields);
+    native->context = context;
+    native->fields = fields;
+    *out_signal = native;
+    return BEAM_OK;
+}
+
+void
+erts_bare_process_inspection_discard(void *signal)
+{
+    ErtsNativeProcessInfoSig *native = signal;
+    if (native) {
+        ASSERT(!native->submitted || !native->context);
+        free(native);
+    }
+}
+
+void
+erts_bare_process_inspection_send(Eterm target, void *signal)
+{
+    ErtsNativeProcessInfoSig *native = signal;
+    ASSERT(native && !native->submitted && native->context);
+    ASSERT(is_internal_pid(target));
+    native->submitted = 1;
+    erts_bare_process_inspection_retain(native->context);
+    if (proc_queue_signal(NULL, am_system, target, (ErtsSignal *)native,
+                          0, ERTS_SIG_Q_OP_PROCESS_INFO)) {
+        (void) maybe_elevate_sig_handling_prio(NULL, -1, target);
+    }
+    else {
+        erts_bare_process_inspection_result(native->context,
+                                            BEAM_NOT_FOUND, NULL);
+        destroy_process_info_sig(&native->info);
+    }
+}
+
 void
 erts_proc_sig_send_sync_suspend(Process *c_p, Eterm to, Eterm tag, Eterm reply)
 {
@@ -5370,14 +5441,24 @@ handle_process_info(Process *c_p, ErtsSigRecvTracing *tracing,
         remove_nm_sig(c_p, sig, next_nm_sig);
     }
 
-    rp = erts_proc_lookup(pisig->requester);
-    ASSERT(c_p != rp);
-    if (rp) {
+    if (ERTS_PROC_SIG_TYPE(pisig->common.tag)
+        == ERTS_SIG_Q_TYPE_NATIVE_PROCESS_INFO) {
+        ErtsNativeProcessInfoSig *native = (ErtsNativeProcessInfoSig *) pisig;
+        beam_process_observation observation;
+        beam_status status = !is_alive ? BEAM_NOT_FOUND :
+            erts_bare_stop_requested() ? BEAM_STOPPED :
+            erts_bare_process_observe(c_p, native->fields, &observation, &reds);
+        erts_bare_process_inspection_result(native->context, status,
+                                             status == BEAM_OK ? &observation : NULL);
+    }
+    else if ((rp = erts_proc_lookup(pisig->requester)) != NULL) {
         Eterm msg, res, ref, *hp;
         ErtsProcLocks locks = 0;
         ErtsHeapFactory hfact;
         ErtsMessage *mp;
         Uint reserve_size = 3 + sizeof(pisig->oref_thing)/sizeof(Eterm);
+
+        ASSERT(c_p != rp);
 
         if (!is_alive) {
             ErlOffHeap *ohp;
@@ -7691,8 +7772,12 @@ erts_proc_sig_signal_size(ErtsSignal *sig)
 
     case ERTS_SIG_Q_OP_PROCESS_INFO: {
         ErtsProcessInfoSig *pisig = (ErtsProcessInfoSig *) sig;
-        size = sizeof(ErtsProcessInfoSig);
-        size += (pisig->len - 1) * sizeof(int);
+        if (type == ERTS_SIG_Q_TYPE_NATIVE_PROCESS_INFO)
+            size = sizeof(ErtsNativeProcessInfoSig);
+        else {
+            size = sizeof(ErtsProcessInfoSig);
+            size += (pisig->len - 1) * sizeof(int);
+        }
         break;
     }
 

@@ -1,6 +1,8 @@
 # Each component owns its bytecode/native deployment recipe.
 add_subdirectory(support)
+add_subdirectory(runtime_support)
 add_subdirectory(library)
+add_subdirectory(stdlib)
 add_subdirectory(boot)
 add_subdirectory(services)
 add_subdirectory(file)
@@ -15,7 +17,7 @@ add_subdirectory(run)
 add_subdirectory(interactive)
 
 # Ordinary files outside the atomic BEAM component units.
-set(BEAM_SERVICE_MODULES ${BEAM_ARCHIVE_MODULES} erl_tracer)
+set(BEAM_SERVICE_MODULES ${BEAM_ARCHIVE_MODULES})
 set(BEAM_COMPONENT_SERVICE_MODULES zlib)
 # This records deployment availability, not activation: archive callers still
 # select public zlib, and file-backed archives additionally select the file unit.
@@ -31,15 +33,22 @@ foreach(_required IN LISTS BEAM_ARCHIVE_FILE_REQUIRED_MODULES)
 endforeach()
 set(BEAM_INSTALLED_MODULES)
 set(BEAM_INSTALLED_BEAM_FILES)
-foreach(_target IN ITEMS beam_archive_artifacts beam_tracing_artifacts)
+foreach(_target IN ITEMS beam_archive_artifacts)
     get_target_property(_modules ${_target} BEAM_INVENTORY_MODULES)
     get_target_property(_files ${_target} BEAM_INVENTORY_FILES)
     list(APPEND BEAM_INSTALLED_MODULES ${_modules})
     list(APPEND BEAM_INSTALLED_BEAM_FILES ${_files})
 endforeach()
 set(_beam_seen_modules)
-foreach(_module IN LISTS BEAM_INSTALLED_MODULES BEAM_BASE_MODULES
+set(_beam_shared_collection_modules)
+foreach(_module IN LISTS BEAM_INSTALLED_MODULES BEAM_BASE_MODULES BEAM_STDLIB_MODULES
         BEAM_BOOT_MODULES BEAM_SERVICES_MODULES BEAM_FILE_COMPONENT_MODULES BEAM_NETWORK_COMPONENT_MODULES)
+    if(_module IN_LIST _beam_seen_modules AND _module MATCHES "^beam_(lists|maps)$"
+            AND _module IN_LIST BEAM_BASE_MODULES AND _module IN_LIST BEAM_NETWORK_COMPONENT_MODULES
+            AND NOT _module IN_LIST _beam_shared_collection_modules)
+        list(APPEND _beam_shared_collection_modules "${_module}")
+        continue() # Same verified producer, partitioned explicitly by the host.
+    endif()
     if(_module IN_LIST _beam_seen_modules OR _module IN_LIST BEAM_CORE_MODULES)
         message(FATAL_ERROR "Duplicate or core BEAM component module: ${_module}")
     endif()
@@ -47,7 +56,7 @@ foreach(_module IN LISTS BEAM_INSTALLED_MODULES BEAM_BASE_MODULES
 endforeach()
 
 add_custom_target(beam_service_artifacts)
-add_dependencies(beam_service_artifacts beam_archive_artifacts beam_tracing_artifacts)
+add_dependencies(beam_service_artifacts beam_archive_artifacts)
 string(JOIN "\n" _manifest ${BEAM_INSTALLED_MODULES})
 set(_ordinary_root "${CMAKE_BINARY_DIR}/lib/beam/runtime/beam")
 file(MAKE_DIRECTORY "${_ordinary_root}")
@@ -110,7 +119,7 @@ set(_sdk_inventories "${_bytecode_include}/inventories.c")
 add_custom_command(OUTPUT "${_sdk_inventories}"
     COMMAND ${CMAKE_COMMAND} "-DINPUT_DIR=${_bytecode_include}" "-DOUTPUT=${_sdk_inventories}"
         -P "${CMAKE_SOURCE_DIR}/cmake/GenerateSDKInventories.cmake"
-    DEPENDS beam_base_inventory beam_boot_inventory beam_services_inventory
+    DEPENDS beam_base_inventory beam_boot_inventory beam_services_inventory beam_stdlib_inventory
         beam_startup_inventory beam_host_inventory beam_output_inventory beam_code_inventory
         "${_bytecode_include}/beam_base_inventory.inc"
         "${_bytecode_include}/beam_boot_inventory.inc"
@@ -119,6 +128,7 @@ add_custom_command(OUTPUT "${_sdk_inventories}"
         "${_bytecode_include}/beam_host_inventory.inc"
         "${_bytecode_include}/beam_output_inventory.inc"
         "${_bytecode_include}/beam_code_inventory.inc"
+        "${_bytecode_include}/beam_stdlib_inventory.inc"
         "${CMAKE_SOURCE_DIR}/cmake/GenerateSDKInventories.cmake" VERBATIM)
 add_library(beam_sdk_support INTERFACE)
 add_library(BEAM::SDKSupport ALIAS beam_sdk_support)
@@ -140,9 +150,9 @@ target_link_libraries(beam_cli_recipe PRIVATE BEAM::SDKSupport)
 add_custom_target(beam_run ALL)
 add_dependencies(beam_run beam_host_artifact beam_service_artifacts beam_compiler_tooling
     beam_cli_support beam_run_support beam_interactive_support
-    beam_file_component beam_network_component beam_zlib_component beam_erl_tracer_nif
-    beam_verify_base_artifacts beam_base_inventory beam_boot_inventory beam_services_inventory)
-add_dependencies(beam_cli_recipe beam_base_inventory beam_boot_inventory beam_services_inventory)
+    beam_file_component beam_network_component beam_zlib_component beam_tracing_component
+    beam_verify_base_artifacts beam_base_inventory beam_boot_inventory beam_services_inventory beam_stdlib_inventory)
+add_dependencies(beam_cli_recipe beam_base_inventory beam_boot_inventory beam_services_inventory beam_stdlib_inventory)
 
 add_custom_target(beam_refresh_native_artifacts
     COMMAND ${CMAKE_COMMAND}

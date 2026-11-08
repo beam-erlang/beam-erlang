@@ -225,7 +225,9 @@ get_command(Prompt, Eval, Bs, RT, FT, Ds) ->
                           LocalFunFixer = fun F([{'fun',Anno}=A,{atom,_,Func}=B,{'/',_}=C,{integer,_,Arity}=D| Rest],Acc) ->
                               case erl_internal:bif(Func, Arity) of
                                   true ->
-                                      F(Rest, [D,C,B,{':',Anno},{atom,Anno,'erlang'},A | Acc]);
+                                      %% The evaluator's target profile owns
+                                      %% the public auto-import destination.
+                                      F(Rest, [D,C,B,A | Acc]);
                                   false ->
                                       F(Rest, [D,C,B,{':',Anno},{atom,Anno,'shell_default'},A | Acc])
                               end;
@@ -907,14 +909,72 @@ expand_records([], E0) ->
     E0;
 expand_records(UsedRecords, E0) ->
     A = erl_anno:new(1),
-    E = prep_rec(E0),
+    E = record_source_calls(prep_rec(E0), body),
     RecordDefs = [{attribute,A,module,shell_default}] ++
-                 [Def || {_Name,Def} <- UsedRecords],
+                 [record_source_calls(Def,body) || {_Name,Def} <- UsedRecords],
     Forms0 = RecordDefs ++ [{function,A,foo,0,[{clause,A,[],[],[E]}]}],
     Forms = erl_expand_records:module(Forms0, [strict_record_tests,
                                                expand_inits]),
     {function,A,foo,0,[{clause,A,[],[],[NE]}]} = lists:last(Forms),
-    prep_rec(NE).
+    prep_rec(record_expanded_calls(NE)).
+
+%% Keep source calls distinct from tuple operations introduced by record
+%% expansion. In particular, expansion must not qualify a source auto-import
+%% with the compiler host's module name.
+record_source_calls({value,_,_}=T, _) -> T;
+record_source_calls({Tag,_,_}=T, _)
+  when Tag =:= atom; Tag =:= var; Tag =:= integer; Tag =:= float;
+       Tag =:= char; Tag =:= string -> T;
+record_source_calls({nil,_}=T, _) -> T;
+record_source_calls({clause,A,Ps,Gs,Body}, _) ->
+    {clause,A,record_source_calls(Ps,guard),record_source_calls(Gs,guard),
+     record_source_calls(Body,body)};
+record_source_calls({call,A,{atom,_,record_info}=F,Args}, Mode) ->
+    {call,A,F,record_source_calls(Args,Mode)};
+record_source_calls({call,A,{atom,_,is_record}=F,[_,{atom,_,_}]=Args}, guard) ->
+    {call,A,F,record_source_calls(Args,guard)};
+record_source_calls({'fun',A,{function,F,Arity}}, _) ->
+    {call,A,{remote,A,{atom,A,'$beam_record_source'},{atom,A,call}},
+     [{tuple,A,[{atom,A,fun_reference},{atom,A,F},{integer,A,Arity}]}]};
+record_source_calls({call,A,Callee,Args}, Mode) ->
+    Encoded = case Callee of
+        {atom,_,_} -> {tuple,A,[{atom,A,local},Callee]};
+        {remote,R,M,F} ->
+            {tuple,R,[{atom,R,remote},record_source_calls(M,Mode),record_source_calls(F,Mode)]};
+        _ -> {tuple,A,[{atom,A,fun_call},record_source_calls(Callee,Mode)]}
+    end,
+    {call,A,{remote,A,{atom,A,'$beam_record_source'},{atom,A,call}},
+     [Encoded|record_source_calls(Args,Mode)]};
+record_source_calls(T, Mode) when is_tuple(T) ->
+    list_to_tuple([record_source_calls(E,Mode) || E <- tuple_to_list(T)]);
+record_source_calls(L, Mode) when is_list(L) ->
+    [record_source_calls(E,Mode) || E <- L];
+record_source_calls(T, _) -> T.
+
+record_expanded_calls({value,_,_}=T) -> T;
+record_expanded_calls({Tag,_,_}=T)
+  when Tag =:= atom; Tag =:= var; Tag =:= integer; Tag =:= float;
+       Tag =:= char; Tag =:= string -> T;
+record_expanded_calls({nil,_}=T) -> T;
+record_expanded_calls({call,A,{remote,_,{atom,_,'$beam_record_source'},{atom,_,call}},
+                       [{tuple,_,[{atom,_,fun_reference},{atom,_,F},{integer,_,Arity}]}]}) ->
+    {'fun',A,{function,F,Arity}};
+record_expanded_calls({call,A,{remote,_,{atom,_,'$beam_record_source'},{atom,_,call}},
+                       [Encoded|Args]}) ->
+    Callee = case Encoded of
+        {tuple,_,[{atom,_,local},F]} -> F;
+        {tuple,R,[{atom,_,remote},M,F]} ->
+            {remote,R,record_expanded_calls(M),record_expanded_calls(F)};
+        {tuple,_,[{atom,_,fun_call},F]} -> record_expanded_calls(F)
+    end,
+    {call,A,Callee,record_expanded_calls(Args)};
+record_expanded_calls({call,A,{remote,_,{atom,_,erlang},{atom,_,F}},Args})
+  when F =:= element; F =:= setelement; F =:= is_record; F =:= error ->
+    {beam_record_call,A,F,record_expanded_calls(Args)};
+record_expanded_calls(T) when is_tuple(T) ->
+    list_to_tuple([record_expanded_calls(E) || E <- tuple_to_list(T)]);
+record_expanded_calls(L) when is_list(L) -> [record_expanded_calls(E) || E <- L];
+record_expanded_calls(T) -> T.
 
 prep_rec({value,_CommandN,_V}=Value) ->
     %% erl_expand_records cannot handle the history expansion {value,_,_}.

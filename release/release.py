@@ -29,6 +29,11 @@ RELEASE_VERSION = re.compile(
     r'(?:-preview\.(?P<preview>[1-9][0-9]*))?')
 PACKAGE_TESTS = {'package-commands', 'package-builds', 'package-projects', 'package-tasks'}
 OTP_TESTS = set('installed-sdk-smoke installed-sdk-boundary otp-native-public-boundary otp-host-public-boundary otp-bootstrap-integrity source-built-compiler otp-native-activation otp-host-preparation otp-terminal-lifecycle otp-boot-observer otp-compatibility-transfer initial-product isolated-product otp-command-policy otp-development-support otp-et-event-file otp-installed-tree otp-standard-release'.split())
+OTP_TESTS.add('otp-ei-interop')
+OTP_TESTS.update('upstream-' + suite for suite in (
+    'ei_encode_SUITE', 'ei_decode_SUITE', 'ei_decode_encode_SUITE', 'ei_format_SUITE',
+    'ei_print_SUITE', 'ei_connect_SUITE', 'ei_accept_SUITE', 'ei_tmo_SUITE',
+    'ei_global_SUITE', 'erl_call_SUITE', 'port_call_SUITE'))
 _vm_spec = importlib.util.spec_from_file_location('beam_vm_manifest', ROOT / 'tests/vm/common_test/manifest.py')
 _vm_manifest = importlib.util.module_from_spec(_vm_spec)
 exec(compile((ROOT / 'tests/vm/common_test/manifest.py').read_text(), _vm_spec.origin, 'exec'), _vm_manifest.__dict__)
@@ -277,8 +282,7 @@ def stage_runtime_notices(notices):
     shutil.copy2(ROOT / 'AUTHORS', notices / 'AUTHORS')
     shutil.copytree(ROOT / 'LICENSES', notices / 'LICENSES')
     for relative in ['emulator/asmjit/LICENSE.md', 'emulator/ryu/LICENSE-Apache2',
-                     'emulator/ryu/LICENSE-Boost', 'emulator/ryu/xcharconv_ryu.h.sha.license',
-                     'emulator/pcre/LICENCE']:
+                     'emulator/ryu/LICENSE-Boost', 'emulator/ryu/xcharconv_ryu.h.sha.license']:
         target = notices / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'src/erts' / relative, target)

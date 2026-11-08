@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <beam/beam.h>
+#include <beam/process.h>
+#include "builtin_bindings.h"
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -150,6 +152,8 @@ int main(int argc, char **argv)
     beam_module_spec preload = {"process_root", {bytes, (size_t)size}, "copied:process-root"};
     beam_composition_options spec = {.struct_size = sizeof(spec),
         .preload_count = 1, .preloads = &preload,
+        .builtin_bindings = beam_test_process_bindings,
+        .builtin_binding_count = BEAM_TEST_PROCESS_BINDING_COUNT,
         .native_admission = BEAM_NATIVE_NIFS | BEAM_NATIVE_DRIVERS | BEAM_NATIVE_PORTS | BEAM_NATIVE_DISTRIBUTION};
     check(beam_composition_prepare(&spec, &composition, &error) == BEAM_OK, error.message);
     options.composition = composition;
@@ -201,13 +205,28 @@ int main(int argc, char **argv)
     memset(arguments, 0, sizeof(arguments));
     memset(module, 0, sizeof(module)); memset(function, 0, sizeof(function));
     check(threads() == before, "initialization starts no workers");
-    check(beam_vm_load(vm, (beam_bytes){bytes, (size_t)size}) == BEAM_ALREADY_LOADED,
+    check(beam_module_load(vm, (beam_bytes){bytes, (size_t)size}) == BEAM_ALREADY_LOADED,
           "composition staged the root before execution");
     free(bytes);
     check(beam_vm_set_host_handler(vm, ready, NULL) == BEAM_OK, "register root callback");
     /* Retain the start-and-enter convenience path alongside staged startup. */
     if (requested != 252 && requested != 254 && requested != 7) {
         check(beam_vm_start(vm, &error) == BEAM_OK, "start with suspended root");
+        beam_scheduler_snapshot scheduler_snapshot = {0};
+        beam_process_list process_list = {0};
+        beam_process_snapshot process_snapshot = {0};
+        beam_process_query query;
+        beam_process_spawn_options spawn_options;
+        BeamPid pid;
+        beam_process_query_init(&query);
+        beam_process_spawn_options_init(&spawn_options);
+        beam_enif_set_pid_undefined(&pid);
+        check(beam_scheduler_inspect_all(vm, &scheduler_snapshot) == BEAM_UNSUPPORTED &&
+              beam_process_list_pids(vm, &process_list) == BEAM_UNSUPPORTED &&
+              beam_process_inspect(vm, &pid, &query, &process_snapshot) == BEAM_UNSUPPORTED &&
+              beam_process_spawn(vm, "process_root", "setup", NULL, 0, &spawn_options,
+                                 &pid, NULL) == BEAM_UNSUPPORTED,
+              "management observations and native spawn exclude process-owned execution");
         check(beam_vm_call_begin(vm, "process_root", "main", (beam_bytes){NULL,0}) == BEAM_UNSUPPORTED,
               "staged process-owned startup excludes asynchronous calls");
         const unsigned char nil[] = {131,106};

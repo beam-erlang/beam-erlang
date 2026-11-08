@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define _GNU_SOURCE
 #include <beam/beam.h>
+#include <beam/process.h>
 #include <dirent.h>
 #include <fenv.h>
 #include <fcntl.h>
@@ -13,6 +14,8 @@
 #include <unistd.h>
 #include "module.h"
 #include "fixtures.h"
+#include "support.h"
+#include "builtin_bindings.h"
 #ifdef __APPLE__
 #include <errno.h>
 #include <limits.h>
@@ -148,15 +151,37 @@ static void *wrong_thread(void *arg)
     beam_result result = {0};
     beam_module_info module = {sizeof(module), 0};
     beam_module_list modules = {0};
+    beam_module_query query;
+    beam_module_snapshot snapshot = {0};
+    beam_module_name name = {"bare_example", sizeof("bare_example") - 1};
+    beam_module_query_init(&query);
     beam_scheduler_info schedulers = {sizeof(schedulers), 0};
+    beam_scheduler_snapshot scheduler_snapshot = {0};
+    beam_process_query process_query;
+    beam_process_spawn_options spawn_options;
+    beam_process_list processes = {0};
+    beam_process_snapshot process_snapshot = {0};
+    BeamPid pid;
+    beam_enif_set_pid_undefined(&pid);
+    beam_process_query_init(&process_query);
+    beam_process_spawn_options_init(&spawn_options);
     int *ok = arg, status;
     *ok = beam_vm_call(vm, "bare_example", "answer", no_args, &result) == BEAM_WRONG_THREAD &&
-          beam_vm_load(vm, (beam_bytes){bare_module, sizeof bare_module}) == BEAM_WRONG_THREAD &&
-          beam_vm_get_module(vm, "bare_example", &module) == BEAM_WRONG_THREAD &&
-          beam_vm_list_modules(vm, &modules) == BEAM_WRONG_THREAD &&
-          beam_vm_unload(vm, "bare_example", NULL) == BEAM_WRONG_THREAD &&
-          beam_vm_get_schedulers(vm, &schedulers) == BEAM_WRONG_THREAD &&
-          beam_vm_set_schedulers_online(vm, 1, 1, NULL) == BEAM_WRONG_THREAD &&
+          beam_module_load(vm, (beam_bytes){bare_module, sizeof bare_module}) == BEAM_WRONG_THREAD &&
+          beam_module_get_info(vm, "bare_example", &module) == BEAM_WRONG_THREAD &&
+          beam_module_list_names(vm, &modules) == BEAM_WRONG_THREAD &&
+          beam_module_unload(vm, "bare_example", NULL) == BEAM_WRONG_THREAD &&
+          beam_module_inspect(vm, name, &query, &snapshot) == BEAM_WRONG_THREAD &&
+          beam_module_inspect_all(vm, &query, &snapshot) == BEAM_WRONG_THREAD &&
+          beam_module_replace(vm, (beam_bytes){bare_module, sizeof bare_module}, NULL) == BEAM_WRONG_THREAD &&
+          beam_module_soft_purge(vm, name, NULL) == BEAM_WRONG_THREAD &&
+          beam_module_delete(vm, name, NULL) == BEAM_WRONG_THREAD &&
+          beam_scheduler_get_info(vm, &schedulers) == BEAM_WRONG_THREAD &&
+          beam_scheduler_set_online(vm, 1, 1, NULL) == BEAM_WRONG_THREAD &&
+          beam_scheduler_inspect_all(vm, &scheduler_snapshot) == BEAM_WRONG_THREAD &&
+          beam_process_list_pids(vm, &processes) == BEAM_WRONG_THREAD &&
+          beam_process_inspect(vm, &pid, &process_query, &process_snapshot) == BEAM_WRONG_THREAD &&
+          beam_process_spawn(vm, "bare_example", "answer", NULL, 0, &spawn_options, &pid, NULL) == BEAM_WRONG_THREAD &&
           beam_vm_stop(vm, &status) == BEAM_WRONG_THREAD &&
           beam_vm_start(vm, NULL) == BEAM_WRONG_THREAD &&
           beam_vm_terminate(&vm, &status) == BEAM_WRONG_THREAD &&
@@ -212,11 +237,20 @@ int main(int argc, char **argv)
     CHECK(beam_vm_init(runtime_system, NULL, NULL, NULL) == BEAM_INVALID_ARGUMENT);
     CHECK(pthread_create(&wrong, NULL, wrong_create_thread, &thread_ok) == 0);
     CHECK(pthread_join(wrong, NULL) == 0 && thread_ok);
+    beam_composition *state_composition = NULL;
+    const beam_composition_options state_selection = {.struct_size=sizeof state_selection,
+        .builtin_binding_count=BEAM_TEST_MODERN_BINDING_COUNT,.builtin_bindings=beam_test_modern_bindings};
+    OK(beam_composition_prepare(&state_selection, &state_composition, NULL));
+    options.composition = state_composition;
     OK(beam_vm_init(runtime_system, &options, &vm, NULL));
+    beam_composition_release(&state_composition);
+    OK(beam_module_load(vm, (beam_bytes){installed_beam_atomics, sizeof installed_beam_atomics}));
+    OK(beam_module_load(vm, (beam_bytes){installed_beam_counters, sizeof installed_beam_counters}));
+
     CHECK(fegetround() == round_before);
     CHECK(beam_vm_init(runtime_system, NULL, &other, NULL) == BEAM_ALREADY_STARTED);
-    OK(beam_vm_load(vm, (beam_bytes){bare_module, sizeof bare_module}));
-    OK(beam_vm_load(vm, (beam_bytes){bare_fixture, sizeof bare_fixture}));
+    OK(beam_module_load(vm, (beam_bytes){bare_module, sizeof bare_module}));
+    OK(beam_module_load(vm, (beam_bytes){bare_fixture, sizeof bare_fixture}));
     OK(beam_vm_start(vm, NULL));
     OK(beam_vm_call(vm, "bare_example", "answer", no_args, &saved));
     CHECK(small_result(&saved, 42));
@@ -233,7 +267,7 @@ int main(int argc, char **argv)
         if (!strcmp(mode, "background-invalid-call"))
             CHECK(beam_vm_call(vm, NULL, NULL, (beam_bytes){NULL, 0}, NULL) == BEAM_STOPPED);
         else if (!strcmp(mode, "background-invalid-load"))
-            CHECK(beam_vm_load(vm, (beam_bytes){NULL, 0}) == BEAM_STOPPED);
+            CHECK(beam_module_load(vm, (beam_bytes){NULL, 0}) == BEAM_STOPPED);
         else
             CHECK(beam_vm_call(vm, "bare_example", "answer", no_args, &r) == BEAM_STOPPED);
         CHECK(entries("/proc/self/task") == threads);
@@ -278,14 +312,14 @@ int main(int argc, char **argv)
         CHECK(check_exception("bare_fixture", "max_heap_exit", "exit", "killed") == 0);
         CHECK(check_exception("missing_module", "absent", "error", "undef") == 0);
         CHECK(check_exception("bare_fixture", "absent", "error", "undef") == 0);
-        CHECK(beam_vm_load(vm, (beam_bytes){bare_module, sizeof bare_module}) == BEAM_ALREADY_LOADED);
-        CHECK(beam_vm_load(vm, (beam_bytes){bare_module, 20}) == BEAM_INVALID_BEAM);
-        CHECK(beam_vm_load(vm, (beam_bytes){bare_on_load, sizeof bare_on_load}) == BEAM_UNSUPPORTED);
+        CHECK(beam_module_load(vm, (beam_bytes){bare_module, sizeof bare_module}) == BEAM_ALREADY_LOADED);
+        CHECK(beam_module_load(vm, (beam_bytes){bare_module, 20}) == BEAM_INVALID_BEAM);
+        CHECK(beam_module_load(vm, (beam_bytes){bare_on_load, sizeof bare_on_load}) == BEAM_UNSUPPORTED);
         CHECK(beam_vm_call(vm, "bare_fixture", "echo", (beam_bytes){improper, sizeof improper}, &r) == BEAM_INVALID_TERM);
         CHECK(beam_vm_call(vm, "bare_fixture", "echo", (beam_bytes){trailing, sizeof trailing}, &r) == BEAM_INVALID_TERM);
         CHECK(beam_vm_call(vm, "bare_fixture", "echo", (beam_bytes){malformed, sizeof malformed}, &r) == BEAM_INVALID_TERM);
         CHECK(beam_vm_call(vm, "bare_fixture", "echo", (beam_bytes){compressed, sizeof compressed}, &r) == BEAM_INVALID_TERM);
-        OK(beam_vm_load(vm, (beam_bytes){bare_second, sizeof bare_second}));
+        OK(beam_module_load(vm, (beam_bytes){bare_second, sizeof bare_second}));
         OK(beam_vm_call(vm, "bare_fixture", "cross_module", no_args, &r));
         CHECK(small_result(&r, 43));
         beam_result_release(&r);
@@ -312,9 +346,9 @@ int main(int argc, char **argv)
     CHECK(small_result(&saved, 42));
     beam_result_release(&saved);
     CHECK(beam_vm_call(vm, "bare_example", "answer", no_args, &r) == BEAM_STOPPED);
-    CHECK(beam_vm_load(vm, (beam_bytes){bare_module, sizeof bare_module}) == BEAM_STOPPED);
+    CHECK(beam_module_load(vm, (beam_bytes){bare_module, sizeof bare_module}) == BEAM_STOPPED);
     CHECK(beam_vm_call(vm, NULL, NULL, (beam_bytes){NULL, 0}, NULL) == BEAM_STOPPED);
-    CHECK(beam_vm_load(vm, (beam_bytes){NULL, 0}) == BEAM_STOPPED);
+    CHECK(beam_module_load(vm, (beam_bytes){NULL, 0}) == BEAM_STOPPED);
     CHECK(beam_vm_init(runtime_system, NULL, &other, NULL) == BEAM_ALREADY_STARTED);
     OK(beam_vm_terminate(&vm, &code));
     CHECK(vm == NULL);

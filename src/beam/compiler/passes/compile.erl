@@ -577,6 +577,7 @@ abstr_passes(AbstrStatus) ->
                  {iff,beam_debug_info,?pass(beam_debug_info)}]},
          {iff,'dcover',{src_listing,"cover"}},
 
+         ?pass(native_calls),
          ?pass(expand_records),
          {iff,'dexp',{listing,"expand"}},
          {iff,'E',?pass(legalize_vars)},
@@ -896,7 +897,7 @@ add_default_base(St, Forms) ->
     end.
 
 lint_module(Code, St) ->
-    case erl_lint:module(Code, St#compile.ifile, St#compile.options) of
+    case erl_lint:module(native_lint_forms(Code, St#compile.options), St#compile.ifile, St#compile.options) of
 	{ok,Ws} ->
 	    %% Insert name of module as base name, if needed. This is
 	    %% for compile:forms to work with listing files.
@@ -1285,3 +1286,8 @@ validate_tooling_options(Input, Options) ->
             false -> ok
         end
     end,Options++SourceOptions).
+
+-include("beam_native_calls.hrl").
+-include("beam_native_contracts.hrl").
+
+-include("beam_native_eval.hrl").

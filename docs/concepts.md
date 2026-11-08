@@ -16,8 +16,9 @@ to its host. It is not a security sandbox for untrusted Erlang or native code.
 
 | Layer | What supplies it |
 | --- | --- |
-| Core | Nine modules embedded in `libbeam`, with the VM's core processes and mechanisms. |
-| Modern base library | Seven ordinary modules explicitly supplied from the installed base inventory. |
+| Core | Six modules embedded in `libbeam`, with the VM's core processes and mechanisms. |
+| Modern base library | Ordinary modules explicitly supplied from the installed base inventory, with explicit native bindings where required. Byte, collection, text, term-table, array and persistent-store functions include native operations and ordinary Erlang helpers. |
+| ETS | The same 51 native contracts bind to `beam_ets` in modern recipes or `ets` in OTP/compiler recipes. The public ordinary `beam_ets` facade comes from the base inventory. Native-only hosts may supply bindings without module code. |
 | Boot and service support | Ordinary modules selected by the host; supplying them alone enables no service. |
 | Native components | Separately selected file, network and zlib libraries with their own bytecode and native implementations. |
 | Program and host code | Modules, callbacks and other explicit inputs supplied by a command or embedding application. |

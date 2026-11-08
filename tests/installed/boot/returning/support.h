@@ -4,6 +4,7 @@
 #include <beam/beam.h>
 #include <beam/boot.h>
 #include <beam/native.h>
+#include "builtin_bindings.h"
 enum { TEST_OUTPUT=1, TEST_CODE=2, TEST_ZLIB=4, TEST_FILE=8, TEST_SOCKET=16, TEST_PROGRAM=32 };
 #include "etf.h"
 #include "host_observe.h"

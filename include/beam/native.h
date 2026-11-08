@@ -2,6 +2,8 @@
 #ifndef BEAM_NATIVE_H
 #define BEAM_NATIVE_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -10,6 +12,13 @@ extern "C" {
 /* Valid from native callbacks throughout the current VM lifetime, including
  * quiescent destruction. Querying never pumps or reenters the VM. */
 int beam_native_stop_requested(void);
+/* Check the current native stack against the VM's authoritative bound.
+ * Valid synchronously in ordinary or dirty scheduler NIF callbacks and their
+ * recursive C calls on that thread. Returns 1 for at least reserve_bytes of
+ * space, 0 for insufficient space, or -1 outside an eligible scheduler context
+ * or without a known bound. Allocates nothing, yields nowhere and does not
+ * reenter the VM. No pointer or exact usable-stack-size contract is exposed. */
+int beam_native_stack_has_space(size_t reserve_bytes);
 /* Copy the first cleanup diagnostic without replacing the terminal outcome.
  * Thread-safe within native callbacks; message must be NUL-terminated and is
  * truncated to the report capacity. This does not request shutdown. */

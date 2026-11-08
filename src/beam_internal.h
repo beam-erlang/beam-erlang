@@ -4,6 +4,7 @@
 
 /* Private interface between the C API implementation and ERTS. Not installed. */
 #include <beam/beam.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,6 +14,7 @@ extern int erts_bare_mode;
 extern int erts_bare_destroying;
 void erts_bare_init(const beam_vm_options *options);
 beam_status erts_bare_start(const beam_entry *entry);
+beam_status erts_bare_validate_system_workers(void);
 int erts_vm_process_owned(void);
 int erts_vm_native_admitted(unsigned permission);
 int erts_vm_process_policy(unsigned policy);
@@ -21,7 +23,10 @@ const char *erts_vm_program_name(void);
 int erts_vm_filename_utf8(void);
 /* Immutable VM-owned composition inventory; no acquisition or host callbacks. */
 size_t erts_vm_preloads(const beam_module_spec **modules);
+const char *erts_vm_default_tracer_module(void);
+const beam_system_worker_entry *erts_vm_system_worker_entry(beam_system_worker worker);
 size_t erts_vm_builtin_nifs(const beam_builtin_nif **entries);
+int erts_vm_module_has_nif_selection(uintptr_t module);
 size_t erts_vm_builtin_drivers(const beam_builtin_driver **entries);
 size_t erts_vm_embedded_dependencies(const beam_embedded_dependency **entries);
 void erts_vm_native_init_failed(const char *kind, const char *name);
@@ -35,6 +40,8 @@ beam_status erts_bare_get_module(const char *name, int initial,
 beam_status erts_bare_list_modules(int initial, beam_module_list *out);
 beam_status erts_bare_unload_module(const char *name, int initial);
 void erts_bare_get_schedulers(beam_scheduler_info *out);
+/* Scheduler-side copy into owner-allocated arrays with exact native counts. */
+beam_status erts_bare_inspect_schedulers(beam_scheduler_snapshot *snapshot);
 beam_status erts_bare_set_schedulers_online(unsigned normal, unsigned dirty,
                                            void (*complete)(void *, beam_status),
                                            void *argument);

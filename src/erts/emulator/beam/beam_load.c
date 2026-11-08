@@ -30,11 +30,13 @@
 #include "beam_internal.h"
 #include "erl_version.h"
 #include "erl_process.h"
+#include "erl_message.h"
 #include "error.h"
 #include "erl_driver.h"
 #include "bif.h"
 #include "external.h"
 #include "beam_load.h"
+#include "beam_builtin_catalog.h"
 #include "beam_bp.h"
 #include "big.h"
 #include "erl_bits.h"
@@ -49,6 +51,238 @@
 Uint erts_total_code_size;
 
 static int load_code(LoaderState *stp);
+
+int beam_load_is_native_guard(LoaderState *stp, unsigned index)
+{
+    return index < stp->beam.imports.count && stp->native_guards &&
+        stp->native_guards[index].binding >= 0;
+}
+
+int beam_load_native_guard_binding(LoaderState *stp, unsigned index)
+{
+    return beam_load_is_native_guard(stp,index) && !stp->native_guards[index].selection
+        ? stp->native_guards[index].binding : -1;
+}
+
+int beam_load_native_guard_pending(LoaderState *stp, unsigned index)
+{
+    int binding = beam_load_native_guard_binding(stp,index);
+    return binding == 0 || binding == 1;
+}
+
+int beam_load_native_selection(LoaderState *stp, unsigned index)
+{
+    return beam_load_is_native_guard(stp,index) && stp->native_guards[index].selection
+        ? stp->native_guards[index].binding : -1;
+}
+
+int beam_load_private_native(LoaderState *stp, unsigned index)
+{
+    return stp->private_natives && index < stp->beam.imports.count
+        ? stp->private_natives[index] : -1;
+}
+
+static int prepare_private_natives(LoaderState *stp)
+{
+    if (!stp->beam.native_metadata.size) return 1;
+    const byte *bytes = stp->beam.native_metadata.data;
+    Sint words = erts_decode_ext_size(bytes, stp->beam.native_metadata.size);
+    if (words < 0) return 0;
+    ErtsHeapFactory factory;
+    erts_factory_heap_frag_init(&factory, new_message_buffer(words ? words : 1));
+    Eterm attrs = erts_decode_ext(&factory, &bytes, 0);
+    erts_factory_close(&factory);
+    int valid = !is_non_value(attrs);
+    Eterm key = am_atom_put("beam_private_natives",20);
+    while (valid && is_list(attrs)) {
+        Eterm item = CAR(list_val(attrs));
+        attrs = CDR(list_val(attrs));
+        if (!is_tuple(item)) continue;
+        Eterm *attribute = tuple_val(item);
+        if (arityval(attribute[0]) != 2 || attribute[1] != key) continue;
+        if (!stp->private_natives) {
+            stp->private_natives = erts_alloc(ERTS_ALC_T_PREPARED_CODE,
+                (stp->beam.imports.count ? stp->beam.imports.count : 1) * sizeof *stp->private_natives);
+            for (int i = 0; i < stp->beam.imports.count; ++i) stp->private_natives[i] = -1;
+        }
+        Eterm entries = attribute[2];
+        while (valid && is_list(entries)) {
+            Eterm item = CAR(list_val(entries));
+            entries = CDR(list_val(entries));
+            if (!is_tuple(item)) { valid = 0; break; }
+            Eterm *entry = tuple_val(item);
+            if (arityval(entry[0]) != 2 || !is_small(entry[1]) || !is_atom(entry[2]) ||
+                signed_val(entry[1]) < 0 || unsigned_val(entry[1]) >= stp->beam.imports.count) {
+                valid = 0; break;
+            }
+            unsigned index = unsigned_val(entry[1]);
+            int slot = beam_builtin_identifier_slot(entry[2],stp->beam.imports.entries[index].arity);
+            if (slot < 0 || stp->private_natives[index] >= 0 || beam_load_is_native_guard(stp,index)) {
+                valid = 0; break;
+            }
+            stp->private_natives[index] = slot;
+        }
+        if (!is_nil(entries)) valid = 0;
+    }
+    if (!is_nil(attrs)) valid = 0;
+    free_message_buffer(factory.heap_frags);
+    return valid;
+}
+
+static int prepare_native_guards(LoaderState *stp)
+{
+    if (!stp->beam.native_metadata.size) return 1;
+    const byte *bytes = stp->beam.native_metadata.data;
+    Sint words = erts_decode_ext_size(bytes, stp->beam.native_metadata.size);
+    if (words < 0) return 0;
+    ErtsHeapFactory factory;
+    erts_factory_heap_frag_init(&factory, new_message_buffer(words ? words : 1));
+    Eterm attrs = erts_decode_ext(&factory, &bytes, 0);
+    erts_factory_close(&factory);
+    int valid = !is_non_value(attrs);
+    Eterm key = am_atom_put("beam_native_guards",18);
+    Eterm selections = am_atom_put("beam_native_selections",22);
+    while (valid && is_list(attrs)) {
+        Eterm item = CAR(list_val(attrs));
+        attrs = CDR(list_val(attrs));
+        if (!is_tuple(item)) continue;
+        Eterm *attribute = tuple_val(item);
+        if (arityval(attribute[0]) != 2 ||
+            (attribute[1] != key && attribute[1] != selections)) continue;
+        int selection = attribute[1] == selections;
+        if (!stp->native_guards) {
+            stp->native_guards = erts_alloc(ERTS_ALC_T_PREPARED_CODE,
+                (stp->beam.imports.count ? stp->beam.imports.count : 1) * sizeof *stp->native_guards);
+            for (int i = 0; i < stp->beam.imports.count; ++i)
+                stp->native_guards[i] = (BeamNativeGuardImport){-1,0};
+        }
+        Eterm guards = attribute[2];
+        while (valid && is_list(guards)) {
+            Eterm guard = CAR(list_val(guards));
+            guards = CDR(list_val(guards));
+            if (!is_tuple(guard)) { valid = 0; break; }
+            Eterm *entry = tuple_val(guard);
+            if (arityval(entry[0]) != (selection ? 2 : 3) || !is_small(entry[1]) ||
+                !is_atom(entry[2]) || signed_val(entry[1]) < 0 ||
+                unsigned_val(entry[1]) >= stp->beam.imports.count ||
+                (!selection && (!is_small(entry[3]) || signed_val(entry[3]) <= 0 ||
+                  unsigned_val(entry[3]) >= stp->beam.code.label_count))) { valid = 0; break; }
+            unsigned index = unsigned_val(entry[1]);
+            BeamFile_ImportEntry *import = &stp->beam.imports.entries[index];
+            int binding = selection
+                ? beam_builtin_binding_matches(entry[2],import->module,import->function,import->arity)
+                : beam_builtin_guard_binding(entry[2],import->module,import->function,import->arity);
+            if (binding < 0 || stp->native_guards[index].binding >= 0) { valid = 0; break; }
+            stp->native_guards[index] = (BeamNativeGuardImport){
+                binding, selection ? 0 : unsigned_val(entry[3]), selection};
+        }
+        if (!is_nil(guards)) valid = 0;
+    }
+    if (!is_nil(attrs)) valid = 0;
+    free_message_buffer(factory.heap_frags);
+    return valid;
+}
+
+/* Native placeholder declarations describe publication, not executable code.
+ * An ordinary module without this attribute retains its normal export rules. */
+static int native_metadata_key(Eterm key)
+{
+    return key == am_atom_put("beam_native_slots",17) ||
+           key == am_atom_put("beam_native_guards",18) ||
+           key == am_atom_put("beam_private_natives",20) ||
+           key == am_atom_put("beam_native_selections",22);
+}
+
+static Eterm decode_metadata(const byte *bytes, Sint size, ErtsHeapFactory *factory)
+{
+    Sint words = erts_decode_ext_size(bytes,size);
+    if (words < 0) return THE_NON_VALUE;
+    erts_factory_heap_frag_init(factory,new_message_buffer(words ? words : 1));
+    Eterm term = erts_decode_ext(factory,&bytes,0);
+    erts_factory_close(factory);
+    return term;
+}
+
+static int filter_native_slots(BeamFile *beam)
+{
+    ErtsHeapFactory factory = {0};
+    Eterm attrs = NIL;
+    int valid = 1, version = 0, native = 0;
+    Eterm version_key = am_atom_put("beam_native_version",19);
+    Eterm slots_key = am_atom_put("beam_native_slots",17);
+    if (beam->native_metadata.size)
+        attrs = decode_metadata(beam->native_metadata.data,beam->native_metadata.size,&factory);
+    Eterm metadata = attrs;
+    /* Other Meta payloads retain their existing interpretation. Native
+     * requirements opt in with an explicit versioned proplist. */
+    while (is_list(attrs)) {
+        Eterm item = CAR(list_val(attrs));
+        attrs = CDR(list_val(attrs));
+        if (!is_tuple(item)) continue;
+        Eterm *attribute = tuple_val(item);
+        if (arityval(attribute[0]) != 2) continue;
+        if (attribute[1] == version_key) {
+            if (version || attribute[2] != make_small(1)) { valid = 0; break; }
+            version = 1;
+        } else if (native_metadata_key(attribute[1])) native = 1;
+    }
+    if ((native || version) && !is_nil(attrs)) valid = 0;
+    if (native && !version) valid = 0;
+    if (!version) {
+        beam->native_metadata.data = NULL;
+        beam->native_metadata.size = 0;
+    }
+    attrs = version && valid ? metadata : NIL;
+    while (valid && is_list(attrs)) {
+        Eterm item = CAR(list_val(attrs));
+        attrs = CDR(list_val(attrs));
+        if (!is_tuple(item)) continue;
+        Eterm *attribute = tuple_val(item);
+        if (arityval(attribute[0]) != 2 || attribute[1] != slots_key) continue;
+        Eterm slots = attribute[2];
+        while (valid && is_list(slots)) {
+            Eterm slot = CAR(list_val(slots));
+            slots = CDR(list_val(slots));
+            if (!is_tuple(slot)) { valid = 0; break; }
+            Eterm *fa = tuple_val(slot);
+            if (arityval(fa[0]) != 2 || !is_atom(fa[1]) || !is_small(fa[2]) ||
+                signed_val(fa[2]) < 0 || signed_val(fa[2]) > MAX_ARG) {
+                valid = 0;
+                break;
+            }
+            unsigned arity = unsigned_val(fa[2]);
+            if (!beam_builtin_destination_selected(beam->module, fa[1], arity)) {
+                int count = 0;
+                for (int i = 0; i < beam->exports.count; ++i) {
+                    BeamFile_ExportEntry entry = beam->exports.entries[i];
+                    if (entry.function != fa[1] || entry.arity != arity)
+                        beam->exports.entries[count++] = entry;
+                }
+                beam->exports.count = count;
+            }
+        }
+        if (!is_nil(slots)) valid = 0;
+    }
+    if (factory.heap_frags) free_message_buffer(factory.heap_frags);
+    /* Executable native metadata cannot be supplied through unhashed Attr.
+     * Source provider declarations are copied into Meta by the assembler. */
+    if (valid && beam->attributes.size) {
+        factory = (ErtsHeapFactory){0};
+        attrs = decode_metadata(beam->attributes.data,beam->attributes.size,&factory);
+        if (is_non_value(attrs)) valid = 0;
+        while (valid && is_list(attrs)) {
+            Eterm item = CAR(list_val(attrs));
+            attrs = CDR(list_val(attrs));
+            if (!is_tuple(item)) continue;
+            Eterm *attribute = tuple_val(item);
+            if (arityval(attribute[0]) == 2 && native_metadata_key(attribute[1]) &&
+                (!version || attribute[1] != slots_key)) valid = 0;
+        }
+        if (!is_nil(attrs)) valid = 0;
+        if (factory.heap_frags) free_message_buffer(factory.heap_frags);
+    }
+    return valid;
+}
 
 #define PLEASE_RECOMPILE "please re-compile this module with an Erlang/OTP " ERLANG_OTP_RELEASE " compiler or update your Erlang/OTP version"
 
@@ -189,6 +423,37 @@ erts_prepare_loading(Binary* magic, Process *c_p, Eterm group_leader,
     }
     if (stp->module != stp->beam.module) {
         BeamLoadError1(stp, "module name in object code is %T", stp->beam.module);
+    }
+    if (!filter_native_slots(&stp->beam))
+        BeamLoadError0(stp, "invalid native slot declarations");
+
+    /* Core bytecode retains its bodies; only explicitly selected optional
+     * core slots enter the live export table. Both backends consume this list. */
+    int exported = 0;
+    for (int i = 0; i < stp->beam.exports.count; ++i) {
+        BeamFile_ExportEntry entry = stp->beam.exports.entries[i];
+        if (beam_core_export_enabled(stp->module, entry.function, entry.arity))
+            stp->beam.exports.entries[exported++] = entry;
+    }
+    stp->beam.exports.count = exported;
+
+    /* Validate host-bound optional contracts before either backend generates
+     * code or publishes staging exports. Mandatory loading behavior is unchanged. */
+    for (int i = 0; i < BIF_SIZE; ++i) {
+        const BifEntry *bif = &bif_table[i];
+        int found = 0;
+        if (!*bif_descriptors[i].implementation || bif->module != stp->module)
+            continue;
+        for (int j = 0; j < stp->beam.exports.count; ++j) {
+            const BeamFile_ExportEntry *entry = &stp->beam.exports.entries[j];
+            if (entry->function == bif->name && entry->arity == bif->arity) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found)
+            BeamLoadError3(stp, "module %T does not export installed BIF %T/%d",
+                           bif->module, bif->name, bif->arity);
     }
 
     if (stp->beam.code.max_opcode > MAX_GENERIC_OPCODE) {
@@ -431,6 +696,11 @@ static int load_code(LoaderState* stp)
 
     op_reader = beamfile_get_code(&stp->beam, &stp->op_allocator);
 
+    if (!prepare_native_guards(stp) || !prepare_private_natives(stp)) {
+        BeamLoadError0(stp, "invalid native guard requirements");
+    }
+    /* SDK-bound NIFs need patch space even when code never imports load_nif. */
+    stp->may_load_nif = erts_vm_module_has_nif_selection(stp->module);
     if (!beam_load_prepare_emit(stp)) {
         goto load_error;
     }

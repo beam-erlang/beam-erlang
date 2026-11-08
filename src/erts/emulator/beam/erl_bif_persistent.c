@@ -81,6 +81,7 @@ static ERTS_INLINE Uint sizeof_HashTable(Uint sz)
 }
 
 typedef struct trap_data {
+    Export *entry;
     HashTable* table;
     Uint idx;
     Uint remaining;
@@ -113,6 +114,7 @@ typedef struct {
 } ErtsPersistentTermCpyTableCtx;
 
 typedef enum {
+    PUT_COMMON_TRAP_LOCATION_WAIT,
     PUT_COMMON_TRAP_LOCATION_NEW_KEY,
 } ErtsPersistentTermPutCommonTrapLocation;
 
@@ -120,6 +122,9 @@ typedef struct {
     ErtsPersistentTermPutCommonTrapLocation trap_location;
     Eterm key;
     Eterm term;
+    Eterm put_new, original1, original2;
+    Export *entry;
+    Uint arity;
     Uint entry_index;
     HashTable* hash_table;
     Eterm heap[3];
@@ -128,13 +133,16 @@ typedef struct {
 } ErtsPersistentTermPutCommonContext;
 
 typedef enum {
+    ERASE1_TRAP_LOCATION_WAIT,
     ERASE1_TRAP_LOCATION_TMP_COPY,
     ERASE1_TRAP_LOCATION_FINAL_COPY
 } ErtsPersistentTermErase1TrapLocation;
 
 typedef struct {
     ErtsPersistentTermErase1TrapLocation trap_location;
-    Eterm key;
+    Eterm key, original;
+    Export *entry;
+    int return_ok;
     HashTable* old_table;
     HashTable* new_table;
     Uint entry_index;
@@ -148,7 +156,7 @@ typedef struct {
  * Declarations of local functions.
  */
 
-static Eterm put_common(Process* process, Eterm key, Eterm term, Eterm new);
+static Eterm put_common(Process*, Eterm, Eterm, Eterm, Export*, Eterm, Eterm, Uint);
 static HashTable* create_initial_table(void);
 static Uint lookup(HashTable* hash_table, Eterm key, Eterm *bucket);
 static int is_erasable(HashTable* hash_table, Uint idx);
@@ -174,9 +182,11 @@ static int cleanup_trap_data(Binary *bp);
  */
 
 static Export persistent_term_put_common_export;
-static BIF_RETTYPE persistent_term_put_common_trap(BIF_ALIST_3);
+static BIF_RETTYPE persistent_term_put_common_trap(BIF_ALIST_1);
 static Export persistent_term_get_all_export;
 static BIF_RETTYPE persistent_term_get_all_trap(BIF_ALIST_2);
+static Export persistent_term_erase_export;
+static BIF_RETTYPE persistent_term_erase_trap(BIF_ALIST_1);
 static Export persistent_term_info_export;
 static BIF_RETTYPE persistent_term_info_trap(BIF_ALIST_1);
 
@@ -258,13 +268,16 @@ void erts_init_bif_persistent_term(void)
 
 
     erts_init_trap_export(&persistent_term_put_common_export,
-			  am_persistent_term, am_put_common_trap, 3,
+			  am_erlang, ERTS_MAKE_AM("persistent_value_put_continue"), 1,
 			  &persistent_term_put_common_trap);
     erts_init_trap_export(&persistent_term_get_all_export,
-			  am_persistent_term, am_get_all_trap, 2,
+			  am_erlang, ERTS_MAKE_AM("persistent_value_get_all_continue"), 2,
 			  &persistent_term_get_all_trap);
+    erts_init_trap_export(&persistent_term_erase_export,
+                          am_erlang, ERTS_MAKE_AM("persistent_value_erase_continue"), 1,
+                          &persistent_term_erase_trap);
     erts_init_trap_export(&persistent_term_info_export,
-			  am_persistent_term, am_info_trap, 1,
+			  am_erlang, ERTS_MAKE_AM("persistent_value_info_continue"), 1,
 			  &persistent_term_info_trap);
 }
 
@@ -313,15 +326,17 @@ static int persistent_term_put_common_bin_dtor(Binary *context_bin)
 
 BIF_RETTYPE persistent_term_put_2(BIF_ALIST_2)
 {
-    return put_common(BIF_P, BIF_ARG_1, BIF_ARG_2, am_false);
+    return put_common(BIF_P, BIF_ARG_1, BIF_ARG_2, am_false,
+                      BIF_TRAP_EXPORT(BIF_persistent_term_put_2), BIF_ARG_1, BIF_ARG_2, 2);
 }
 
 BIF_RETTYPE persistent_term_put_new_2(BIF_ALIST_2)
 {
-    return put_common(BIF_P, BIF_ARG_1, BIF_ARG_2, am_true);
+    return put_common(BIF_P, BIF_ARG_1, BIF_ARG_2, am_true,
+                      BIF_TRAP_EXPORT(BIF_persistent_term_put_new_2), BIF_ARG_1, BIF_ARG_2, 2);
 }
 
-BIF_RETTYPE persistent_term_get_0(BIF_ALIST_0)
+static Eterm persistent_get_all(Export *entry, BIF_ALIST_0)
 {
     HashTable* hash_table;
     TrapData* trap_data;
@@ -331,7 +346,7 @@ BIF_RETTYPE persistent_term_get_0(BIF_ALIST_0)
 
     /* Prevent concurrent updates to get a consistent view */
     if (!try_seize_update_permission(BIF_P)) {
-        ERTS_BIF_YIELD0(BIF_TRAP_EXPORT(BIF_persistent_term_get_0), BIF_P);
+        ERTS_BIF_YIELD0(entry, BIF_P);
     }
 
     hash_table = (HashTable *) erts_atomic_read_nob(&the_hash_table);
@@ -339,6 +354,7 @@ BIF_RETTYPE persistent_term_get_0(BIF_ALIST_0)
     magic_ref = alloc_trap_data(BIF_P);
     mbp = erts_magic_ref2bin(magic_ref);
     trap_data = ERTS_MAGIC_BIN_DATA(mbp);
+    trap_data->entry = entry;
     trap_data->table = hash_table;
     trap_data->idx = 0;
     trap_data->remaining = hash_table->num_entries;
@@ -353,6 +369,11 @@ BIF_RETTYPE persistent_term_get_0(BIF_ALIST_0)
         BUMP_ALL_REDS(BIF_P);
         BIF_TRAP2(&persistent_term_get_all_export, BIF_P, magic_ref, res);
     }
+}
+
+BIF_RETTYPE persistent_term_get_0(BIF_ALIST_0)
+{
+    return persistent_get_all(BIF_TRAP_EXPORT(BIF_persistent_term_get_0), BIF_CALL_ARGS);
 }
 
 static ERTS_INLINE Eterm
@@ -414,7 +435,7 @@ static int persistent_term_erase_1_ctx_bin_dtor(Binary *context_bin)
     return 1;
 }
 
-BIF_RETTYPE persistent_term_erase_1(BIF_ALIST_1)
+static Eterm erase_common(Process *process, Eterm key, Export *entry, Eterm original, int return_ok)
 {
     static const Uint ITERATIONS_PER_RED = 32;
     ErtsPersistentTermErase1Context* ctx;
@@ -424,26 +445,30 @@ BIF_RETTYPE persistent_term_erase_1(BIF_ALIST_1)
 #ifdef DEBUG
     (void)ITERATIONS_PER_RED;
     iterations_until_trap = max_iterations =
-        GET_SMALL_RANDOM_INT(ERTS_BIF_REDS_LEFT(BIF_P) + (Uint)&ctx);
+        GET_SMALL_RANDOM_INT(ERTS_BIF_REDS_LEFT(process) + (Uint)&ctx);
 #else
     iterations_until_trap = max_iterations =
-        ITERATIONS_PER_RED * ERTS_BIF_REDS_LEFT(BIF_P);
+        ITERATIONS_PER_RED * ERTS_BIF_REDS_LEFT(process);
 #endif
 #define ERASE_TRAP_CODE                                                 \
-        BIF_TRAP1(BIF_TRAP_EXPORT(BIF_persistent_term_erase_1), BIF_P, state_mref);
+        BIF_TRAP1(&persistent_term_erase_export, process, state_mref);
 #define TRAPPING_COPY_TABLE_ERASE(TABLE_DEST, OLD_TABLE, NEW_SIZE, REHASH, LOC_NAME) \
-        TRAPPING_COPY_TABLE(TABLE_DEST, OLD_TABLE, NEW_SIZE, REHASH, LOC_NAME, ERASE_TRAP_CODE, BIF_P)    
-    if (is_internal_magic_ref(BIF_ARG_1) &&
-        (ERTS_MAGIC_BIN_DESTRUCTOR(erts_magic_ref2bin(BIF_ARG_1)) ==
+        TRAPPING_COPY_TABLE(TABLE_DEST, OLD_TABLE, NEW_SIZE, REHASH, LOC_NAME, ERASE_TRAP_CODE, process)
+    if (is_internal_magic_ref(key) &&
+        (ERTS_MAGIC_BIN_DESTRUCTOR(erts_magic_ref2bin(key)) ==
          persistent_term_erase_1_ctx_bin_dtor)) {
         /* Restore the state after a trap */
         Binary* state_bin;
-        state_mref = BIF_ARG_1;
+        state_mref = key;
         state_bin = erts_magic_ref2bin(state_mref);
         ctx = ERTS_MAGIC_BIN_DATA(state_bin);
-        ASSERT(BIF_P->flags & F_DISABLE_GC);
-        erts_set_gc_state(BIF_P, 1);
+        ASSERT(process->flags & F_DISABLE_GC);
+        erts_set_gc_state(process, 1);
+        entry = ctx->entry; original = ctx->original; return_ok = ctx->return_ok;
+        key = ctx->key;
         switch (ctx->trap_location) {
+        case ERASE1_TRAP_LOCATION_WAIT:
+            goto L_ERASE_WAIT;
         case ERASE1_TRAP_LOCATION_TMP_COPY:
             goto L_ERASE1_TRAP_LOCATION_TMP_COPY;
         case ERASE1_TRAP_LOCATION_FINAL_COPY:
@@ -454,8 +479,8 @@ BIF_RETTYPE persistent_term_erase_1(BIF_ALIST_1)
         Eterm* hp;
         Binary* state_bin = erts_create_magic_binary(sizeof(ErtsPersistentTermErase1Context),
                                                      persistent_term_erase_1_ctx_bin_dtor);
-        hp = HAlloc(BIF_P, ERTS_MAGIC_REF_THING_SIZE);
-        state_mref = erts_mk_magic_ref(&hp, &MSO(BIF_P), state_bin);
+        hp = HAlloc(process, ERTS_MAGIC_REF_THING_SIZE);
+        state_mref = erts_mk_magic_ref(&hp, &MSO(process), state_bin);
         ctx = ERTS_MAGIC_BIN_DATA(state_bin);
         /*
          * IMPORTANT: The following two fields are used to detect if
@@ -463,13 +488,15 @@ BIF_RETTYPE persistent_term_erase_1(BIF_ALIST_1)
          */
         ctx->cpy_ctx.new_table = NULL;
         ctx->tmp_table = NULL;
+        ctx->key = key; ctx->original = original; ctx->entry = entry;
+        ctx->return_ok = return_ok; ctx->trap_location = ERASE1_TRAP_LOCATION_WAIT;
     }
-    if (!try_seize_update_permission(BIF_P)) {
-        ERTS_BIF_YIELD1(BIF_TRAP_EXPORT(BIF_persistent_term_erase_1),
-                        BIF_P, BIF_ARG_1);
+    L_ERASE_WAIT:
+    if (!try_seize_update_permission(process)) {
+        erts_set_gc_state(process, 0);
+        ERTS_BIF_YIELD1(&persistent_term_erase_export, process, state_mref);
     }
 
-    ctx->key = BIF_ARG_1;
     ctx->old_table = (HashTable *) erts_atomic_read_nob(&the_hash_table);
     ctx->entry_index = lookup(ctx->old_table, ctx->key, &ctx->old_bucket);
 
@@ -534,9 +561,9 @@ BIF_RETTYPE persistent_term_erase_1(BIF_ALIST_1)
             mark_for_deletion(ctx->old_table, ctx->entry_index);
             erts_schedule_thr_prgr_later_op(table_updater, ctx->new_table, &thr_prog_op);
         }
-        suspend_updater(BIF_P);
-        BUMP_REDS(BIF_P, (max_iterations - iterations_until_trap) / ITERATIONS_PER_RED);
-        ERTS_BIF_YIELD_RETURN(BIF_P, am_true);
+        suspend_updater(process);
+        BUMP_REDS(process, (max_iterations - iterations_until_trap) / ITERATIONS_PER_RED);
+        ERTS_BIF_YIELD_RETURN(process, ctx->return_ok ? am_ok : am_true);
     }
 
     /*
@@ -545,7 +572,17 @@ BIF_RETTYPE persistent_term_erase_1(BIF_ALIST_1)
 
     ASSERT(is_nil(ctx->old_bucket));
     release_update_permission(0);
-    BIF_RET(am_false);
+    BIF_RET(ctx->return_ok ? am_ok : am_false);
+}
+
+BIF_RETTYPE persistent_term_erase_1(BIF_ALIST_1)
+{
+    return erase_common(BIF_P, BIF_ARG_1, BIF_TRAP_EXPORT(BIF_persistent_term_erase_1), BIF_ARG_1, 0);
+}
+
+static BIF_RETTYPE persistent_term_erase_trap(BIF_ALIST_1)
+{
+    return erase_common(BIF_P, BIF_ARG_1, NULL, NIL, 0);
 }
 
 BIF_RETTYPE erts_internal_erase_persistent_terms_0(BIF_ALIST_0)
@@ -566,7 +603,7 @@ BIF_RETTYPE erts_internal_erase_persistent_terms_0(BIF_ALIST_0)
     ERTS_BIF_YIELD_RETURN(BIF_P, am_true);
 }
 
-BIF_RETTYPE persistent_term_info_0(BIF_ALIST_0)
+static Eterm persistent_info_all(Export *entry, BIF_ALIST_0)
 {
     HashTable* hash_table;
     TrapData* trap_data;
@@ -576,7 +613,7 @@ BIF_RETTYPE persistent_term_info_0(BIF_ALIST_0)
 
     /* Prevent concurrent updates to get a consistent view */
     if (!try_seize_update_permission(BIF_P)) {
-        ERTS_BIF_YIELD0(BIF_TRAP_EXPORT(BIF_persistent_term_info_0), BIF_P);
+        ERTS_BIF_YIELD0(entry, BIF_P);
     }
 
     hash_table = (HashTable *) erts_atomic_read_nob(&the_hash_table);
@@ -584,11 +621,12 @@ BIF_RETTYPE persistent_term_info_0(BIF_ALIST_0)
     magic_ref = alloc_trap_data(BIF_P);
     mbp = erts_magic_ref2bin(magic_ref);
     trap_data = ERTS_MAGIC_BIN_DATA(mbp);
+    trap_data->entry = entry;
     trap_data->table = hash_table;
     trap_data->idx = 0;
     trap_data->remaining = hash_table->num_entries;
     trap_data->memory = 0;
-    trap_data->got_update_permission = 0;
+    trap_data->got_update_permission = 1;
     res = do_info(BIF_P, trap_data);
     if (trap_data->remaining == 0) {
         release_update_permission(0);
@@ -597,8 +635,13 @@ BIF_RETTYPE persistent_term_info_0(BIF_ALIST_0)
         BIF_RET(res);
     } else {
         BUMP_ALL_REDS(BIF_P);
-        BIF_TRAP2(&persistent_term_info_export, BIF_P, magic_ref, res);
+        BIF_TRAP1(&persistent_term_info_export, BIF_P, magic_ref);
     }
+}
+
+BIF_RETTYPE persistent_term_info_0(BIF_ALIST_0)
+{
+    return persistent_info_all(BIF_TRAP_EXPORT(BIF_persistent_term_info_0), BIF_CALL_ARGS);
 }
 
 void
@@ -634,12 +677,13 @@ erts_init_persistent_dumping(void)
  */
 
 static BIF_RETTYPE
-persistent_term_put_common_trap(BIF_ALIST_3)
+persistent_term_put_common_trap(BIF_ALIST_1)
 {
-    return put_common(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
+    return put_common(BIF_P, BIF_ARG_1, NIL, NIL, NULL, NIL, NIL, 0);
 }
 
-static Eterm put_common(Process* c_p, Eterm key, Eterm term, Eterm new)
+static Eterm put_common(Process* c_p, Eterm key, Eterm term, Eterm new,
+                        Export *entry, Eterm original1, Eterm original2, Uint arity)
 {
     static const Uint ITERATIONS_PER_RED = 32;
     ErtsPersistentTermPutCommonContext* ctx;
@@ -648,7 +692,7 @@ static Eterm put_common(Process* c_p, Eterm key, Eterm term, Eterm new)
     long iterations_until_trap;
     long max_iterations;
 #define PUT_COMMON_TRAP_CODE                                            \
-    BIF_TRAP3(&persistent_term_put_common_export, c_p, state_mref, term, new)
+    BIF_TRAP1(&persistent_term_put_common_export, c_p, state_mref)
 
 #define TRAPPING_COPY_TABLE_PUT_COMMON(TABLE_DEST, OLD_TABLE, NEW_SIZE, COPY_TYPE, LOC_NAME) \
     TRAPPING_COPY_TABLE(TABLE_DEST, OLD_TABLE, NEW_SIZE, COPY_TYPE, LOC_NAME, PUT_COMMON_TRAP_CODE, c_p)
@@ -671,6 +715,8 @@ static Eterm put_common(Process* c_p, Eterm key, Eterm term, Eterm new)
         ctx = ERTS_MAGIC_BIN_DATA(state_bin);
         ASSERT(c_p->flags & F_DISABLE_GC);
         erts_set_gc_state(c_p, 1);
+        entry = ctx->entry; key = ctx->key; term = ctx->term; new = ctx->put_new;
+        if (ctx->trap_location == PUT_COMMON_TRAP_LOCATION_WAIT) goto L_PUT_WAIT;
         ASSERT(ctx->trap_location == PUT_COMMON_TRAP_LOCATION_NEW_KEY);
         goto L_PUT_COMMON_TRAP_LOCATION_NEW_KEY;
     } else {
@@ -686,11 +732,15 @@ static Eterm put_common(Process* c_p, Eterm key, Eterm term, Eterm new)
          * persistent_term_put_common_ctx_bin_dtor needs to free memory
          */
         ctx->cpy_ctx.new_table = NULL;
+        ctx->key = key; ctx->term = term; ctx->put_new = new; ctx->entry = entry;
+        ctx->original1 = original1; ctx->original2 = original2; ctx->arity = arity;
+        ctx->trap_location = PUT_COMMON_TRAP_LOCATION_WAIT;
     }
 
-
+    L_PUT_WAIT:
     if (!try_seize_update_permission(c_p)) {
-        ERTS_BIF_YIELD3(&persistent_term_put_common_export, c_p, key, term, new);
+        erts_set_gc_state(c_p, 0);
+        ERTS_BIF_YIELD1(&persistent_term_put_common_export, c_p, state_mref);
     }
     ctx->hash_table = (HashTable *) erts_atomic_read_nob(&the_hash_table);
 
@@ -730,7 +780,10 @@ static Eterm put_common(Process* c_p, Eterm key, Eterm term, Eterm new)
         } else if (new == am_true) {
             /* Different value. Raise badarg. */
             release_update_permission(0);
-            BIF_ERROR(c_p, BADARG);
+            if (ctx->arity == 2) {
+                ERTS_BIF_ERROR_TRAPPED2(c_p, BADARG, ctx->entry, ctx->original1, ctx->original2);
+            }
+            ERTS_BIF_ERROR_TRAPPED1(c_p, BADARG, ctx->entry, ctx->original1);
         }
     }
 
@@ -1470,7 +1523,7 @@ static void debug_table_foreach_off_heap(HashTable *tbl,
                                          void *arg)
 {
     int i;
-    
+
     for (i = 0; i < tbl->allocated; i++) {
         Eterm bucket = get_bucket(tbl, i);
         if (is_tuple_arity(bucket, 2)) {
@@ -1526,7 +1579,7 @@ erts_debug_foreach_persistent_term_off_heap(void (*func)(ErlOffHeap *, void *),
     accessed_literal_areas = erts_alloc(ERTS_ALC_T_TMP,
                                         (sizeof(ErtsLiteralArea *)
                                          * accessed_literal_areas_size));
-    
+
     tbl = (HashTable *) erts_atomic_read_nob(&the_hash_table);
     debug_table_foreach_off_heap(tbl, func, arg);
     erts_mtx_lock(&delete_queue_mtx);
@@ -1539,7 +1592,7 @@ erts_debug_foreach_persistent_term_off_heap(void (*func)(ErlOffHeap *, void *),
                                 debug_handle_table,
                                 (void *) &fa);
     erts_debug_foreach_release_literal_area_off_heap(func, arg);
-    
+
     erts_free(ERTS_ALC_T_TMP, accessed_literal_areas);
     accessed_no_literal_areas = 0;
     accessed_literal_areas_size = 0;
@@ -1594,7 +1647,6 @@ static void bare_collect_persistent_table(HashTable *table,
 
 void erts_bare_release_persistent_nif_resources(void)
 {
-    extern int erts_nif_resource_binary(Binary *bin);
     ErtsLiteralArea **areas = NULL;
     Uint count = 0, capacity = 0, index;
     DeleteOp *op;
@@ -1611,24 +1663,8 @@ void erts_bare_release_persistent_nif_resources(void)
             bare_collect_persistent_area(old->area, &areas, &count, &capacity);
         }
     }
-    for (index = 0; index < count; ++index) {
-        struct erl_off_heap_header **previous = &areas[index]->off_heap;
-        while (*previous) {
-            struct erl_off_heap_header *header = *previous;
-            if (thing_subtag(header->thing_word) == REF_SUBTAG &&
-                is_magic_ref_thing(header)) {
-                Binary *binary = (Binary *)((ErtsMRefThing *)header)->mb;
-                if (erts_nif_resource_binary(binary)) {
-                    *previous = header->next;
-                    header->next = NULL;
-                    ((ErtsMRefThing *)header)->mb = NULL;
-                    erts_bin_release(binary);
-                    continue;
-                }
-            }
-            previous = &header->next;
-        }
-    }
+    for (index = 0; index < count; ++index)
+        erts_bare_release_literal_nif_resources(areas[index]);
     if (areas)
         erts_free(ERTS_ALC_T_TMP, areas);
 }
@@ -1676,4 +1712,34 @@ void erts_persistent_dump_data(ErtsLiteralArea ***areas, Uint *count)
 {
     *areas = erts_persistent_areas;
     *count = erts_num_persistent_areas;
+}
+
+
+/* Distribution protocol state is a VM mechanism, independent of public names. */
+BIF_RETTYPE erts_internal_dynamic_node_name_0(BIF_ALIST_0)
+{
+    Eterm heap[3], key, value;
+    key = TUPLE2(heap, am_erts_internal, am_dynamic_node_name);
+    value = persistent_term_get(key);
+    BIF_RET(is_non_value(value) || value == am_false ? am_false : am_true);
+}
+
+BIF_RETTYPE erts_internal_dynamic_node_name_1(BIF_ALIST_1)
+{
+    Eterm heap[3], key, value;
+    Eterm *hp;
+    Export *entry = BIF_TRAP_EXPORT(BIF_erts_internal_dynamic_node_name_1);
+    if (BIF_ARG_1 != am_true && BIF_ARG_1 != am_false) {
+        BIF_ERROR(BIF_P, EXC_FUNCTION_CLAUSE);
+    }
+    key = TUPLE2(heap, am_erts_internal, am_dynamic_node_name);
+    if (BIF_ARG_1 == am_false) {
+        value = persistent_term_get(key);
+        if (is_non_value(value) || value == am_false) BIF_RET(am_ok);
+    }
+    hp = HAlloc(BIF_P, 3);
+    key = TUPLE2(hp, am_erts_internal, am_dynamic_node_name);
+    if (BIF_ARG_1 == am_true)
+        return put_common(BIF_P, key, am_true, am_false, entry, am_true, NIL, 1);
+    return erase_common(BIF_P, key, entry, am_false, 1);
 }

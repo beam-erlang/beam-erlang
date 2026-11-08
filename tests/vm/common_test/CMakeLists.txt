@@ -40,12 +40,28 @@ execute_process(COMMAND "${Python3_EXECUTABLE}" -B -m vm.common_test.runner
 if(NOT _verified EQUAL 0)
     message(FATAL_ERROR "VM test input validation failed:\n${_output}${_error}")
 endif()
-foreach(_suite atomics_SUITE counters_SUITE bs_bincomp_SUITE bs_match_tail_SUITE)
+set(_native_suites bif_SUITE num_bif_SUITE big_SUITE float_SUITE small_SUITE op_SUITE
+    exception_SUITE fun_SUITE process_SUITE signal_SUITE dirty_bif_SUITE code_SUITE
+    code_parallel_load_SUITE hibernate_SUITE native_record_SUITE
+    trace_session_SUITE tracer_SUITE seq_trace_SUITE)
+foreach(_suite atomics_SUITE counters_SUITE bs_bincomp_SUITE bs_match_tail_SUITE guard_SUITE persistent_term_SUITE match_spec_SUITE time_SUITE timer_bif_SUITE ${_native_suites})
     add_test(NAME "vm-ct-${_suite}"
         COMMAND "${Python3_EXECUTABLE}" -B -m vm.common_test.runner
             ${_selection} ${_observation} --suite "${_suite}"
             --test-dir "${CMAKE_CURRENT_BINARY_DIR}/results/${_suite}")
+    set(_timeout 660)
+    if(_suite IN_LIST _native_suites)
+        set(_timeout 14520)
+    endif()
+    if(_suite MATCHES "^(time_SUITE|timer_bif_SUITE)$")
+        set(_timeout 14520)
+    endif()
+    if(_suite STREQUAL "persistent_term_SUITE")
+        set(_timeout 14520)
+    elseif(_suite STREQUAL "match_spec_SUITE")
+        set(_timeout 3720)
+    endif()
     set_tests_properties("vm-ct-${_suite}" PROPERTIES
-        WORKING_DIRECTORY "${_tests}" TIMEOUT 660 RUN_SERIAL TRUE
+        WORKING_DIRECTORY "${_tests}" TIMEOUT ${_timeout} RUN_SERIAL TRUE
         LABELS "vm;shared;common-test;installed;otp-hosted")
 endforeach()

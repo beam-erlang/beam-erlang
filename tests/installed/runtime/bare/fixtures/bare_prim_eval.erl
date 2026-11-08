@@ -3,13 +3,13 @@
 -export([exercise/0, absent/0]).
 
 absent() ->
-    false = erlang:module_loaded(prim_eval),
-    false = member(prim_eval, erlang:pre_loaded()),
+    false = beam:module_loaded(prim_eval),
+    false = member(prim_eval, beam:pre_loaded()),
     42.
 
 exercise() ->
-    true = erlang:module_loaded(prim_eval),
-    false = member(prim_eval, erlang:pre_loaded()),
+    true = beam:module_loaded(prim_eval),
+    false = member(prim_eval, beam:pre_loaded()),
     self() ! preserved_message,
     self() ! selected_message,
     %% The matcher must not allocate or retain the inspected message: prim_eval

@@ -9,9 +9,9 @@
 init([Path]) ->
     {ok, File} = file:open(Path, [write, binary]),
     ok = emit(File, #{event => <<"handler_start">>}),
-    {ok, File}.
+    {ok, {File, []}}.
 
-handle_event(#event{name = Name, data = {Suite, Case, Result}}, File)
+handle_event(#event{name = Name, data = {Suite, Case, Result}}, {File, Groups})
   when Name =:= tc_done; Name =:= tc_user_skip; Name =:= tc_auto_skip ->
     Status = case {Name, Result} of
                  {tc_user_skip, _} -> <<"user_skipped">>;
@@ -21,16 +21,27 @@ handle_event(#event{name = Name, data = {Suite, Case, Result}}, File)
                  {tc_done, {auto_skipped, _}} -> <<"auto_skipped">>;
                  _ -> <<"failed">>
              end,
+    Function = case Case of T when is_tuple(T) -> element(1,T); _ -> Case end,
+    Path = case Function of
+               init_per_group -> Groups ++ [element(2,Case)];
+               _ -> Groups
+           end,
+    Next = case Function of
+               end_per_group -> true=(element(2,Case)=:=lists:last(Groups)),
+                                lists:droplast(Groups);
+               _ -> Path
+           end,
     ok = emit(File, #{event => atom_to_binary(Name),
-                      suite => text(Suite), name => text(Case),
+                      suite => text(Suite), name => text(Function),
+                      context => text(Case), groups => [atom_to_binary(G) || G <- Path],
                       status => Status, reason => text(Result)}),
-    {ok, File};
-handle_event(_, File) -> {ok, File}.
+    {ok, {File, Next}};
+handle_event(_, State) -> {ok, State}.
 
 handle_call(_, File) -> {ok, ok, File}.
 handle_info(_, File) -> {ok, File}.
 code_change(_, File, _) -> {ok, File}.
-terminate(_, File) ->
+terminate(_, {File, _}) ->
     ok = emit(File, #{event => <<"handler_stop">>}),
     file:close(File).
 

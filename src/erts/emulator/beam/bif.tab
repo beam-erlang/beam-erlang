@@ -44,497 +44,491 @@
 #
 
 
-ubif erlang:abs/1
-bif erlang:adler32/1
-bif erlang:adler32/2
-bif erlang:adler32_combine/3
-bif erlang:atom_to_list/1
-bif erlang:binary_to_list/1
-bif erlang:binary_to_list/3
-bif erlang:binary_to_term/1
-bif erlang:crc32/1
-bif erlang:crc32/2
-bif erlang:crc32_combine/3
-bif erlang:date/0
-bif erlang:delete_module/1
-bif erlang:display/1
-bif erlang:display_string/2
-ubif erlang:element/2
-bif erlang:erase/0
-hbif erlang:erase/1
-bif erlang:exit/1
-bif erlang:exit/2
-bif erlang:exit_signal/2
-bif erlang:external_size/1
-bif erlang:external_size/2
-ubif erlang:float/1
-bif erlang:float_to_list/1
-bif erlang:float_to_list/2
-bif erlang:fun_info/2
-hbif erts_internal:garbage_collect/1
-bif erlang:get/0
-bif erlang:get/1
-bif erlang:get_keys/1
-bif erlang:group_leader/0
-bif erts_internal:group_leader/2
-bif erts_internal:group_leader/3
-bif erlang:halt/2
-bif erlang:phash/2
-bif erlang:phash2/1
-bif erlang:phash2/2
-ubif erlang:hd/1
-bif erlang:integer_to_list/1
-ubif erlang:length/1
-bif erlang:link/1
-ubif erlang:list_to_atom/1
-bif erlang:list_to_binary/1
-bif erlang:list_to_float/1
-bif erlang:list_to_pid/1
-bif erlang:list_to_port/1
-bif erlang:list_to_ref/1
-bif erlang:list_to_tuple/1
-bif erlang:loaded/0
-bif erlang:localtime/0
-bif erlang:localtime_to_universaltime/2
-bif erlang:make_ref/0
-bif erlang:unique_integer/0
-bif erlang:unique_integer/1
-bif erlang:md5/1
-bif erlang:md5_init/0
-bif erlang:md5_update/2
-bif erlang:md5_final/1
-bif erlang:module_loaded/1
-bif erlang:function_exported/3
-bif erlang:monitor_node/2
-bif erlang:monitor_node/3
-ubif erlang:node/1
-ubif erlang:node/0
-bif erlang:nodes/0
-bif erlang:nodes/1
-bif erlang:nodes/2
-bif erlang:now/0
-bif erlang:monotonic_time/0
-bif erlang:monotonic_time/1
-bif erlang:system_time/0
-bif erlang:system_time/1
-bif erlang:time_offset/0
-bif erlang:time_offset/1
-bif erlang:timestamp/0
+optional-ubif vm_abs/1 abs_1
+optional-bif vm_adler32/1 adler32_1
+optional-bif vm_adler32/2 adler32_2
+optional-bif vm_adler32_combine/3 adler32_combine_3
+optional-bif vm_atom_to_list/1 atom_to_list_1
+optional-bif vm_binary_to_list/1 binary_to_list_1
+optional-bif vm_binary_to_list/3 binary_to_list_3
+optional-bif vm_binary_to_term/1 binary_to_term_1
+optional-bif vm_crc32/1 crc32_1
+optional-bif vm_crc32/2 crc32_2
+optional-bif vm_crc32_combine/3 crc32_combine_3
+optional-bif vm_date/0 date_0
+optional-bif vm_delete_module/1 delete_module_1
+optional-bif vm_display/1 display_1
+optional-bif vm_display_string/2 display_string_2
+optional-ubif vm_element/2 element_2
+optional-bif vm_erase/0 erase_0
+optional-hbif vm_erase/1 erase_1
+optional-bif vm_exit/1 exit_1
+optional-bif vm_exit/2 exit_2
+optional-bif vm_exit_signal/2 exit_signal_2
+optional-bif vm_external_size/1 external_size_1
+optional-bif vm_external_size/2 external_size_2
+optional-ubif vm_float/1 float_1
+optional-bif vm_float_to_list/1 float_to_list_1
+optional-bif vm_float_to_list/2 float_to_list_2
+optional-bif vm_fun_info/2 fun_info_2
+optional-hbif vm_erts_internal_garbage_collect/1 erts_internal_garbage_collect_1
+optional-bif vm_get/0 get_0
+optional-bif vm_get/1 get_1
+optional-bif vm_get_keys/1 get_keys_1
+optional-bif vm_group_leader/0 group_leader_0
+optional-bif vm_erts_internal_group_leader/2 erts_internal_group_leader_2
+optional-bif vm_erts_internal_group_leader/3 erts_internal_group_leader_3
+optional-bif vm_halt/2 halt_2
+optional-bif vm_phash/2 phash_2
+optional-bif vm_phash2/1 phash2_1
+optional-bif vm_phash2/2 phash2_2
+optional-ubif vm_hd/1 hd_1
+optional-bif vm_integer_to_list/1 integer_to_list_1
+optional-ubif vm_length/1 length_1
+optional-bif vm_link/1 link_1
+optional-ubif vm_list_to_atom/1 list_to_atom_1
+optional-bif vm_list_to_binary/1 list_to_binary_1
+optional-bif vm_list_to_float/1 list_to_float_1
+optional-bif vm_list_to_pid/1 list_to_pid_1
+optional-bif vm_list_to_port/1 list_to_port_1
+optional-bif vm_list_to_ref/1 list_to_ref_1
+optional-bif vm_list_to_tuple/1 list_to_tuple_1
+optional-bif vm_loaded/0 loaded_0
+optional-bif vm_localtime/0 localtime_0
+optional-bif vm_localtime_to_universaltime/2 localtime_to_universaltime_2
+optional-bif vm_make_ref/0 make_ref_0
+optional-bif vm_unique_integer/0 unique_integer_0
+optional-bif vm_unique_integer/1 unique_integer_1
+optional-bif vm_md5/1 md5_1
+optional-bif vm_md5_init/0 md5_init_0
+optional-bif vm_md5_update/2 md5_update_2
+optional-bif vm_md5_final/1 md5_final_1
+optional-bif vm_module_loaded/1 module_loaded_1
+optional-bif vm_function_exported/3 function_exported_3
+optional-bif vm_monitor_node/2 monitor_node_2
+optional-bif vm_monitor_node/3 monitor_node_3
+optional-ubif vm_node/1 node_1
+optional-ubif vm_node/0 node_0
+optional-bif vm_nodes/0 nodes_0
+optional-bif vm_nodes/1 nodes_1
+optional-bif vm_nodes/2 nodes_2
+optional-bif clock_legacy_now/0 now_0
+optional-bif clock_monotonic/0 monotonic_time_0
+optional-bif clock_monotonic/1 monotonic_time_1
+optional-bif clock_system/0 system_time_0
+optional-bif clock_system/1 system_time_1
+optional-bif clock_offset/0 time_offset_0
+optional-bif clock_offset/1 time_offset_1
+optional-bif clock_timestamp/0 timestamp_0
 
-bif erts_internal:open_port/2
+optional-bif vm_erts_internal_open_port/2 erts_internal_open_port_2
 
-bif erlang:pid_to_list/1
-bif erlang:ports/0
-bif erlang:pre_loaded/0
-bif erlang:process_flag/2
-bif erts_internal:process_flag/3
-hbif erlang:process_info/1
-hbif erlang:process_info/2
-bif erlang:processes/0
-hbif erlang:put/2
-bif erlang:register/2
-bif erlang:registered/0
-ubif erlang:round/1
-ubif erlang:self/0
-bif erlang:setelement/3
-ubif erlang:size/1
-bif erlang:spawn/3
-bif erlang:spawn_link/3
-bif erlang:split_binary/2
-bif erlang:statistics/1
-bif erlang:term_to_binary/1
-bif erlang:term_to_binary/2
-bif erlang:term_to_iovec/1
-bif erlang:term_to_iovec/2
-bif erlang:throw/1
-bif erlang:time/0
-ubif erlang:tl/1
-ubif erlang:trunc/1
-bif erlang:tuple_to_list/1
-bif erlang:universaltime/0
-bif erlang:universaltime_to_localtime/1
-bif erlang:unlink/1
-bif erlang:unregister/1
-bif erlang:whereis/1
-bif erlang:spawn_opt/4
-bif erlang:setnode/2
-bif erlang:dist_get_stat/1
-bif erlang:dist_ctrl_input_handler/2
-bif erlang:dist_ctrl_put_data/2
-bif erlang:dist_ctrl_get_data/1
-bif erlang:dist_ctrl_get_data_notification/1
-bif erlang:dist_ctrl_get_opt/2
-bif erlang:dist_ctrl_set_opt/3
+optional-bif vm_pid_to_list/1 pid_to_list_1
+optional-bif vm_ports/0 ports_0
+optional-bif vm_pre_loaded/0 pre_loaded_0
+optional-bif vm_process_flag/2 process_flag_2
+optional-bif vm_erts_internal_process_flag/3 erts_internal_process_flag_3
+optional-hbif vm_process_info/1 process_info_1
+optional-hbif vm_process_info/2 process_info_2
+optional-bif vm_processes/0 processes_0
+optional-hbif vm_put/2 put_2
+optional-bif vm_register/2 register_2
+optional-bif vm_registered/0 registered_0
+optional-ubif vm_round/1 round_1
+optional-ubif vm_self/0 self_0
+optional-bif vm_setelement/3 setelement_3
+optional-ubif vm_size/1 size_1
+optional-bif vm_spawn/3 spawn_3
+optional-bif vm_spawn_link/3 spawn_link_3
+optional-bif vm_split_binary/2 split_binary_2
+optional-bif vm_statistics/1 statistics_1
+optional-bif vm_term_to_binary/1 term_to_binary_1
+optional-bif vm_term_to_binary/2 term_to_binary_2
+optional-bif vm_term_to_iovec/1 term_to_iovec_1
+optional-bif vm_term_to_iovec/2 term_to_iovec_2
+optional-bif vm_throw/1 throw_1
+optional-bif vm_time/0 time_0
+optional-ubif vm_tl/1 tl_1
+optional-ubif vm_trunc/1 trunc_1
+optional-bif vm_tuple_to_list/1 tuple_to_list_1
+optional-bif vm_universaltime/0 universaltime_0
+optional-bif vm_universaltime_to_localtime/1 universaltime_to_localtime_1
+optional-bif vm_unlink/1 unlink_1
+optional-bif vm_unregister/1 unregister_1
+optional-bif vm_whereis/1 whereis_1
+optional-bif vm_spawn_opt/4 spawn_opt_4
+optional-bif vm_setnode/2 setnode_2
+optional-bif vm_dist_get_stat/1 dist_get_stat_1
+optional-bif vm_dist_ctrl_input_handler/2 dist_ctrl_input_handler_2
+optional-bif vm_dist_ctrl_put_data/2 dist_ctrl_put_data_2
+optional-bif vm_dist_ctrl_get_data/1 dist_ctrl_get_data_1
+optional-bif vm_dist_ctrl_get_data_notification/1 dist_ctrl_get_data_notification_1
+optional-bif vm_dist_ctrl_get_opt/2 dist_ctrl_get_opt_2
+optional-bif vm_dist_ctrl_set_opt/3 dist_ctrl_set_opt_3
 
 # Static native functions in erts_internal
-bif erts_internal:port_info/1
-bif erts_internal:port_info/2
-bif erts_internal:port_call/3
-bif erts_internal:port_command/3
-bif erts_internal:port_control/3
-bif erts_internal:port_close/1
-bif erts_internal:port_connect/2
+optional-bif vm_erts_internal_port_info/1 erts_internal_port_info_1
+optional-bif vm_erts_internal_port_info/2 erts_internal_port_info_2
+optional-bif vm_erts_internal_port_call/3 erts_internal_port_call_3
+optional-bif vm_erts_internal_port_command/3 erts_internal_port_command_3
+optional-bif vm_erts_internal_port_control/3 erts_internal_port_control_3
+optional-bif vm_erts_internal_port_close/1 erts_internal_port_close_1
+optional-bif vm_erts_internal_port_connect/2 erts_internal_port_connect_2
 
-bif erts_internal:request_system_task/3
-bif erts_internal:request_system_task/4
-hbif erts_internal:check_process_code/1
+optional-bif vm_erts_internal_request_system_task/3 erts_internal_request_system_task_3
+optional-bif vm_erts_internal_request_system_task/4 erts_internal_request_system_task_4
+optional-hbif vm_erts_internal_check_process_code/1 erts_internal_check_process_code_1
 
-bif erts_internal:map_to_tuple_keys/1
-bif erts_internal:term_type/1
-bif erts_internal:map_hashmap_children/1
+optional-bif vm_erts_internal_map_to_tuple_keys/1 erts_internal_map_to_tuple_keys_1
+optional-bif vm_erts_internal_term_type/1 erts_internal_term_type_1
+optional-bif vm_erts_internal_map_hashmap_children/1 erts_internal_map_hashmap_children_1
 
-bif erts_internal:time_unit/0
-bif erts_internal:perf_counter_unit/0
+optional-bif vm_erts_internal_time_unit/0 erts_internal_time_unit_0
+optional-bif vm_erts_internal_perf_counter_unit/0 erts_internal_perf_counter_unit_0
 
-bif erts_internal:is_system_process/1
+optional-bif vm_erts_internal_is_system_process/1 erts_internal_is_system_process_1
 
-bif erts_internal:system_check/1
-bif erts_internal:host_request/1
-bif erts_internal:request_failure/2
-bif erts_internal:vm_context/0
+optional-bif vm_erts_internal_system_check/1 erts_internal_system_check_1
+optional-bif vm_erts_internal_host_request/1 erts_internal_host_request_1
+optional-bif vm_erts_internal_request_failure/2 erts_internal_request_failure_2
+optional-bif vm_erts_internal_vm_context/0 erts_internal_vm_context_0
 
-bif erts_internal:scheduler_wall_time/1
+optional-bif vm_erts_internal_scheduler_wall_time/1 erts_internal_scheduler_wall_time_1
 
-bif erts_internal:dirty_process_handle_signals/1
+optional-bif vm_erts_internal_dirty_process_handle_signals/1 erts_internal_dirty_process_handle_signals_1
 
-bif erts_internal:create_dist_channel/3
+optional-bif vm_erts_internal_create_dist_channel/3 erts_internal_create_dist_channel_3
 
-bif erts_internal:ets_super_user/1
+optional-bif vm_erts_internal_ets_super_user/1 erts_internal_ets_super_user_1
 
-bif erts_internal:spawn_request/4
-bif erts_internal:dist_spawn_request/4
-bif erts_internal:no_aux_work_threads/0
+optional-bif vm_erts_internal_spawn_request/4 erts_internal_spawn_request_4
+optional-bif vm_erts_internal_dist_spawn_request/4 erts_internal_dist_spawn_request_4
+optional-bif vm_erts_internal_no_aux_work_threads/0 erts_internal_no_aux_work_threads_0
 
-bif erlang:spawn_request_abandon/1
+optional-bif vm_spawn_request_abandon/1 spawn_request_abandon_1
 
 # Static native functions in erts_literal_area_collector
-bif erts_literal_area_collector:release_area_switch/0
-bif erts_literal_area_collector:send_copy_request/3
+optional-bif vm_erts_literal_area_collector_release_area_switch/0 erts_literal_area_collector_release_area_switch_0
+optional-bif vm_erts_literal_area_collector_send_copy_request/3 erts_literal_area_collector_send_copy_request_3
 
 # inet_db support
-bif erlang:port_set_data/2
-bif erlang:port_get_data/1
+optional-bif vm_port_set_data/2 port_set_data_2
+optional-bif vm_port_get_data/1 port_get_data_1
 
 # Tracing & debugging.
-bif erts_internal:trace_pattern/3
-bif erts_internal:trace/3
-bif erlang:trace_info/2
-bif erlang:trace_delivered/1
-bif erlang:seq_trace/2
-bif erlang:seq_trace_info/1
-bif erlang:seq_trace_print/1
-bif erlang:seq_trace_print/2
-bif erts_internal:suspend_process/2
-bif erlang:resume_process/1
-bif erts_internal:process_display/2
+optional-bif vm_erts_internal_trace_pattern/3 erts_internal_trace_pattern_3
+optional-bif vm_erts_internal_trace/3 erts_internal_trace_3
+optional-bif vm_trace_info/2 trace_info_2
+optional-bif vm_trace_delivered/1 trace_delivered_1
+optional-bif vm_seq_trace/2 seq_trace_2
+optional-bif vm_seq_trace_info/1 seq_trace_info_1
+optional-bif vm_seq_trace_print/1 seq_trace_print_1
+optional-bif vm_seq_trace_print/2 seq_trace_print_2
+optional-bif vm_erts_internal_suspend_process/2 erts_internal_suspend_process_2
+optional-bif vm_resume_process/1 resume_process_1
+optional-bif vm_erts_internal_process_display/2 erts_internal_process_display_2
 
-bif erlang:bump_reductions/1
+optional-bif vm_bump_reductions/1 bump_reductions_1
 
-bif math:cos/1
-bif math:cosh/1
-bif math:sin/1
-bif math:sinh/1
-bif math:tan/1
-bif math:tanh/1
-bif math:acos/1
-bif math:acosh/1
-bif math:asin/1
-bif math:asinh/1
-bif math:atan/1
-bif math:atanh/1
-bif math:erf/1
-bif math:erfc/1
-bif math:exp/1
-bif math:log/1
-bif math:log2/1
-bif math:log10/1
-bif math:sqrt/1
-bif math:atan2/2
-bif math:pow/2
+optional-bif vm_math_cos/1 math_cos_1
+optional-bif vm_math_cosh/1 math_cosh_1
+optional-bif vm_math_sin/1 math_sin_1
+optional-bif vm_math_sinh/1 math_sinh_1
+optional-bif vm_math_tan/1 math_tan_1
+optional-bif vm_math_tanh/1 math_tanh_1
+optional-bif vm_math_acos/1 math_acos_1
+optional-bif vm_math_acosh/1 math_acosh_1
+optional-bif vm_math_asin/1 math_asin_1
+optional-bif vm_math_asinh/1 math_asinh_1
+optional-bif vm_math_atan/1 math_atan_1
+optional-bif vm_math_atanh/1 math_atanh_1
+optional-bif vm_math_erf/1 math_erf_1
+optional-bif vm_math_erfc/1 math_erfc_1
+optional-bif vm_math_exp/1 math_exp_1
+optional-bif vm_math_log/1 math_log_1
+optional-bif vm_math_log2/1 math_log2_1
+optional-bif vm_math_log10/1 math_log10_1
+optional-bif vm_math_sqrt/1 math_sqrt_1
+optional-bif vm_math_atan2/2 math_atan2_2
+optional-bif vm_math_pow/2 math_pow_2
 
-bif erlang:start_timer/3
-bif erlang:start_timer/4
-bif erlang:send_after/3
-bif erlang:send_after/4
-bif erlang:cancel_timer/1
-bif erlang:cancel_timer/2
-bif erlang:read_timer/1
-bif erlang:read_timer/2
+optional-bif timer_start/3 start_timer_3
+optional-bif timer_start/4 start_timer_4
+optional-bif timer_send_after/3 send_after_3
+optional-bif timer_send_after/4 send_after_4
+optional-bif timer_cancel/1 cancel_timer_1
+optional-bif timer_cancel/2 cancel_timer_2
+optional-bif timer_read/1 read_timer_1
+optional-bif timer_read/2 read_timer_2
 
-bif erlang:make_tuple/2
-bif erlang:append_element/2
-bif erlang:make_tuple/3
+optional-bif vm_make_tuple/2 make_tuple_2
+optional-bif vm_append_element/2 append_element_2
+optional-bif vm_make_tuple/3 make_tuple_3
 
-bif erlang:system_flag/2
-bif erlang:system_info/1
+optional-bif vm_system_flag/2 system_flag_2
+optional-bif vm_system_info/1 system_info_1
 # Added 2006-11-07
-bif erlang:system_profile/2
+optional-bif vm_system_profile/2 system_profile_2
 # End Added 2006-11-07
 # Added 2007-01-17
-bif erlang:system_profile/0
+optional-bif vm_system_profile/0 system_profile_0
 # End Added 2007-01-17
-bif erlang:ref_to_list/1
-bif erlang:port_to_list/1
-bif erlang:fun_to_list/1
+optional-bif vm_ref_to_list/1 ref_to_list_1
+optional-bif vm_port_to_list/1 port_to_list_1
+optional-bif vm_fun_to_list/1 fun_to_list_1
 
-bif erlang:monitor/2
-bif erlang:demonitor/1
-bif erlang:demonitor/2
+optional-bif vm_monitor/2 monitor_2
+optional-bif vm_demonitor/1 demonitor_1
+optional-bif vm_demonitor/2 demonitor_2
 
-bif erlang:is_process_alive/1
-bif erts_internal:is_process_alive/2
+optional-bif vm_is_process_alive/1 is_process_alive_1
+optional-bif vm_erts_internal_is_process_alive/2 erts_internal_is_process_alive_2
 
-bif erlang:error/1		error_1
-bif erlang:error/2		error_2
-bif erlang:raise/3		raise_3
+optional-bif vm_error/1 error_1
+optional-bif vm_error/2 error_2
+optional-bif vm_raise/3 raise_3
 
-bif erlang:is_builtin/3
+optional-bif vm_is_builtin/3 is_builtin_3
 
-ubif erlang:'and'/2
-ubif erlang:'or'/2
-ubif erlang:'xor'/2
-ubif erlang:'not'/1
+optional-ubif vm_and/2 and_2
+optional-ubif vm_or/2 or_2
+optional-ubif vm_xor/2 xor_2
+optional-ubif vm_not/1 not_1
 
-ubif erlang:'>'/2			sgt_2
-ubif erlang:'>='/2			sge_2
-ubif erlang:'<'/2			slt_2
-ubif erlang:'=<'/2			sle_2
-ubif erlang:'=:='/2			seq_2
-ubif erlang:'=='/2			seqeq_2
-ubif erlang:'=/='/2			sneq_2
-ubif erlang:'/='/2			sneqeq_2
-ubif erlang:'+'/2			splus_2
-ubif erlang:'-'/2			sminus_2
-ubif erlang:'*'/2			stimes_2
-ubif erlang:'/'/2			div_2
-ubif erlang:'div'/2			intdiv_2
-ubif erlang:'rem'/2
-ubif erlang:'bor'/2
-ubif erlang:'band'/2
-ubif erlang:'bxor'/2
-ubif erlang:'bsl'/2
-ubif erlang:'bsr'/2
-ubif erlang:'bnot'/1
-ubif erlang:'-'/1			sminus_1
-ubif erlang:'+'/1			splus_1
+optional-ubif vm_sgt/2 sgt_2
+optional-ubif vm_sge/2 sge_2
+optional-ubif vm_slt/2 slt_2
+optional-ubif vm_sle/2 sle_2
+optional-ubif vm_seq/2 seq_2
+optional-ubif vm_seqeq/2 seqeq_2
+optional-ubif vm_sneq/2 sneq_2
+optional-ubif vm_sneqeq/2 sneqeq_2
+optional-ubif vm_splus/2 splus_2
+optional-ubif vm_sminus/2 sminus_2
+optional-ubif vm_stimes/2 stimes_2
+optional-ubif vm_div/2 div_2
+optional-ubif vm_intdiv/2 intdiv_2
+optional-ubif vm_rem/2 rem_2
+optional-ubif vm_bor/2 bor_2
+optional-ubif vm_band/2 band_2
+optional-ubif vm_bxor/2 bxor_2
+optional-ubif vm_bsl/2 bsl_2
+optional-ubif vm_bsr/2 bsr_2
+optional-ubif vm_bnot/1 bnot_1
+optional-ubif vm_sminus/1 sminus_1
+optional-ubif vm_splus/1 splus_1
 
 # New operators in R8. These were the only operators missing.
 # erlang:send/2, erlang:append/2 and erlang:subtract/2 are now also
 # defined in erlang.erl, and the C names can be removed when all
 # internal references have been updated to the new ebif_... entries.
 
-bif erlang:'!'/2		ebif_bang_2
-bif erlang:send/2
-bif erlang:send/3
-bif erlang:'++'/2		ebif_plusplus_2
-bif erlang:append/2
-bif erlang:'--'/2		ebif_minusminus_2
-bif erlang:subtract/2
+optional-bif vm_ebif_bang/2 ebif_bang_2
+optional-bif vm_send/2 send_2
+optional-bif vm_send/3 send_3
+optional-bif vm_ebif_plusplus/2 ebif_plusplus_2
+optional-bif vm_append/2 append_2
+optional-bif vm_ebif_minusminus/2 ebif_minusminus_2
+optional-bif vm_subtract/2 subtract_2
 
-ubif erlang:is_atom/1
-ubif erlang:is_list/1
-ubif erlang:is_tuple/1
-ubif erlang:is_float/1
-ubif erlang:is_integer/1
-ubif erlang:is_number/1
-ubif erlang:is_pid/1
-ubif erlang:is_port/1
-ubif erlang:is_reference/1
-ubif erlang:is_binary/1
-ubif erlang:is_function/1
-ubif erlang:is_function/2
-ubif erlang:is_record/2
-ubif erlang:is_record/3
+optional-ubif vm_is_atom/1 is_atom_1
+optional-ubif vm_is_list/1 is_list_1
+optional-ubif vm_is_tuple/1 is_tuple_1
+optional-ubif vm_is_float/1 is_float_1
+optional-ubif vm_is_integer/1 is_integer_1
+optional-ubif vm_is_number/1 is_number_1
+optional-ubif vm_is_pid/1 is_pid_1
+optional-ubif vm_is_port/1 is_port_1
+optional-ubif vm_is_reference/1 is_reference_1
+optional-ubif vm_is_binary/1 is_binary_1
+optional-ubif vm_is_function/1 is_function_1
+optional-ubif vm_is_function/2 is_function_2
+optional-ubif vm_is_record/2 is_record_2
+optional-ubif vm_is_record/3 is_record_3
 
-bif erlang:match_spec_test/3
+optional-bif vm_match_spec_test/3 match_spec_test_3
 
 #
 # Bifs in ets module.
 #
 
-bif ets:internal_request_all/0
-bif ets:new/2
-bif ets:delete/1
-bif ets:delete/2
-bif ets:delete_object/2
-bif ets:first/1
-bif ets:first_lookup/1
-bif ets:is_compiled_ms/1
-bif ets:lookup/2
-bif ets:lookup_element/3
-bif ets:lookup_element/4
-bif ets:info/1
-bif ets:info/2
-bif ets:last/1
-bif ets:last_lookup/1
-bif ets:match/1
-bif ets:match/2
-bif ets:match/3
-bif ets:match_object/1
-bif ets:match_object/2
-bif ets:match_object/3
-bif ets:member/2
-bif ets:next/2
-bif ets:next_lookup/2
-bif ets:prev/2
-bif ets:prev_lookup/2
-bif ets:insert/2
-bif ets:insert_new/2
-bif ets:rename/2
-bif ets:safe_fixtable/2
-bif ets:slot/2
-bif ets:update_counter/3
-bif ets:select/1
-bif ets:select/2
-bif ets:select/3
-bif ets:select_count/2
-bif ets:select_reverse/1
-bif ets:select_reverse/2
-bif ets:select_reverse/3
-bif ets:select_replace/2
-bif ets:match_spec_compile/1
-bif ets:match_spec_run_r/3
+optional-bif term_table_internal_request_all/0 ets_internal_request_all_0
+optional-bif term_table_new_list/2 ets_new_2
+optional-bif term_table_delete/1 ets_delete_1
+optional-bif term_table_delete/2 ets_delete_2
+optional-bif term_table_delete_object/2 ets_delete_object_2
+optional-bif term_table_first/1 ets_first_1
+optional-bif term_table_first_lookup/1 ets_first_lookup_1
+optional-bif term_table_is_compiled_ms/1 ets_is_compiled_ms_1
+optional-bif term_table_lookup/2 ets_lookup_2
+optional-bif term_table_lookup_element/3 ets_lookup_element_3
+optional-bif term_table_lookup_element/4 ets_lookup_element_4
+optional-bif term_table_info/1 ets_info_1
+optional-bif term_table_info/2 ets_info_2
+optional-bif term_table_last/1 ets_last_1
+optional-bif term_table_last_lookup/1 ets_last_lookup_1
+optional-bif term_table_match/1 ets_match_1
+optional-bif term_table_match/2 ets_match_2
+optional-bif term_table_match/3 ets_match_3
+optional-bif term_table_match_object/1 ets_match_object_1
+optional-bif term_table_match_object/2 ets_match_object_2
+optional-bif term_table_match_object/3 ets_match_object_3
+optional-bif term_table_member/2 ets_member_2
+optional-bif term_table_next/2 ets_next_2
+optional-bif term_table_next_lookup/2 ets_next_lookup_2
+optional-bif term_table_prev/2 ets_prev_2
+optional-bif term_table_prev_lookup/2 ets_prev_lookup_2
+optional-bif term_table_insert/2 ets_insert_2
+optional-bif term_table_insert_new/2 ets_insert_new_2
+optional-bif term_table_rename/2 ets_rename_2
+optional-bif term_table_safe_fixtable/2 ets_safe_fixtable_2
+optional-bif term_table_slot/2 ets_slot_2
+optional-bif term_table_update_counter/3 ets_update_counter_3
+optional-bif term_table_select/1 ets_select_1
+optional-bif term_table_select/2 ets_select_2
+optional-bif term_table_select/3 ets_select_3
+optional-bif term_table_select_count/2 ets_select_count_2
+optional-bif term_table_select_reverse/1 ets_select_reverse_1
+optional-bif term_table_select_reverse/2 ets_select_reverse_2
+optional-bif term_table_select_reverse/3 ets_select_reverse_3
+optional-bif term_table_select_replace/2 ets_select_replace_2
+optional-bif term_table_match_spec_compile/1 ets_match_spec_compile_1
+optional-bif term_table_match_spec_run_r/3 ets_match_spec_run_r_3
 
 #
 # Bifs in os module.
 #
 
-bif os:getenv/1
-bif os:putenv/2
-bif os:unsetenv/1
-bif os:getpid/0
-bif os:timestamp/0
-bif os:system_time/0
-bif os:system_time/1
-bif os:perf_counter/0
+optional-bif vm_os_getenv/1 os_getenv_1
+optional-bif vm_os_putenv/2 os_putenv_2
+optional-bif vm_os_unsetenv/1 os_unsetenv_1
+optional-bif vm_os_getpid/0 os_getpid_0
+optional-bif vm_os_timestamp/0 os_timestamp_0
+optional-bif vm_os_system_time/0 os_system_time_0
+optional-bif vm_os_system_time/1 os_system_time_1
+optional-bif vm_os_perf_counter/0 os_perf_counter_0
 
 #
 # Bifs in the erl_ddll module (the module actually does not exist)
 #
 
-bif erl_ddll:try_load/3
-bif erl_ddll:try_unload/2
-bif erl_ddll:loaded_drivers/0
-bif erl_ddll:info/2
-bif erl_ddll:format_error_int/1
-bif erl_ddll:monitor/2
-bif erl_ddll:demonitor/1
+optional-bif vm_erl_ddll_try_load/3 erl_ddll_try_load_3
+optional-bif vm_erl_ddll_try_unload/2 erl_ddll_try_unload_2
+optional-bif vm_erl_ddll_loaded_drivers/0 erl_ddll_loaded_drivers_0
+optional-bif vm_erl_ddll_info/2 erl_ddll_info_2
+optional-bif vm_erl_ddll_format_error_int/1 erl_ddll_format_error_int_1
+optional-bif vm_erl_ddll_monitor/2 erl_ddll_monitor_2
+optional-bif vm_erl_ddll_demonitor/1 erl_ddll_demonitor_1
 
 #
 # Bifs in the re module
 #
-bif re:version/0
-bif re:compile/1
-bif re:compile/2
-bif re:run/2
-bif re:run/3
-bif re:internal_run/4
 
 #
 # Bifs in lists module.
 #
 
-bif lists:member/2
-bif lists:reverse/2
-bif lists:keymember/3
-bif lists:keysearch/3
-bif lists:keyfind/3
+optional-bif list_member/2 lists_member_2
+optional-bif list_reverse/2 lists_reverse_2
+optional-bif list_keymember/3 lists_keymember_3
+optional-bif list_keysearch/3 lists_keysearch_3
+optional-bif list_keyfind/3 lists_keyfind_3
 
 #
 # Bifs for debugging.
 #
 
-bif erts_debug:disassemble/1
-bif erts_debug:breakpoint/2
-bif erts_debug:same/2
-bif erts_debug:flat_size/1
-bif erts_debug:get_internal_state/1
-bif erts_debug:set_internal_state/2
-bif erts_debug:dist_ext_to_term/2
-bif erts_debug:instructions/0
-bif erts_debug:interpreter_size/0
-bif erts_debug:dirty_cpu/2
-bif erts_debug:dirty_io/2
-bif erts_debug:dirty/3
+optional-bif vm_erts_debug_disassemble/1 erts_debug_disassemble_1
+optional-bif vm_erts_debug_breakpoint/2 erts_debug_breakpoint_2
+optional-bif vm_erts_debug_same/2 erts_debug_same_2
+optional-bif vm_erts_debug_flat_size/1 erts_debug_flat_size_1
+optional-bif vm_erts_debug_get_internal_state/1 erts_debug_get_internal_state_1
+optional-bif vm_erts_debug_set_internal_state/2 erts_debug_set_internal_state_2
+optional-bif vm_erts_debug_dist_ext_to_term/2 erts_debug_dist_ext_to_term_2
+optional-bif vm_erts_debug_instructions/0 erts_debug_instructions_0
+optional-bif vm_erts_debug_interpreter_size/0 erts_debug_interpreter_size_0
+optional-bif vm_erts_debug_dirty_cpu/2 erts_debug_dirty_cpu_2
+optional-bif vm_erts_debug_dirty_io/2 erts_debug_dirty_io_2
+optional-bif vm_erts_debug_dirty/3 erts_debug_dirty_3
 
 #
 # Lock counter bif's
 #
-bif erts_debug:lcnt_control/2
-bif erts_debug:lcnt_control/1
-bif erts_debug:lcnt_collect/0
-bif erts_debug:lcnt_clear/0
+optional-bif vm_erts_debug_lcnt_control/2 erts_debug_lcnt_control_2
+optional-bif vm_erts_debug_lcnt_control/1 erts_debug_lcnt_control_1
+optional-bif vm_erts_debug_lcnt_collect/0 erts_debug_lcnt_collect_0
+optional-bif vm_erts_debug_lcnt_clear/0 erts_debug_lcnt_clear_0
 
 
 #
 # New Bifs in R9C.
 #
 
-hbif erlang:hibernate/3
-bif error_logger:warning_map/0
+optional-hbif vm_hibernate/3 hibernate_3
+optional-bif vm_error_logger_warning_map/0 error_logger_warning_map_0
 
 #
 # New Bifs in R10B.
 #
-bif erlang:get_module_info/1
-bif erlang:get_module_info/2
-ubif erlang:is_boolean/1
-bif string:list_to_float/1
-bif erlang:make_fun/3
-bif erlang:iolist_size/1
-bif erlang:iolist_to_binary/1
-ubif erlang:list_to_existing_atom/1
+optional-bif vm_get_module_info/1 get_module_info_1
+optional-bif vm_get_module_info/2 get_module_info_2
+optional-ubif vm_is_boolean/1 is_boolean_1
+optional-bif charlist_parse_float_prefix/1 string_list_to_float_1
+optional-bif vm_make_fun/3 make_fun_3
+optional-bif vm_iolist_size/1 iolist_size_1
+optional-bif vm_iolist_to_binary/1 iolist_to_binary_1
+optional-ubif vm_list_to_existing_atom/1 list_to_existing_atom_1
 
 #
 # New Bifs in R12B-0
 #
-ubif erlang:is_bitstring/1
-ubif erlang:tuple_size/1
-ubif erlang:byte_size/1
-ubif erlang:bit_size/1
-bif erlang:list_to_bitstring/1
-bif erlang:bitstring_to_list/1
+optional-ubif vm_is_bitstring/1 is_bitstring_1
+optional-ubif vm_tuple_size/1 tuple_size_1
+optional-ubif vm_byte_size/1 byte_size_1
+optional-ubif vm_bit_size/1 bit_size_1
+optional-bif vm_list_to_bitstring/1 list_to_bitstring_1
+optional-bif vm_bitstring_to_list/1 bitstring_to_list_1
 
 #
 # New Bifs in R12B-2
 #
-bif ets:update_element/3
+optional-bif term_table_update_element/3 ets_update_element_3
 
 #
 # New Bifs in R12B-4
 #
-bif erlang:decode_packet/3
+optional-bif vm_decode_packet/3 decode_packet_3
 
 #
 # New Bifs in R12B-5
 #
-bif unicode:characters_to_binary/2
-bif unicode:characters_to_list/2
-bif unicode:bin_is_7bit/1
+optional-bif chardata_to_utf8/2 unicode_characters_to_binary_2
+optional-bif chardata_to_codepoints/2 unicode_characters_to_list_2
+optional-bif bytes_is_7bit/1 unicode_bin_is_7bit_1
 #
 # New Bifs in R13A.
 #
-bif erlang:atom_to_binary/2
-ubif erlang:binary_to_atom/2
-ubif erlang:binary_to_existing_atom/2
-bif net_kernel:dflag_unicode_io/1
+optional-bif vm_atom_to_binary/2 atom_to_binary_2
+optional-ubif vm_binary_to_atom/2 binary_to_atom_2
+optional-ubif vm_binary_to_existing_atom/2 binary_to_existing_atom_2
+optional-bif vm_net_kernel_dflag_unicode_io/1 net_kernel_dflag_unicode_io_1
 #
 # New Bifs in R13B-1
 #
-bif ets:give_away/3
-bif ets:setopts/2
+optional-bif term_table_give_away/3 ets_give_away_3
+optional-bif term_table_setopts/2 ets_setopts_2
 
 #
 # New Bifs in R13B3
 #
-bif erlang:load_nif/2
-bif erlang:call_on_load_function/1
-bif erlang:finish_after_on_load/2
+optional-bif vm_load_nif/2 load_nif_2
+optional-bif vm_call_on_load_function/1 call_on_load_function_1
+optional-bif vm_finish_after_on_load/2 finish_after_on_load_2
 
 #
 # New Bifs in R13B04
 #
-bif erlang:binary_to_term/2
+optional-bif vm_binary_to_term/2 binary_to_term_2
 
 #
 # The binary match bifs (New in R14A - EEP9)
@@ -543,323 +537,349 @@ bif erlang:binary_to_term/2
 #
 # The searching/splitting/substituting thingies
 #
-ubif erlang:binary_part/2
-ubif erlang:binary_part/3
+optional-ubif vm_binary_part/2 binary_part_2
+optional-ubif vm_binary_part/3 binary_part_3
 
-bif binary:compile_pattern/1
-bif binary:match/2
-bif binary:match/3
-bif binary:matches/2
-bif binary:matches/3
-bif binary:longest_common_prefix/1
-bif binary:longest_common_suffix/1
-bif binary:first/1
-bif binary:last/1
-bif binary:at/2
-bif binary:part/2 binary_binary_part_2
-bif binary:part/3 binary_binary_part_3
-bif binary:list_to_bin/1
-bif binary:copy/1
-bif binary:copy/2
-bif binary:referenced_byte_size/1
-bif binary:encode_unsigned/1
-bif binary:encode_unsigned/2
-bif binary:decode_unsigned/1
-bif binary:decode_unsigned/2
+optional-bif bytes_compile_pattern/1 binary_compile_pattern_1
+optional-bif bytes_match_list/2 binary_match_2
+optional-bif bytes_match_list/3 binary_match_3
+optional-bif bytes_find_all/2 binary_matches_2
+optional-bif bytes_matches_list/3 binary_matches_3
+optional-bif bytes_common_prefix_size/1 binary_longest_common_prefix_1
+optional-bif bytes_common_suffix_size/1 binary_longest_common_suffix_1
+optional-bif bytes_first/1 binary_first_1
+optional-bif bytes_last/1 binary_last_1
+optional-bif bytes_at/2 binary_at_2
+optional-bif bytes_part/2 binary_binary_part_2
+optional-bif bytes_part/3 binary_binary_part_3
+optional-bif bytes_from_list/1 binary_list_to_bin_1
+optional-bif bytes_copy/1 binary_copy_1
+optional-bif bytes_copy/2 binary_copy_2
+optional-bif bitstring_referenced_size/1 binary_referenced_byte_size_1
+optional-bif bytes_encode_unsigned/1 binary_encode_unsigned_1
+optional-bif bytes_encode_unsigned/2 binary_encode_unsigned_2
+optional-bif bytes_decode_unsigned/1 binary_decode_unsigned_1
+optional-bif bytes_decode_unsigned/2 binary_decode_unsigned_2
 
-bif erlang:nif_error/1
-bif erlang:nif_error/2
+# Modern byte calling contracts have separate identities for combined hosts.
+optional-bif bytes_repeat_modern/2 bytes_repeat_modern_2
+optional-bif bytes_referenced_size_modern/1 bytes_referenced_size_modern_1
+optional-bif bytes_find_modern/2 bytes_find_modern_2
+optional-bif bytes_find_modern/3 bytes_find_modern_3
+optional-bif bytes_find_all_modern/3 bytes_find_all_modern_3
+
+optional-bif vm_nif_error/1 nif_error_1
+optional-bif vm_nif_error/2 nif_error_2
 
 #
 # Helpers for unicode filenames
 #
-bif erts_internal:filename_to_native/1
-bif erts_internal:filename_from_native/1
-bif erts_internal:filename_normalize_utf8/1
-bif erts_internal:filename_is_translatable/1
-bif file:native_name_encoding/0
+optional-bif vm_erts_internal_filename_to_native/1 erts_internal_filename_to_native_1
+optional-bif vm_erts_internal_filename_from_native/1 erts_internal_filename_from_native_1
+optional-bif vm_erts_internal_filename_normalize_utf8/1 erts_internal_filename_normalize_utf8_1
+optional-bif vm_erts_internal_filename_is_translatable/1 erts_internal_filename_is_translatable_1
+optional-bif vm_file_native_name_encoding/0 file_native_name_encoding_0
 
 #
 # New in R14B04.
 #
-bif erlang:check_old_code/1
+optional-bif vm_check_old_code/1 check_old_code_1
 
 
 #
 # New in R15B
 #
-bif erlang:universaltime_to_posixtime/1
-bif erlang:posixtime_to_universaltime/1
+optional-bif vm_universaltime_to_posixtime/1 universaltime_to_posixtime_1
+optional-bif vm_posixtime_to_universaltime/1 posixtime_to_universaltime_1
 
 #
 # New in R15B01
 #
 
 # The dtrace BIF's are always present, but give dummy results if dynamic trace is not enabled in the build
-bif erlang:dt_put_tag/1
-bif erlang:dt_get_tag/0
-bif erlang:dt_get_tag_data/0
-bif erlang:dt_spread_tag/1
-bif erlang:dt_restore_tag/1
+optional-bif vm_dt_put_tag/1 dt_put_tag_1
+optional-bif vm_dt_get_tag/0 dt_get_tag_0
+optional-bif vm_dt_get_tag_data/0 dt_get_tag_data_0
+optional-bif vm_dt_spread_tag/1 dt_spread_tag_1
+optional-bif vm_dt_restore_tag/1 dt_restore_tag_1
 
 # These are dummies even with enabled dynamic trace unless vm probes are enabled.
 # They are also internal, for dtrace tags sent to the VM's own drivers (efile)
-bif erlang:dt_prepend_vm_tag_data/1
-bif erlang:dt_append_vm_tag_data/1
+optional-bif vm_dt_prepend_vm_tag_data/1 dt_prepend_vm_tag_data_1
+optional-bif vm_dt_append_vm_tag_data/1 dt_append_vm_tag_data_1
 
 
 #
 # New in R16B.
 #
-bif erlang:finish_loading/1
-bif erlang:insert_element/3
-bif erlang:delete_element/2
-bif erlang:integer_to_binary/1
-bif erlang:float_to_binary/1
-bif erlang:float_to_binary/2
-bif erlang:binary_to_float/1
+optional-bif vm_finish_loading/1 finish_loading_1
+optional-bif vm_insert_element/3 insert_element_3
+optional-bif vm_delete_element/2 delete_element_2
+optional-bif vm_integer_to_binary/1 integer_to_binary_1
+optional-bif vm_float_to_binary/1 float_to_binary_1
+optional-bif vm_float_to_binary/2 float_to_binary_2
+optional-bif vm_binary_to_float/1 binary_to_float_1
 
-bif io:printable_range/0
+optional-bif vm_io_printable_range/0 io_printable_range_0
 
 #
 # New in 17.0
 #
 
-bif re:inspect/2
 
-ubif erlang:is_map/1
-ubif erlang:map_size/1
-bif maps:find/2
-bif maps:get/2
-bif maps:from_list/1
-bif maps:is_key/2
-bif maps:keys/1
-bif maps:merge/2
-bif maps:put/3
-bif maps:remove/2
-bif maps:update/3
-bif maps:values/1
+optional-ubif vm_is_map/1 is_map_1
+optional-ubif vm_map_size/1 map_size_1
+optional-bif map_find/2 maps_find_2
+optional-bif map_get/2 maps_get_2
+optional-bif map_from_list/1 maps_from_list_1
+optional-bif map_is_key/2 maps_is_key_2
+optional-bif map_keys/1 maps_keys_1
+optional-bif map_merge/2 maps_merge_2
+optional-bif map_put/3 maps_put_3
+optional-bif map_remove/2 maps_remove_2
+optional-bif map_update/3 maps_update_3
+optional-bif map_values/1 maps_values_1
 
-bif erts_internal:cmp_term/2
+optional-bif vm_erts_internal_cmp_term/2 erts_internal_cmp_term_2
 
-bif ets:take/2
+optional-bif term_table_take/2 ets_take_2
 
 #
 # New in 17.1
 #
 
-bif erlang:fun_info_mfa/1
+optional-bif vm_fun_info_mfa/1 fun_info_mfa_1
 
 # New in 18.0
 #
 
-bif erlang:get_keys/0
-bif ets:update_counter/4
-bif erts_debug:map_info/1
+optional-bif vm_get_keys/0 get_keys_0
+optional-bif term_table_update_counter/4 ets_update_counter_4
+optional-bif vm_erts_debug_map_info/1 erts_debug_map_info_1
 
 #
 # New in 19.0
 #
 
-bif erts_internal:is_process_executing_dirty/1
-bif erts_internal:check_dirty_process_code/2
-bif erts_internal:purge_module/2
-bif binary:split/2
-bif binary:split/3
-bif erts_debug:size_shared/1
-bif erts_debug:copy_shared/2
-bif erlang:has_prepared_code_on_load/1
+optional-bif vm_erts_internal_is_process_executing_dirty/1 erts_internal_is_process_executing_dirty_1
+optional-bif vm_erts_internal_check_dirty_process_code/2 erts_internal_check_dirty_process_code_2
+optional-bif vm_erts_internal_purge_module/2 erts_internal_purge_module_2
+optional-bif bytes_split/2 binary_split_2
+optional-bif bytes_split_list/3 binary_split_3
+# Optional call contracts share the split kernel.
+optional-bif bytes_split_map/3 beam_bytes_split_3
+optional-bif vm_erts_debug_size_shared/1 erts_debug_size_shared_1
+optional-bif vm_erts_debug_copy_shared/2 erts_debug_copy_shared_2
+optional-bif vm_has_prepared_code_on_load/1 has_prepared_code_on_load_1
 
-bif maps:take/2
+optional-bif map_take/2 maps_take_2
 
 #
 # New in 20.0
 #
 
-ubif erlang:floor/1
-ubif erlang:ceil/1
-bif math:floor/1
-bif math:ceil/1
-bif math:fmod/2
-bif os:set_signal/2
+optional-ubif vm_floor/1 floor_1
+optional-ubif vm_ceil/1 ceil_1
+optional-bif vm_math_floor/1 math_floor_1
+optional-bif vm_math_ceil/1 math_ceil_1
+optional-bif vm_math_fmod/2 math_fmod_2
+optional-bif vm_os_set_signal/2 os_set_signal_2
 
 #
 # New in 20.1
 #
-bif erlang:iolist_to_iovec/1
+optional-bif vm_iolist_to_iovec/1 iolist_to_iovec_1
 
 #
 # New in 21.0
 #
 
-bif erts_internal:get_dflags/0
-bif erts_internal:new_connection/1
-bif erts_internal:map_next/3
-bif ets:whereis/1
-bif erts_internal:gather_alloc_histograms/1
-bif erts_internal:gather_carrier_info/1
-ubif erlang:map_get/2
-ubif erlang:is_map_key/2
-bif ets:internal_delete_all/2
-bif ets:internal_select_delete/2
+optional-bif vm_erts_internal_get_dflags/0 erts_internal_get_dflags_0
+optional-bif vm_erts_internal_new_connection/1 erts_internal_new_connection_1
+optional-bif vm_erts_internal_map_next/3 erts_internal_map_next_3
+optional-bif term_table_whereis/1 ets_whereis_1
+optional-bif vm_erts_internal_gather_alloc_histograms/1 erts_internal_gather_alloc_histograms_1
+optional-bif vm_erts_internal_gather_carrier_info/1 erts_internal_gather_carrier_info_1
+optional-ubif vm_map_get/2 map_get_2
+optional-ubif vm_is_map_key/2 is_map_key_2
+optional-bif term_table_internal_delete_all/2 ets_internal_delete_all_2
+optional-bif term_table_internal_select_delete/2 ets_internal_select_delete_2
 
 #
 # New in 21.2
 #
 
-bif persistent_term:put/2
-bif persistent_term:get/1
-bif persistent_term:get/0
-bif persistent_term:erase/1
-bif persistent_term:info/0
-bif erts_internal:erase_persistent_terms/0
+optional-bif persistent_value_put/2 persistent_term_put_2
+optional-bif persistent_value_get/1 persistent_term_get_1
+optional-bif persistent_value_get/0 persistent_term_get_0
+optional-bif persistent_value_erase/1 persistent_term_erase_1
+optional-bif persistent_value_info/0 persistent_term_info_0
+optional-bif vm_erts_internal_erase_persistent_terms/0 erts_internal_erase_persistent_terms_0
 
-bif erts_internal:atomics_new/2
-bif atomics:get/2
-bif atomics:put/3
-bif atomics:add/3
-bif atomics:add_get/3
-bif atomics:exchange/3
-bif atomics:compare_exchange/4
-bif atomics:info/1
+optional-bif vm_erts_internal_atomics_new/2 erts_internal_atomics_new_2
+optional-bif atomic_array_get/2 atomics_get_2
+optional-bif atomic_array_put/3 atomics_put_3
+optional-bif atomic_array_add/3 atomics_add_3
+optional-bif atomic_array_add_get/3 atomics_add_get_3
+optional-bif atomic_array_exchange/3 atomics_exchange_3
+optional-bif atomic_array_compare_exchange/4 atomics_compare_exchange_4
+optional-bif atomic_array_info/1 atomics_info_1
 
-bif erts_internal:counters_new/1
-bif erts_internal:counters_get/2
-bif erts_internal:counters_add/3
-bif erts_internal:counters_put/3
-bif erts_internal:counters_info/1
+optional-bif vm_erts_internal_counters_new/1 erts_internal_counters_new_1
+optional-bif vm_erts_internal_counters_get/2 erts_internal_counters_get_2
+optional-bif vm_erts_internal_counters_add/3 erts_internal_counters_add_3
+optional-bif vm_erts_internal_counters_put/3 erts_internal_counters_put_3
+optional-bif vm_erts_internal_counters_info/1 erts_internal_counters_info_1
 
 #
 # New in 21.2.3
 #
 
-bif erts_internal:spawn_system_process/3
+optional-bif vm_erts_internal_spawn_system_process/3 erts_internal_spawn_system_process_3
 
 #
 # New in 21.3
 #
 
-bif erlang:integer_to_list/2
-bif erlang:integer_to_binary/2
-bif persistent_term:get/2
+optional-bif vm_integer_to_list/2 integer_to_list_2
+optional-bif vm_integer_to_binary/2 integer_to_binary_2
+optional-bif persistent_value_get/2 persistent_term_get_2
 
 #
 # New in 22.1
 #
 
-bif erts_internal:ets_lookup_binary_info/2
-bif erts_internal:ets_raw_first/1
-bif erts_internal:ets_raw_next/2
+optional-bif vm_erts_internal_ets_lookup_binary_info/2 erts_internal_ets_lookup_binary_info_2
+optional-bif vm_erts_internal_ets_raw_first/1 erts_internal_ets_raw_first_1
+optional-bif vm_erts_internal_ets_raw_next/2 erts_internal_ets_raw_next_2
 
 #
 # New in 22.2
 #
 
-bif erts_internal:abort_pending_connection/2
+optional-bif vm_erts_internal_abort_pending_connection/2 erts_internal_abort_pending_connection_2
 
 
 #
 # New in 23
 #
 
-bif erts_internal:get_creation/0
+optional-bif vm_erts_internal_get_creation/0 erts_internal_get_creation_0
 
 #
 # New in 24
 #
 
-bif erts_internal:beamfile_gunzip/1
-bif erts_internal:prepare_loading/2
-bif erts_internal:beamfile_chunk/2
-bif erts_internal:beamfile_module_md5/1
-bif os:env/0
-bif erlang:alias/1
-bif erlang:unalias/1
-bif erlang:monitor/3
-bif erlang:error/3
-bif maps:from_keys/2
+optional-bif vm_erts_internal_beamfile_gunzip/1 erts_internal_beamfile_gunzip_1
+optional-bif vm_erts_internal_prepare_loading/2 erts_internal_prepare_loading_2
+optional-bif vm_erts_internal_beamfile_chunk/2 erts_internal_beamfile_chunk_2
+optional-bif vm_erts_internal_beamfile_module_md5/1 erts_internal_beamfile_module_md5_1
+optional-bif vm_os_env/0 os_env_0
+optional-bif vm_alias/1 alias_1
+optional-bif vm_unalias/1 unalias_1
+optional-bif vm_monitor/3 monitor_3
+optional-bif vm_error/3 error_3
+optional-bif map_from_keys/2 maps_from_keys_2
 
 # New in 24 (in a patch)
-bif erts_internal:binary_to_integer/2
-bif erts_internal:list_to_integer/2
+optional-bif vm_erts_internal_binary_to_integer/2 erts_internal_binary_to_integer_2
+optional-bif vm_erts_internal_list_to_integer/2 erts_internal_list_to_integer_2
 
 #
 # New in 26
 #
-ubif erlang:min/2
-ubif erlang:max/2
-bif erts_internal:term_to_string/2
+optional-ubif vm_min/2 min_2
+optional-ubif vm_max/2 max_2
+optional-bif vm_erts_internal_term_to_string/2 erts_internal_term_to_string_2
 
 #
 # New in 27.
 #
-bif code:coverage_support/0
-bif code:get_coverage_mode/0
-bif code:get_coverage_mode/1
-bif code:get_coverage/2
-bif code:reset_coverage/1
-bif code:set_coverage_mode/1
-bif ets:update_element/4
-bif erts_internal:trace_session_create/3
-bif erts_internal:trace_session_destroy/1
-bif erts_internal:trace/4
-bif erts_internal:trace_pattern/4
-bif erts_internal:trace_info/3
-bif erts_trace_cleaner:check/0
-bif erts_trace_cleaner:send_trace_clean_signal/1
+optional-bif vm_code_coverage_support/0 code_coverage_support_0
+optional-bif vm_code_get_coverage_mode/0 code_get_coverage_mode_0
+optional-bif vm_code_get_coverage_mode/1 code_get_coverage_mode_1
+optional-bif vm_code_get_coverage/2 code_get_coverage_2
+optional-bif vm_code_reset_coverage/1 code_reset_coverage_1
+optional-bif vm_code_set_coverage_mode/1 code_set_coverage_mode_1
+optional-bif term_table_update_element/4 ets_update_element_4
+optional-bif vm_erts_internal_trace_session_create/3 erts_internal_trace_session_create_3
+optional-bif vm_erts_internal_trace_session_destroy/1 erts_internal_trace_session_destroy_1
+optional-bif vm_erts_internal_trace/4 erts_internal_trace_4
+optional-bif vm_erts_internal_trace_pattern/4 erts_internal_trace_pattern_4
+optional-bif vm_erts_internal_trace_info/3 erts_internal_trace_info_3
+optional-bif vm_erts_trace_cleaner_check/0 erts_trace_cleaner_check_0
+optional-bif vm_erts_trace_cleaner_send_trace_clean_signal/1 erts_trace_cleaner_send_trace_clean_signal_1
 
 #
 # New in 28.
 #
-bif erts_internal:system_monitor/1
-bif erts_internal:system_monitor/3
-bif erts_internal:processes_next/1
-bif code:get_debug_info/1
-bif erlang:exit/3
-bif erlang:link/2
-bif erl_debugger:supported/0
-bif erl_debugger:instrumentations/0
-bif erl_debugger:toggle_instrumentations/1
-bif erl_debugger:register/1
-bif erl_debugger:unregister/2
-bif erl_debugger:whereis/0
-bif erl_debugger:breakpoint/3
-bif erl_debugger:breakpoints/1
-bif erl_debugger:breakpoints/3
-bif erts_internal:notify_breakpoint_hit/3
-bif erl_debugger:stack_frames/2
-bif erl_debugger:peek_stack_frame_slot/4
-bif erl_debugger:xregs_count/1
-bif erl_debugger:peek_xreg/3
+optional-bif vm_erts_internal_system_monitor/1 erts_internal_system_monitor_1
+optional-bif vm_erts_internal_system_monitor/3 erts_internal_system_monitor_3
+optional-bif vm_erts_internal_processes_next/1 erts_internal_processes_next_1
+optional-bif vm_code_get_debug_info/1 code_get_debug_info_1
+optional-bif vm_exit/3 exit_3
+optional-bif vm_link/2 link_2
+optional-bif vm_erl_debugger_supported/0 erl_debugger_supported_0
+optional-bif vm_erl_debugger_instrumentations/0 erl_debugger_instrumentations_0
+optional-bif vm_erl_debugger_toggle_instrumentations/1 erl_debugger_toggle_instrumentations_1
+optional-bif vm_erl_debugger_register/1 erl_debugger_register_1
+optional-bif vm_erl_debugger_unregister/2 erl_debugger_unregister_2
+optional-bif vm_erl_debugger_whereis/0 erl_debugger_whereis_0
+optional-bif vm_erl_debugger_breakpoint/3 erl_debugger_breakpoint_3
+optional-bif vm_erl_debugger_breakpoints/1 erl_debugger_breakpoints_1
+optional-bif vm_erl_debugger_breakpoints/3 erl_debugger_breakpoints_3
+optional-bif vm_erts_internal_notify_breakpoint_hit/3 erts_internal_notify_breakpoint_hit_3
+optional-bif vm_erl_debugger_stack_frames/2 erl_debugger_stack_frames_2
+optional-bif vm_erl_debugger_peek_stack_frame_slot/4 erl_debugger_peek_stack_frame_slot_4
+optional-bif vm_erl_debugger_xregs_count/1 erl_debugger_xregs_count_1
+optional-bif vm_erl_debugger_peek_xreg/3 erl_debugger_peek_xreg_3
 
 #
 # New in 28.1.
 #
-bif erts_debug:unaligned_bitstring/2
-bif re:import/1
+optional-bif vm_erts_debug_unaligned_bitstring/2 erts_debug_unaligned_bitstring_2
 
 #
 # New in 28.4
 #
-bif persistent_term:put_new/2
+optional-bif persistent_value_put_new/2 persistent_term_put_new_2
 
 #
 # New in 29.
 #
-ubif erlang:is_integer/3
-bif erlang:exit_signal/3
+optional-ubif vm_is_integer/3 is_integer_3
+optional-bif vm_exit_signal/3 exit_signal_3
 
 #
 # Native records.
 #
 
-ubif erlang:is_record/1
+optional-ubif vm_is_record/1 is_record_1
 
-bif records:get_module/1
-bif records:get_name/1
-bif records:get/2
-bif records:get_field_names/1
-bif records:is_exported/1
-bif records:create/4
-bif records:update/4
-bif records:get_definition/2
+optional-bif vm_records_get_module/1 records_get_module_1
+optional-bif vm_records_get_name/1 records_get_name_1
+optional-bif vm_records_get/2 records_get_2
+optional-bif vm_records_get_field_names/1 records_get_field_names_1
+optional-bif vm_records_is_exported/1 records_is_exported_1
+optional-bif vm_records_create/4 records_create_4
+optional-bif vm_records_update/4 records_update_4
+optional-bif vm_records_get_definition/2 records_get_definition_2
+
+# Modern collection and text contracts have independent public identities.
+optional-bif list_contains_modern/2 list_contains_modern_2
+optional-bif list_reverse_modern/2 list_reverse_modern_2
+optional-bif map_find_modern/2 map_find_modern_2
+optional-bif map_put_modern/3 map_put_modern_3
+optional-bif text_from_utf8_modern/1 text_from_utf8_modern_1
+
+optional-bif atomic_array_new_list_modern/2 atomic_array_new_list_modern_2
+optional-bif counter_array_new_list_modern/2 counter_array_new_list_modern_2
+optional-bif counter_array_get_modern/2 counter_array_get_modern_2
+optional-bif counter_array_put_modern/3 counter_array_put_modern_3
+optional-bif counter_array_add_modern/3 counter_array_add_modern_3
+optional-bif counter_array_info_modern/1 counter_array_info_modern_1
+optional-bif vm_erts_internal_dynamic_node_name/0 erts_internal_dynamic_node_name_0
+optional-bif vm_erts_internal_dynamic_node_name/1 erts_internal_dynamic_node_name_1
+
+# Private binary-memory diagnostics are independent of public ETS names.
+optional-bif vm_erts_internal_ets_info_binary/1 erts_internal_ets_info_binary_1

@@ -123,23 +123,16 @@ pred.mixed_types(Size, Rest) {
 
 // Test whether Bif is "heavy" and should always go through its export entry.
 pred.is_heavy_bif(Bif) {
-    BeamFile_ImportEntry *import;
-    const Export *export;
-
     if (Bif.type != TAG_u || Bif.val >= S->beam.imports.count) {
         return 0;
     }
 
-    import = &S->beam.imports.entries[Bif.val];
-    export = erts_active_export_entry(import->module,
-                                      import->function,
-                                      import->arity);
+    const BifEntry *entry = S->bif_imports[Bif.val];
+    return entry && entry->kind == BIF_KIND_HEAVY;
+}
 
-    if (export->bif_number != -1) {
-        return bif_table[export->bif_number].kind == BIF_KIND_HEAVY;
-    }
-
-    return 0;
+pred.is_native_guard(Bif) {
+    return Bif.type == TAG_u && beam_load_native_guard_pending(S, Bif.val);
 }
 
 // Predicate to test whether all of the given new small map keys are literals
@@ -228,4 +221,40 @@ pred.equal(Val1, Val2) {
     } else {
         return Val1.val == Val2.val;
     }
+}
+
+pred.is_vm_apply_2(Import) {
+    if (Import.type != TAG_u || Import.val >= S->beam.imports.count) return 0;
+    int slot = beam_load_private_native(S,Import.val);
+    if (slot >= 0) return slot == BIF_SIZE + BEAM_INSTRUCTION_vm_apply_2;
+    const BeamFile_ImportEntry *entry = &S->beam.imports.entries[Import.val];
+    return beam_builtin_selected_instruction(entry->module,entry->function,entry->arity) == BEAM_INSTRUCTION_vm_apply_2;
+}
+
+pred.is_vm_apply_3(Import) {
+    if (Import.type != TAG_u || Import.val >= S->beam.imports.count) return 0;
+    int slot = beam_load_private_native(S,Import.val);
+    if (slot >= 0) return slot == BIF_SIZE + BEAM_INSTRUCTION_vm_apply_3;
+    const BeamFile_ImportEntry *entry = &S->beam.imports.entries[Import.val];
+    return beam_builtin_selected_instruction(entry->module,entry->function,entry->arity) == BEAM_INSTRUCTION_vm_apply_3;
+}
+
+pred.is_vm_yield_0(Import) {
+    if (Import.type != TAG_u || Import.val >= S->beam.imports.count) return 0;
+    int slot = beam_load_private_native(S,Import.val);
+    if (slot >= 0) return slot == BIF_SIZE + BEAM_INSTRUCTION_vm_yield_0;
+    const BeamFile_ImportEntry *entry = &S->beam.imports.entries[Import.val];
+    return beam_builtin_selected_instruction(entry->module,entry->function,entry->arity) == BEAM_INSTRUCTION_vm_yield_0;
+}
+
+pred.is_vm_hibernate_0(Import) {
+    if (Import.type != TAG_u || Import.val >= S->beam.imports.count) return 0;
+    int slot = beam_load_private_native(S,Import.val);
+    if (slot >= 0) return slot == BIF_SIZE + BEAM_INSTRUCTION_vm_hibernate_0;
+    const BeamFile_ImportEntry *entry = &S->beam.imports.entries[Import.val];
+    return beam_builtin_selected_instruction(entry->module,entry->function,entry->arity) == BEAM_INSTRUCTION_vm_hibernate_0;
+}
+
+pred.is_native_selection(Import) {
+    return Import.type == TAG_u && beam_load_native_selection(S,Import.val) >= 0;
 }

@@ -1,0 +1,33 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Finite optional slots in the embedded core, independent of product selection. */
+BEAM_CORE_NATIVE("clock_monotonic_0", "erlang", "monotonic_time", 0)
+BEAM_CORE_NATIVE("clock_monotonic_1", "erlang", "monotonic_time", 1)
+BEAM_CORE_NATIVE("clock_system_0", "erlang", "system_time", 0)
+BEAM_CORE_NATIVE("clock_system_1", "erlang", "system_time", 1)
+BEAM_CORE_NATIVE("clock_offset_0", "erlang", "time_offset", 0)
+BEAM_CORE_NATIVE("clock_offset_1", "erlang", "time_offset", 1)
+BEAM_CORE_NATIVE("clock_timestamp_0", "erlang", "timestamp", 0)
+BEAM_CORE_NATIVE("timer_start_3", "erlang", "start_timer", 3)
+BEAM_CORE_NATIVE("timer_start_4", "erlang", "start_timer", 4)
+BEAM_CORE_NATIVE("timer_send_after_3", "erlang", "send_after", 3)
+BEAM_CORE_NATIVE("timer_send_after_4", "erlang", "send_after", 4)
+BEAM_CORE_NATIVE("timer_cancel_1", "erlang", "cancel_timer", 1)
+BEAM_CORE_NATIVE("timer_cancel_2", "erlang", "cancel_timer", 2)
+BEAM_CORE_NATIVE("timer_read_1", "erlang", "read_timer", 1)
+BEAM_CORE_NATIVE("timer_read_2", "erlang", "read_timer", 2)
+BEAM_CORE_NATIVE("clock_legacy_now_0", "erlang", "now", 0)
+BEAM_CORE_ORDINARY("erlang", "convert_time_unit", 3)
+#define BEAM_NATIVE_CONTRACT(i,m,f,a,g) BEAM_CORE_NATIVE(i,m,f,a)
+#include "beam_native_contracts.def"
+#undef BEAM_NATIVE_CONTRACT
+#define BEAM_NATIVE_INSTRUCTION(id,f,a,op,ret) BEAM_CORE_NATIVE(#id,"erlang",#f,a)
+#include "beam_native_instructions.def"
+#undef BEAM_NATIVE_INSTRUCTION
+
+/* Mandatory cleaner protocols; canonical contracts retain their names. */
+BEAM_CORE_NATIVE("vm_erts_trace_cleaner_check_0", "beam_internal", "trace_cleaner_check", 0)
+BEAM_CORE_NATIVE("vm_erts_trace_cleaner_send_trace_clean_signal_1", "beam_internal", "trace_cleaner_send_signal", 1)
+
+BEAM_CORE_ORDINARY("erlang", "trace", 3)
+BEAM_CORE_ORDINARY("erlang", "trace_pattern", 2)
+BEAM_CORE_ORDINARY("erlang", "trace_pattern", 3)

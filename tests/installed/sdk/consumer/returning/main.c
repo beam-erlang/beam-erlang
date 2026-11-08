@@ -4,6 +4,7 @@
 #endif
 #include <beam/boot.h>
 #include "bytecode_input.h"
+#include "builtin_bindings.h"
 #include <dlfcn.h>
 #include <limits.h>
 #include <stdio.h>
@@ -20,10 +21,14 @@ int main(int argc, char **argv)
     beam_error error = {0};
     beam_system *system = NULL;
     beam_return_boot *boot = NULL, *activated_boot = NULL;
+    const beam_composition_options selection = {.struct_size = sizeof selection,
+        .builtin_binding_count = BEAM_TEST_SDK_RETURNING_BINDING_COUNT,
+        .builtin_bindings = beam_test_sdk_returning_bindings};
+    const beam_host_options host = {.struct_size=sizeof host,.composition=&selection};
     beam_return_options options = {0};
     beam_return_options raw = {0};
-    beam_return_module modules[14] = {{0}};
-    beam_return_module *module = &modules[13];
+    beam_return_module *modules = NULL;
+    beam_return_module *module;
     bytecode_input base = {0};
     beam_outcome first = {0}, second = {0}, activated = {0};
     unsigned char arguments[] = {131,108,0,0,0,1,97,42,106};
@@ -47,28 +52,33 @@ int main(int argc, char **argv)
     bytes = (unsigned char *)malloc((size_t)size);
     CHECK(bytes && fread(bytes, 1, (size_t)size, input) == (size_t)size);
     CHECK(!fclose(input));
+    CHECK(bytecode_input_read(&base, argv[1], INPUT_RETURNING, &error) == BEAM_OK);
+    modules = (beam_return_module *)calloc(base.count + 1, sizeof(*modules));
+    CHECK(modules != NULL);
+    module = &modules[base.count];
     module->name = "sdk_returning";
     module->bytes.data = bytes;
     module->bytes.size = (size_t)size;
     module->origin = origin;
     options.struct_size = sizeof options;
+    options.host = &host;
     options.entry_module = "sdk_returning";
     options.entry_function = "main";
     options.arguments.data = arguments;
     options.arguments.size = sizeof arguments;
-    CHECK(bytecode_input_read(&base, argv[1], INPUT_RETURNING, &error) == BEAM_OK);
     for (size_t i = 0; i < base.count; ++i) {
         modules[i].name = base.modules[i].name; modules[i].bytes = base.modules[i].bytes;
         modules[i].origin = base.modules[i].origin;
     }
     options.modules = modules;
-    options.module_count = 14;
+    options.module_count = base.count + 1;
     raw.struct_size = sizeof raw;
+    raw.host = &host;
     raw.entry_module = options.entry_module;
     raw.entry_function = options.entry_function;
     raw.arguments = options.arguments;
     raw.modules = modules;
-    raw.module_count = 14;
+    raw.module_count = base.count + 1;
     CHECK(beam_return_prepare(&raw, &boot, &error) == BEAM_OK);
     CHECK(beam_return_discard(&boot) == BEAM_OK && boot == NULL);
     CHECK(beam_init(&system, &error) == BEAM_OK);
@@ -85,6 +95,7 @@ int main(int argc, char **argv)
     module->deferred = 1;
     CHECK(beam_return_prepare(&options, &activated_boot, &error) == BEAM_OK);
     bytecode_input_release(&base);
+    free(modules);
     memset(bytes, 0, (size_t)size);
     free(bytes);
     second.struct_size = sizeof second;

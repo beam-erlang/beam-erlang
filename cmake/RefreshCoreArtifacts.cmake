@@ -3,7 +3,7 @@ set(CMAKE_SOURCE_DIR "${SOURCE_DIR}")
 include("${SOURCE_DIR}/cmake/RuntimeCoreModules.cmake")
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 execute_process(
-    COMMAND "${BOOTSTRAP}" --deterministic --debug-info
+    COMMAND "${BOOTSTRAP}" --deterministic --debug-info --private-native
         -I "${SOURCE_DIR}/src/beam/support/include"
         -o "${OUTPUT_DIR}" -- ${BEAM_CORE_SOURCES}
     RESULT_VARIABLE _status)

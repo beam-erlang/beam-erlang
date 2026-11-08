@@ -3,14 +3,14 @@
 -export([hello/1, failed_output/0, bad_format/0]).
 
 hello(Name) ->
-    Leader = spawn(fun io_loop/0),
+    Leader = erlang:spawn(fun io_loop/0),
     true = group_leader(Leader, self()),
     ok = io:format("Hello, ~ts!~n", [Name]),
     Leader ! stop,
     ok.
 
 failed_output() ->
-    Leader = spawn(fun io_loop/0),
+    Leader = erlang:spawn(fun io_loop/0),
     true = group_leader(Leader, self()),
     Result = try io:put_chars("failed output") of
         _ -> unexpected
@@ -19,7 +19,7 @@ failed_output() ->
     Result.
 
 bad_format() ->
-    Leader = spawn(fun io_loop/0),
+    Leader = erlang:spawn(fun io_loop/0),
     true = group_leader(Leader, self()),
     Result = try io:format("~s", [{not_a_string}]) of
         _ -> unexpected
@@ -39,7 +39,7 @@ io_loop() ->
 write_request({put_chars, Encoding, Module, Function, Args}) ->
     write_request({put_chars, Encoding, apply(Module, Function, Args)});
 write_request({put_chars, Encoding, Chars}) ->
-    Bytes = unicode:characters_to_binary(Chars, Encoding, utf8),
+    Bytes = beam_unicode:characters_to_binary(Chars, Encoding, utf8),
     case beam_host:request({write, Bytes}) of
         {ok, ok} -> ok;
         {error, Reason} -> {error, Reason}

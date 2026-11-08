@@ -20,6 +20,9 @@
 %% %CopyrightEnd%
 %%
 -module(erlang).
+-compile({beam_native_selection_functions,
+          [{core_apply_exported,vm_apply_2,erlang,apply,2}]}).
+-compile({inline,[{spawn_fun_entry,1},{core_apply_exported,0}]}).
 -moduledoc """
 The Erlang BIFs and predefined types.
 
@@ -5296,48 +5299,9 @@ Converts the `Time` value of time unit `FromUnit` to the corresponding
       FromUnit :: time_unit(),
       ToUnit :: time_unit().
 
-convert_time_unit(Time, FromUnit, ToUnit) ->
-    try
-	FU = case FromUnit of
-		 native -> erts_internal:time_unit();
-                 perf_counter -> erts_internal:perf_counter_unit();
-		 nanosecond -> 1000*1000*1000;
-		 microsecond -> 1000*1000;
-		 millisecond -> 1000;
-		 second -> 1;
-
-		 %% Deprecated symbolic units...
-		 nano_seconds -> 1000*1000*1000;
-		 micro_seconds -> 1000*1000;
-		 milli_seconds -> 1000;
-		 seconds -> 1;
-
-		 _ when FromUnit > 0 -> FromUnit
-	     end,
-	TU = case ToUnit of
-		 native -> erts_internal:time_unit();
-                 perf_counter -> erts_internal:perf_counter_unit();
-		 nanosecond -> 1000*1000*1000;
-		 microsecond -> 1000*1000;
-		 millisecond -> 1000;
-		 second -> 1;
-
-		 %% Deprecated symbolic units...
-		 nano_seconds -> 1000*1000*1000;
-		 micro_seconds -> 1000*1000;
-		 milli_seconds -> 1000;
-		 seconds -> 1;
-
-		 _ when ToUnit > 0 -> ToUnit
-	     end,
-	case Time < 0 of
-	    true -> TU*Time - (FU - 1);
-	    false -> TU*Time
-	end div FU
-    catch
-	_ : _ ->
-	    error_with_info(badarg, [Time, FromUnit, ToUnit])
-    end.
+-define(BEAM_TIME_CONVERT(Time, From, To), convert_time_unit(Time, From, To)).
+-define(BEAM_TIME_CONVERT_ERROR(Args), error_with_info(badarg, Args)).
+-include("../../../beam/support/include/beam_time_conversion.hrl").
 
 -doc """
 Returns the current time offset between
@@ -10599,9 +10563,11 @@ Returns the process identifier of a new process started by the application of
 -spec spawn(Fun) -> pid() when
       Fun :: function().
 spawn(F) when erlang:is_function(F) ->
-    erlang:spawn(erlang, apply, [F, []]);
+    {Module,Function,Args} = spawn_fun_entry(F),
+    erlang:spawn(Module, Function, Args);
 spawn({M,F}=MF) when erlang:is_atom(M), erlang:is_atom(F) ->
-    erlang:spawn(erlang, apply, [MF, []]);
+    {Module,Function,Args} = spawn_fun_entry(MF),
+    erlang:spawn(Module, Function, Args);
 spawn(F) ->
     badarg_with_info([F]).
 
@@ -10632,7 +10598,8 @@ the new process, atomically. Otherwise works like `spawn/3`.
 -spec spawn_link(Fun) -> pid() when
       Fun :: fun(() -> term()).
 spawn_link(F) when erlang:is_function(F, 0) ->
-    erlang:spawn_link(erlang, apply, [F, []]);
+    {Module,Function,Args} = spawn_fun_entry(F),
+    erlang:spawn_link(Module, Function, Args);
 spawn_link(F) ->
     badarg_with_info([F]).
 
@@ -10665,7 +10632,8 @@ process. Otherwise works like `spawn/3`.
 -spec spawn_monitor(Fun) -> {pid(), reference()} when
       Fun :: function().
 spawn_monitor(F) when erlang:is_function(F, 0) ->
-    erlang:spawn_opt(erlang,apply,[F,[]],[monitor]);
+    {Module,Function,Args} = spawn_fun_entry(F),
+    erlang:spawn_opt(Module,Function,Args,[monitor]);
 spawn_monitor(F) ->
     badarg_with_info([F]).
 
@@ -10685,7 +10653,10 @@ the call will fail with a `notsup` exception.
 
 spawn_monitor(Node, F) when erlang:is_atom(Node), erlang:is_function(F, 0) ->
     try
-        erlang:spawn_monitor(Node,erlang,apply,[F,[]])
+        case Node =:= erlang:node() andalso not core_apply_exported() of
+            true -> erlang:spawn_monitor(F);
+            false -> erlang:spawn_monitor(Node,erlang,apply,[F,[]])
+        end
     catch
         error:Err ->
             error_with_info(Err, [Node, F])
@@ -10750,13 +10721,15 @@ both the pid and reference for the monitor are returned.
       Options :: [spawn_opt_option()].
 spawn_opt(F, O) when erlang:is_function(F) ->
     try
-        erlang:spawn_opt(erlang, apply, [F, []], O)
+        {Module,Function,Args} = spawn_fun_entry(F),
+        erlang:spawn_opt(Module, Function, Args, O)
     catch
         error:Error:Stk ->
             error_with_inherited_info(Error, [F,O], Stk)
     end;
 spawn_opt({M,F}=MF, O) when erlang:is_atom(M), erlang:is_atom(F) ->
-    erlang:spawn_opt(erlang, apply, [MF, []], O);
+    {Module,Function,Args} = spawn_fun_entry(MF),
+    erlang:spawn_opt(Module, Function, Args, O);
 spawn_opt(F, O) ->
     badarg_with_info([F, O]).
 
@@ -11092,7 +11065,8 @@ is, a spawn request on the local node with no options.
 
 spawn_request(F) when erlang:is_function(F, 0) ->
     try
-        erlang:spawn_request(erlang, apply, [F, []], [])
+        {Module,Function,Args} = spawn_fun_entry(F),
+        erlang:spawn_request(Module, Function, Args, [])
     catch
         error:Err ->
             error_with_info(Err, [F])
@@ -11132,14 +11106,18 @@ That is either:
 
 spawn_request(F, O) when erlang:is_function(F, 0) ->
     try
-        erlang:spawn_request(erlang, apply, [F, []], O)
+        {Module,Function,Args} = spawn_fun_entry(F),
+        erlang:spawn_request(Module, Function, Args, O)
     catch
         error:Err:Stk ->
             error_with_inherited_info(Err, [F, O], Stk)
     end;
 spawn_request(N, F) when erlang:is_function(F, 0) ->
     try
-        erlang:spawn_request(N, erlang, apply, [F, []], [])
+        case N =:= erlang:node() andalso not core_apply_exported() of
+            true -> erlang:spawn_request(F, []);
+            false -> erlang:spawn_request(N, erlang, apply, [F, []], [])
+        end
     catch
         error:Err:Stk ->
             error_with_inherited_info(Err, [N, F], Stk)
@@ -11195,7 +11173,10 @@ This function will fail with a `badarg` exception if:
 
 spawn_request(N, F, O) when erlang:is_function(F, 0) ->
     try
-        erlang:spawn_request(N, erlang, apply, [F, []], O)
+        case N =:= erlang:node() andalso not core_apply_exported() of
+            true -> erlang:spawn_request(F, O);
+            false -> erlang:spawn_request(N, erlang, apply, [F, []], O)
+        end
     catch
         error:Err ->
             error_with_info(Err, [N, F, O])
@@ -12548,7 +12529,7 @@ dmonitor_node(Node, _Flag, []) ->
     erlang:self() ! {nodedown, Node},
     true;
 dmonitor_node(Node, Flag, Opts) ->
-    case lists:member(allow_passive_connect, Opts) of
+    case core_list_member(allow_passive_connect, Opts) of
 	true ->
 	    case net_kernel:passive_cnct(Node) of
 		true -> erlang:monitor_node(Node, Flag, Opts);
@@ -13467,7 +13448,7 @@ gc_info(Ref, N, {OrigColls,OrigRecl}) ->
 
 %% Make sure that we have loaded the tracer module.
 ensure_tracer_module_loaded(Flag, FlagList) ->
-    try lists:keyfind(Flag, 1, FlagList) of
+    try core_keyfind(Flag, 1, FlagList) of
         {Flag, Module, State} when erlang:is_atom(Module) ->
             case erlang:module_loaded(Module) of
                 false ->
@@ -13483,8 +13464,8 @@ ensure_tracer_module_loaded(Flag, FlagList) ->
     end.
 
 error_with_inherited_info(Reason, Args, [{_,_,_,ExtraInfo}|_]) ->
-    %% We KNOW that lists:keyfind/3 is a BIF and is therefore safe to call.
-    case lists:keyfind(error_info, 1, ExtraInfo) of
+    %% Core error handling must not depend on optional library bindings.
+    case core_keyfind(error_info, 1, ExtraInfo) of
         {error_info,_}=ErrorInfoTuple ->
             erlang:error(Reason, Args, [ErrorInfoTuple]);
         false ->
@@ -13500,3 +13481,30 @@ badarg_with_info(Args) ->
 badarg_with_cause(Args, Cause) ->
     erlang:error(badarg, Args, [{error_info, #{module => erl_erts_errors,
                                               cause => Cause}}]).
+
+%% Local traversals keep core trap and error paths independent of libraries.
+core_list_member(Item, [Head | Tail]) ->
+    Item =:= Head orelse core_list_member(Item, Tail);
+core_list_member(_Item, []) ->
+    false;
+core_list_member(Item, Other) ->
+    erlang:error(badarg, [Item, Other]).
+
+core_keyfind(Key, Pos, [Head | Tail]) ->
+    case erlang:is_tuple(Head) andalso erlang:tuple_size(Head) >= Pos andalso
+         erlang:element(Pos, Head) == Key of
+        true -> Head;
+        false -> core_keyfind(Key, Pos, Tail)
+    end;
+core_keyfind(_Key, _Pos, []) ->
+    false;
+core_keyfind(Key, Pos, Other) ->
+    erlang:error(badarg, [Key, Pos, Other]).
+
+%% Preserve OTP's canonical child entry when selected. Other compositions enter
+%% the existing private spawn initializer, whose apply operation resolves by ID.
+spawn_fun_entry(Fun) ->
+    case core_apply_exported() of
+        true -> {erlang,apply,[Fun,[]]};
+        false -> {erts_internal,spawn_init,[{Fun,[]}]}
+    end.

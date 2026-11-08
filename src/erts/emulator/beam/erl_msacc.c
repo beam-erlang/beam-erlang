@@ -43,7 +43,9 @@
 #include "erl_map.h"
 #include "erl_msacc.h"
 #include "erl_bif_table.h"
+#include "atom.h"
 #include "beam_internal.h"
+#include "erl_db.h"
 
 #ifdef ERTS_ENABLE_MSACC
 
@@ -83,8 +85,45 @@ void erts_msacc_init(void) {
     erts_msacc_state_atoms = erts_alloc(ERTS_ALC_T_MSACC,
                                         sizeof(Eterm)*ERTS_MSACC_STATE_COUNT);
     for (i = 0; i < ERTS_MSACC_STATE_COUNT; i++) {
-        erts_msacc_state_atoms[i] = am_atom_put(erts_msacc_states[i],
-                                                sys_strlen(erts_msacc_states[i]));
+        const char *label = erts_msacc_states[i];
+#ifdef ERTS_MSACC_EXTENDED_BIFS
+        char optional_label[256];
+        int slot = i - ERTS_MSACC_STATIC_STATE_COUNT;
+        if (slot >= 0 && *bif_descriptors[slot].implementation) {
+            const BifEntry *b = &bif_table[slot];
+            erts_snprintf(optional_label, sizeof optional_label, "bif_%s",
+                          bif_descriptors[slot].implementation);
+            if (is_atom(b->module)) {
+                const Atom *module = atom_tab(atom_val(b->module));
+                const Atom *name = atom_tab(atom_val(b->name));
+                /* Preserve the established labels for ordinary short names.
+                 * Long host names use the unique implementation label. */
+                if (module->len + name->len + 16 < sizeof optional_label)
+                    erts_snprintf(optional_label, sizeof optional_label,
+                                  "bif_am_%.*s_am_%.*s_%d",
+                                  module->len, erts_atom_get_name(module),
+                                  name->len, erts_atom_get_name(name), b->arity);
+            }
+            label = optional_label;
+        }
+#endif
+        erts_msacc_state_atoms[i] = erts_atom_put((const byte *)label,
+                                                sys_strlen(label), ERTS_ATOM_ENC_UTF8, 0);
+#ifdef ERTS_MSACC_EXTENDED_BIFS
+        if (slot >= 0 && *bif_descriptors[slot].implementation) {
+            /* Arbitrary module/function names can produce the same joined
+             * label. Keep accounting keys unique without restricting MFAs. */
+            for (int j = 0; j < i; ++j) {
+                if (erts_msacc_state_atoms[i] == erts_msacc_state_atoms[j]) {
+                    erts_snprintf(optional_label, sizeof optional_label, "bif_%s",
+                                  bif_descriptors[slot].implementation);
+                    erts_msacc_state_atoms[i] = am_atom_put(optional_label,
+                                                          sys_strlen(optional_label));
+                    break;
+                }
+            }
+        }
+#endif
     }
 }
 
@@ -149,7 +188,7 @@ const void *erts_msacc_set_bif_state(ErtsMsAcc *__erts_msacc_cache,
         ERTS_MSACC_SET_STATE_CACHED_M_X(ERTS_MSACC_STATE_BIF);
     }
 #else
-    if (mod == am_ets) {
+    if (erts_db_is_bif(bif)) {
         ERTS_MSACC_SET_STATE_CACHED_M_X(ERTS_MSACC_STATE_ETS);
     } else {
         ERTS_MSACC_SET_STATE_CACHED_M_X(ERTS_MSACC_STATE_BIF);

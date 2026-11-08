@@ -14,7 +14,7 @@ network() ->
     {ok, Listener} = beam_socket:listen(#{addr => {127,0,0,1}, port => 0}, Deadline),
     {ok, #{port := Port}} = beam_socket:sockname(Listener),
     Parent = self(),
-    spawn(fun() ->
+    erlang:spawn(fun() ->
         {ok, Socket} = beam_socket:connect(#{addr => {127,0,0,1}, port => Port}, Deadline),
         ok = beam_socket:send(Socket, <<42>>, Deadline),
         ok = beam_socket:close(Socket, Deadline), Parent ! client_done

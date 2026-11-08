@@ -323,6 +323,8 @@ static void tracer_free_fun(void*);
 
 typedef struct ErtsTracerNif_ ErtsTracerNif;
 
+Eterm erts_default_tracer_module = THE_NON_VALUE;
+
 void erts_init_trace(void) {
     erts_rwmtx_opt_t rwmtx_opts = ERTS_RWMTX_OPT_DEFAULT_INITER;
     rwmtx_opts.type = ERTS_RWMTX_TYPE_EXTREMELY_FREQUENT_READ;
@@ -334,6 +336,10 @@ void erts_init_trace(void) {
 #ifdef HAVE_ERTS_NOW_CPU
     erts_cpu_timestamp = 0;
 #endif
+    const char *default_module = erts_vm_default_tracer_module();
+    erts_default_tracer_module = default_module
+        ? erts_atom_put((const byte *)default_module, strlen(default_module), ERTS_ATOM_ENC_UTF8, 1)
+        : THE_NON_VALUE;
     erts_bif_trace_init();
     erts_system_profile_clear(NULL);
     system_seq_tracer = erts_tracer_nil;
@@ -3130,10 +3136,11 @@ erts_term_to_tracer(Eterm prefix, Eterm t)
     ASSERT(is_atom(prefix) || prefix == THE_NON_VALUE);
 
     if (is_internal_pid(t)) {
+        if (is_non_value(erts_default_tracer_module)) return THE_NON_VALUE;
         tracer = t;
     }
     else if (!is_nil(t)) {
-        Eterm module = am_erl_tracer, state = THE_NON_VALUE;
+        Eterm module = erts_default_tracer_module, state = THE_NON_VALUE;
         Eterm hp[2];
         if (is_tuple(t)) {
             Eterm *tp = tuple_val(t);
@@ -3153,12 +3160,11 @@ erts_term_to_tracer(Eterm prefix, Eterm t)
         }
         if (state == THE_NON_VALUE && (is_internal_pid(t) || is_internal_port(t)))
             state = t;
-        if (state == THE_NON_VALUE)
+        if (state == THE_NON_VALUE || is_non_value(module))
             return THE_NON_VALUE;
         erts_tracer_update(&tracer, CONS(hp, module, state));
     }
     if (!lookup_tracer_nif(tracer)) {
-        ASSERT(ERTS_TRACER_MODULE(tracer) != am_erl_tracer);
         ERTS_TRACER_CLEAR(&tracer);
         return THE_NON_VALUE;
     }
@@ -3170,7 +3176,7 @@ erts_tracer_to_term(Process *p, ErtsTracer tracer)
 {
     if (ERTS_TRACER_IS_NIL(tracer))
         return am_false;
-    if (ERTS_TRACER_MODULE(tracer) == am_erl_tracer)
+    if (ERTS_TRACER_MODULE(tracer) == erts_default_tracer_module)
         /* Have to manage these specifically in order to be
            backwards compatible */
         return ERTS_TRACER_STATE(tracer);
@@ -3202,7 +3208,7 @@ erts_build_tracer_to_term(Eterm **hpp, ErlOffHeap *ohp, Uint *szp, ErtsTracer tr
     else
         res = THE_NON_VALUE;
 
-    if (ERTS_TRACER_MODULE(tracer) != am_erl_tracer) {
+    if (ERTS_TRACER_MODULE(tracer) != erts_default_tracer_module) {
         if (szp)
             *szp += 3;
         if (hpp) {
@@ -3475,7 +3481,7 @@ static void free_tracer(void *p)
 
 bool erts_get_tracer_pid(ErtsTracer tracer, Eterm* pid)
 {
-    if (is_list(tracer) && ERTS_TRACER_MODULE(tracer) == am_erl_tracer
+    if (is_list(tracer) && ERTS_TRACER_MODULE(tracer) == erts_default_tracer_module
         && is_internal_pid(ERTS_TRACER_STATE(tracer))) {
 
         *pid = ERTS_TRACER_STATE(tracer);
@@ -3551,7 +3557,7 @@ erts_tracer_update_impl(ErtsTracer *tracer, ErtsTracer new_tracer)
     if (is_list(new_tracer)) {
         const Eterm module = ERTS_TRACER_MODULE(new_tracer);
         const Eterm state = ERTS_TRACER_STATE(new_tracer);
-        if (module == am_erl_tracer && is_internal_pid(state)) {
+        if (module == erts_default_tracer_module && is_internal_pid(state)) {
             new_tracer = state;
         }
     }
@@ -3672,6 +3678,7 @@ erts_bare_destroy_trace(void)
     hash_delete(tracer_hash);
     tracer_hash = NULL;
     sys_message_queue_end = NULL;
+    erts_default_tracer_module = THE_NON_VALUE;
 }
 
 void erts_ref_trace_session(ErtsTraceSession* session)

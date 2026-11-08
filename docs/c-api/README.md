@@ -15,6 +15,7 @@ and the adopted stabilization policy.
 | Document | Start here when you want to… |
 | --- | --- |
 | [Embedding guide](guide.md) | Build a first C host, understand ownership and choose a lifecycle. |
+| [Host-memory ETF](etf.md) | Encode and decode external terms independently of a VM lifetime. |
 | [In-memory zlib](zlib.md) | Compress native byte buffers using the codec embedded in the runtime. |
 | [C API reference](reference.md) | Look up options, statuses, lifecycle rules, composition and callbacks. |
 | [Host interface migration](host-migration.md) | Update optional Host linkage, native ownership, staged entry and reports. |
@@ -26,8 +27,13 @@ The [public header](../../include/beam/beam.h) supplies VM declarations. The
 runnable tutorial source and remains part of installed-SDK acceptance. The
 documentation does not maintain a second copy of that project.
 
-Include `<beam/beam.h>` or `<beam/runtime.h>` for VM operation. Include
-`<beam/boot.h>` and link `BEAM::Host` for returning applications. Passive
+Include `<beam/beam.h>` or `<beam/runtime.h>` for VM operation, and
+`<beam/process.h>` for process enumeration, inspection and spawning. Include
+`<beam/beam_enif.h>` explicitly for term environments, term operations, and
+host-side messaging. Include `<beam/beam_etf.h>` for the independent host-memory
+ETF codec.
+
+Include `<beam/boot.h>` and link `BEAM::Host` for returning applications. Passive
 [libraries](../native-extensions/libraries.md) use `<beam/library.h>` and that
 same optional Host target. Optional SDK preparation uses
 `<beam/sdk/bytecode.h>` and `<beam/sdk/inventories.h>`; native execution support

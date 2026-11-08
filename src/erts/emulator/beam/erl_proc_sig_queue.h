@@ -185,6 +185,8 @@ typedef struct {
 #define ERTS_SIG_Q_OP_PERSISTENT_MON_MSG        9
 #define ERTS_SIG_Q_OP_IS_ALIVE                  10
 #define ERTS_SIG_Q_OP_PROCESS_INFO              11
+/* Process-info's type zero retains the ordinary Erlang reply protocol. */
+#define ERTS_SIG_Q_TYPE_NATIVE_PROCESS_INFO      1
 #define ERTS_SIG_Q_OP_SYNC_SUSPEND              12
 #define ERTS_SIG_Q_OP_RPC                       13
 #define ERTS_SIG_Q_OP_DIST_SPAWN_REPLY          14

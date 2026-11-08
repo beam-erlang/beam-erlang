@@ -76,7 +76,7 @@ def main():
             result = execute([host])
             assert result.stdout == 'PASSIVE_LIBRARY_OK\n' and not result.stderr, result
             if payload == 'mixed':
-                assert library_log.read_text() == 'LDU' * 2
+                assert library_log.read_text() == 'LDU' * 2, repr(library_log.read_text())
             else:
                 assert not library_log.exists()
             if args.linkage == 'shared':
@@ -86,12 +86,12 @@ def main():
                 result = execute([host, shared])
                 assert result.stdout == 'PASSIVE_LIBRARY_OK\n' and not result.stderr, result
                 if payload == 'mixed':
-                    assert library_log.read_text() == 'LDU' * 4
+                    assert library_log.read_text() == 'LDU' * 4, repr(library_log.read_text())
         builtin_log = root / 'builtins.events'
         env['NIF_ACCEPTANCE_LOG'] = str(builtin_log)
         result = execute([stage / 'bin/builtins', build / 'probe.beam'])
         assert result.stdout == 'BUILTIN_LIFETIMES_OK\n' and not result.stderr, result
-        assert builtin_log.read_text() == 'LDU' * 6
+        assert builtin_log.read_text() == 'LDU' * 6, repr(builtin_log.read_text())
         modes = ['probe', 'fail_load', 'bad_abi', 'bad_module', 'bad_function', 'unstamped', 'wrongstamp']
         if sys.platform.startswith('linux'):
             # Section headers are not a runtime ELF input. Retain loadable
@@ -188,7 +188,7 @@ cmake = "."
 outputs = ["probe"]
 nifs = { probe = "probe" }
 [host]
-modules = ["erlang", "io", "persistent_term"]
+modules = ["erlang", "io", "beam_persistent_term"]
 [entry]
 module = "probe"
 ''')
@@ -224,13 +224,13 @@ beam_package_native_output(probe NAME probe)
         line = execute([prefix / 'bin/beam-pkg', 'run', '--project', deployed, '--', 'input'], input_data='hello λ\n'.encode())
         assert line.stdout == 'prompt> hello λ\n'
         shell_command = [str(prefix / 'bin/beam-pkg'), 'shell', '--project', str(deployed)]
-        for ending, status in [('q().\n', 0), ('', 0), ('erlang:halt(9).\n', 9)]:
+        for ending, status in [('q().\n', 0), ('', 0), ('beam:halt(9).\n', 9)]:
             log.write_text('')
             result = execute(shell_command, input_data=(
-                'false=erlang:module_loaded(beam_pkg), false=erlang:module_loaded(beam_pkg_task), '
-                'false=erlang:module_loaded(beam_pkg_environment), false=erlang:module_loaded(compile), '
-                'false=erlang:module_loaded(beam_file), false=erlang:module_loaded(beam_socket), '
-                'false=erlang:module_loaded(application), probe:retain(), shell_native_ok.\n' + ending).encode(), status=status)
+                'false=beam:module_loaded(beam_pkg), false=beam:module_loaded(beam_pkg_task), '
+                'false=beam:module_loaded(beam_pkg_environment), false=beam:module_loaded(compile), '
+                'false=beam:module_loaded(beam_file), false=beam:module_loaded(beam_socket), '
+                'false=beam:module_loaded(application), probe:retain(), shell_native_ok.\n' + ending).encode(), status=status)
             assert 'shell_native_ok' in result.stdout and not result.stderr, result
             assert log.read_text() == 'LDU'
         log.write_text('')
@@ -239,7 +239,7 @@ beam_package_native_output(probe NAME probe)
             terminal.expect(r"(?:^|\n)1> ")
             terminal.send_and_expect('probe:retain(), X = 40 + 2.\n', r'\n42\n2> ')
             terminal.send_and_expect('X + 2\x7f1.\n', r'\n43\n3> ')
-            terminal.send_and_expect('erlang:error(shell_failure).\n', r'exception error: shell_failure[\s\S]*\n4> ')
+            terminal.send_and_expect('beam:error(shell_failure).\n', r'exception error: shell_failure[\s\S]*\n4> ')
             terminal.send_and_expect('length("λ").\n', r'\n1\n5> ')
             start = len(terminal.output)
             terminal.send_and_expect('spawn(fun()->receive after 20 -> io:format("ASYNC~n") end end), ok.\n', r'\nok\n\d+> ')

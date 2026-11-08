@@ -235,7 +235,7 @@ input_chars(Bytes, Eof, Encoding) ->
 %% commands already supplied in the same host chunk. Recovery stays in the
 %% reader so split malformed lines cannot become executable fragments.
 discard_line(Bytes, Eof, Encoding) ->
-    case binary:match(Bytes, <<"\n">>) of
+    case beam_binary:match(Bytes, <<"\n">>) of
         {Position, 1} ->
             <<_:Position/binary, $\n, Rest/binary>> = Bytes,
             input_chars(Rest, Eof, Encoding);

@@ -119,7 +119,7 @@ def transform_case(c):
     # of the test-owned prefix; no source/build runtime modules are substituted.
     installed = c.prefix / "lib/beam/ebin/compile_acceptance_transform.beam"
     try:
-        c.compile("-o", installed.parent, transform)
+        c.compile("--native-bindings=canonical", "-o", installed.parent, transform)
         source = module(c.work / "transformed.erl", "transformed",
                         '-compile({parse_transform,compile_acceptance_transform}).\n')
         c.compile("--deterministic", "--depfile", c.work / "transformed.d", source)

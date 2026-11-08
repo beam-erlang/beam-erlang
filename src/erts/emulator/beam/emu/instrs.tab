@@ -240,7 +240,7 @@ APPLY(I, Deallocate, Next) {
     HEAVY_SWAPIN;
 
     if (ERTS_UNLIKELY(ep == NULL)) {
-        $HANDLE_APPLY_ERROR();
+        $HANDLE_APPLY_ERROR(beam_builtin_instruction_mfa(BEAM_INSTRUCTION_vm_apply_3));
     } else if (ERTS_PROC_GET_SAVED_CALLS_BUF(c_p)) {
         save_calls(c_p, ep);
     }
@@ -248,9 +248,8 @@ APPLY(I, Deallocate, Next) {
     $Next = ep->dispatch.addresses[erts_active_code_ix()];
 }
 
-HANDLE_APPLY_ERROR() {
-    static ErtsCodeMFA apply3_mfa = {am_erlang, am_apply, 3};
-    I = handle_error(c_p, I, reg, &apply3_mfa);
+HANDLE_APPLY_ERROR(MFA) {
+    I = handle_error(c_p, I, reg, $MFA);
     goto post_error_handling;
 }
 
@@ -287,7 +286,7 @@ FIXED_APPLY(Arity, I, Deallocate, Next) {
     HEAVY_SWAPIN;
 
     if (ERTS_UNLIKELY(ep == NULL)) {
-        $HANDLE_APPLY_ERROR();
+        $HANDLE_APPLY_ERROR(c_p->current);
     } else if (ERTS_PROC_GET_SAVED_CALLS_BUF(c_p)) {
         save_calls(c_p, ep);
     }
@@ -322,7 +321,12 @@ APPLY_FUN(Next) {
 }
 
 HANDLE_APPLY_FUN_ERROR() {
-     goto find_func_info;
+    if (c_p->freason == EXC_BADARG || c_p->freason == SYSTEM_LIMIT) {
+        I = handle_error(c_p, I, reg,
+            beam_builtin_instruction_mfa(BEAM_INSTRUCTION_vm_apply_2));
+        goto post_error_handling;
+    }
+    goto find_func_info;
 }
 
 i_apply_fun() {

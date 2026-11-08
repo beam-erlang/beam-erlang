@@ -32,7 +32,7 @@ foreach(_language c cxx)
 endforeach()
 
 # Each documented public header owns its dependencies and C++ linkage.
-foreach(_header IN ITEMS beam.h runtime.h boot.h library.h native_image.h native.h sdk/bytecode.h sdk/inventories.h)
+foreach(_header IN ITEMS beam.h runtime.h process.h beam_enif.h boot.h library.h native_image.h native.h sdk/bytecode.h sdk/inventories.h)
     string(REPLACE "/" "_" _name "${_header}")
     string(REPLACE "." "_" _name "${_name}")
     foreach(_language IN ITEMS c cpp)

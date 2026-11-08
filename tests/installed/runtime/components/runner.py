@@ -63,7 +63,7 @@ def main():
         execute([args.cmake, "--build", str(client)])
         for profile, units in (("file", ("file",)), ("network", ("network",)),
                                ("combined", ("file", "network")),
-                               ("all", ("file", "network", "zlib"))):
+                               ("all", ("file", "network", "zlib", "tracing"))):
             stage = args.test_dir / "stage"
             (stage / "bin").mkdir(parents=True)
             (stage / "lib").mkdir()

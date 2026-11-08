@@ -7,7 +7,7 @@ if(RUNTIME_COMPONENT STREQUAL "Runtime")
 endif()
 find_package(Threads REQUIRED)
 add_executable(bare_host main.c)
-target_include_directories(bare_host PRIVATE "${FIXTURE_INCLUDE}")
+target_include_directories(bare_host PRIVATE "${FIXTURE_INCLUDE}" "${CMAKE_CURRENT_BINARY_DIR}" "${TEST_SUPPORT_DIR}")
 target_link_libraries(bare_host PRIVATE BEAM::${RUNTIME_COMPONENT} Threads::Threads m)
 if(RUNTIME_COMPONENT STREQUAL "Runtime")
     add_executable(bare_cxx main.cpp)
@@ -28,14 +28,19 @@ function(embed_module symbol path)
         "static const unsigned char ${symbol}[] = {${_bytes}};\n")
 endfunction()
 embed_module(host_module "${BEAM_HOST_MODULE}")
-set(_io_modules io io_lib io_lib_format lists maps unicode)
+foreach(_module beam beam_format beam_time beam_atomics beam_counters beam_persistent_term beam_binary beam_lists beam_maps beam_records beam_ets beam_string beam_unicode beam_runtime_unicode_util beam_math beam_ddll beam_debugger)
+    embed_module(installed_${_module} "${BASE_EBIN_DIR}/${_module}.beam")
+endforeach()
+set(_io_modules io io_lib io_lib_format)
 foreach(_module IN LISTS _io_modules)
     embed_module(stdlib_${_module} "${CLI_EBIN_DIR}/${_module}.beam")
 endforeach()
 file(APPEND "${_support_header}" "static const beam_bytes io_modules[] = {\n")
 foreach(_module IN LISTS _io_modules)
-    file(APPEND "${_support_header}"
-        "{stdlib_${_module}, sizeof stdlib_${_module}},\n")
+    file(APPEND "${_support_header}" "{stdlib_${_module}, sizeof stdlib_${_module}},\n")
+endforeach()
+foreach(_module beam_lists beam_maps beam_unicode beam_runtime_unicode_util)
+    file(APPEND "${_support_header}" "{installed_${_module}, sizeof installed_${_module}},\n")
 endforeach()
 file(APPEND "${_support_header}" "};\n")
 add_executable(bridge_host bridge.c)
@@ -47,11 +52,20 @@ target_include_directories(lifecycle_host PRIVATE "${FIXTURE_INCLUDE}" "${CMAKE_
 target_link_libraries(lifecycle_host PRIVATE BEAM::${RUNTIME_COMPONENT})
 
 add_executable(management_host management.c)
-target_include_directories(management_host PRIVATE "${FIXTURE_INCLUDE}")
+target_include_directories(management_host PRIVATE "${FIXTURE_INCLUDE}" "${TEST_SUPPORT_DIR}")
 target_link_libraries(management_host PRIVATE BEAM::${RUNTIME_COMPONENT} m)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND RUNTIME_COMPONENT STREQUAL "RuntimeStatic")
+    # Static-consumer interposition checks owner-allocation failures and native
+    # request retirement at existing boundaries, without production test hooks.
+    target_compile_definitions(management_host PRIVATE
+        BEAM_TEST_SNAPSHOT_ALLOCATIONS=1 BEAM_TEST_PROCESS_RETIREMENT=1)
+    target_link_options(management_host PRIVATE
+        "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=free"
+        "-Wl,--wrap=erts_bare_process_inspection_send" "-Wl,--wrap=erl_create_process")
+endif()
 
 add_executable(scheduler_stress_host scheduler_stress.c)
-target_include_directories(scheduler_stress_host PRIVATE "${FIXTURE_INCLUDE}")
+target_include_directories(scheduler_stress_host PRIVATE "${FIXTURE_INCLUDE}" "${TEST_SUPPORT_DIR}")
 target_link_libraries(scheduler_stress_host PRIVATE BEAM::${RUNTIME_COMPONENT} Threads::Threads)
 
 # The runner supplies this installed file explicitly; it is not an SDK API.
@@ -62,11 +76,18 @@ add_executable(prim_eval_host prim_eval.c)
 target_include_directories(prim_eval_host PRIVATE "${FIXTURE_INCLUDE}" "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(prim_eval_host PRIVATE BEAM::${RUNTIME_COMPONENT})
 
+add_executable(builtin_host builtin.c builtin_tracer.c)
+target_compile_definitions(builtin_host PRIVATE STATIC_ERLANG_NIF=1)
+target_link_libraries(builtin_host PRIVATE BEAM::NIF BEAM::Host BEAM::TracingStatic)
+target_include_directories(builtin_host PRIVATE "${FIXTURE_INCLUDE}" "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(builtin_host PRIVATE BEAM::${RUNTIME_COMPONENT})
+
 add_executable(base_host base.c)
 target_include_directories(base_host PRIVATE "${FIXTURE_INCLUDE}")
 target_link_libraries(base_host PRIVATE BEAM::${RUNTIME_COMPONENT} Threads::Threads)
 
 target_include_directories(base_host PRIVATE "${TEST_SUPPORT_DIR}")
+target_include_directories(lifecycle_host PRIVATE "${TEST_SUPPORT_DIR}")
 beam_target_bytecode_verifier(base_host INVENTORIES base)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     foreach(_target bare_host lifecycle_host management_host base_host)
@@ -82,3 +103,5 @@ target_link_libraries(async_host PRIVATE BEAM::${RUNTIME_COMPONENT} Threads::Thr
 target_sources(async_host PRIVATE "${TEST_SUPPORT_DIR}/host_observe.c")
 target_include_directories(async_host PRIVATE "${TEST_SUPPORT_DIR}")
 target_link_libraries(async_host PRIVATE m)
+
+target_include_directories(bridge_host PRIVATE "${TEST_SUPPORT_DIR}")

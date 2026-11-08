@@ -8,6 +8,7 @@
 #include <string.h>
 #include <time.h>
 #include "fixtures.h"
+#include "builtin_bindings.h"
 
 /* Native acceptance instrumentation, not SDK interfaces. Blocking scheduler 2
  * lets the test establish pending admission without relying on timing. */
@@ -139,6 +140,35 @@ static void *halt_after_admission(void *argument)
     return NULL;
 }
 
+static int selected_policy_consistent(const beam_scheduler_snapshot *snapshot)
+{
+    const beam_scheduler_info *info=&snapshot->info;
+    CHECK(info->struct_size==sizeof *info && info->schedulers_online>0 &&
+          info->schedulers_online<=info->schedulers &&
+          info->dirty_cpu_schedulers_online>0 &&
+          info->dirty_cpu_schedulers_online<=info->dirty_cpu_schedulers &&
+          info->dirty_cpu_schedulers_online<=info->schedulers_online);
+    for(size_t i=0;i<snapshot->count;++i) {
+        const beam_scheduler_record *item=&snapshot->items[i];
+        unsigned selected;
+        switch(item->id.kind) {
+        case BEAM_SCHEDULER_NORMAL:
+            selected=info->schedulers_online;
+            break;
+        case BEAM_SCHEDULER_DIRTY_CPU:
+            selected=info->dirty_cpu_schedulers_online;
+            break;
+        case BEAM_SCHEDULER_DIRTY_IO:
+            selected=info->dirty_io_schedulers;
+            break;
+        default:
+            CHECK(0);
+        }
+        CHECK(item->selected_online==(item->id.index<=selected));
+    }
+    return 0;
+}
+
 static int deterministic_controls(beam_system *system, scheduler_probe *probe)
 {
     beam_vm *vm = NULL;
@@ -167,24 +197,32 @@ static int deterministic_controls(beam_system *system, scheduler_probe *probe)
     CHECK(probe->admission_status == BEAM_OK);
     CHECK(probe->completed == 0 && probe->exited == 0);
     pthread_mutex_unlock(&probe->mutex);
-    CHECK(beam_vm_set_schedulers_online(vm, 2, 2, &error) == BEAM_BUSY);
-    OK(beam_vm_get_schedulers(vm, &info));
+    CHECK(beam_scheduler_set_online(vm, 2, 2, &error) == BEAM_BUSY);
+    OK(beam_scheduler_get_info(vm, &info));
     CHECK(info.schedulers_online == 1 && info.dirty_cpu_schedulers_online == 1);
+    beam_scheduler_snapshot pending={0};
+    OK(beam_scheduler_inspect_all(vm,&pending));
+    CHECK(!selected_policy_consistent(&pending));
+    CHECK(pending.info.schedulers==2 && pending.info.dirty_cpu_schedulers==2 &&
+          pending.info.schedulers_online==1 && pending.info.dirty_cpu_schedulers_online==1);
+    beam_scheduler_snapshot_release(&pending);
     pthread_mutex_lock(&probe->mutex);
+    /* Inspection reports selected policy while scheduler 2 still has not
+     * acknowledged. It must neither wait for that worker nor imply it did. */
     CHECK(probe->completed == 0);
     probe->released = 1;
     pthread_cond_broadcast(&probe->condition);
     wait_locked(probe, &probe->completed, 1);
     CHECK(probe->completion_status == BEAM_OK && probe->exited == 1);
     pthread_mutex_unlock(&probe->mutex);
-    OK(beam_vm_set_schedulers_online(vm, 2, 2, &error));
+    OK(beam_scheduler_set_online(vm, 2, 2, &error));
 
     erts_schedule_misc_aux_work(2, block_scheduler, probe);
     pthread_mutex_lock(&probe->mutex);
     wait_locked(probe, &probe->entered, 2);
     pthread_mutex_unlock(&probe->mutex);
     CHECK(pthread_create(&helper, NULL, halt_after_admission, probe) == 0);
-    CHECK(beam_vm_set_schedulers_online(vm, 1, 1, &error) == BEAM_STOPPED);
+    CHECK(beam_scheduler_set_online(vm, 1, 1, &error) == BEAM_STOPPED);
     CHECK(pthread_join(helper, NULL) == 0);
     OK(beam_vm_get_state(vm, &state));
     CHECK(state.state == BEAM_VM_STOPPED && state.halt_status == 37);
@@ -237,14 +275,19 @@ int main(void)
         double deadline;
 
         beam_vm_options_init(&options);
-
-
+        beam_composition *composition=NULL;
+        beam_composition_options inputs = {.struct_size=sizeof inputs,
+            .builtin_binding_count=BEAM_TEST_SCHEDULER_BINDING_COUNT,
+            .builtin_bindings=beam_test_scheduler_bindings};
+        OK(beam_composition_prepare(&inputs,&composition,&error));
+        options.composition=composition;
         options.schedulers = 8;
         options.schedulers_online = 4;
         options.dirty_cpu_schedulers = 4;
         options.dirty_cpu_schedulers_online = 1;
         OK(beam_vm_init(system, &options, &vm, &error));
-        OK(beam_vm_load(vm, (beam_bytes){bare_scheduler_stress,
+        beam_composition_release(&composition);
+        OK(beam_module_load(vm, (beam_bytes){bare_scheduler_stress,
                                         sizeof bare_scheduler_stress}));
         OK(beam_vm_start(vm, &error));
         CHECK(!call_ok(vm, "start"));
@@ -252,22 +295,28 @@ int main(void)
         /* Independent normal and dirty setters race the host's exact pair.
          * Busy is expected, but the selected pair must always be valid. */
         for (unsigned attempt = 0; attempt < 300; ++attempt) {
-            status = beam_vm_set_schedulers_online(vm,
+            status = beam_scheduler_set_online(vm,
                         attempt % 2 ? 4 : 8, attempt % 2 ? 3 : 1, &error);
             CHECK(status == BEAM_OK || status == BEAM_BUSY);
-            OK(beam_vm_get_schedulers(vm, &info));
+            OK(beam_scheduler_get_info(vm, &info));
             CHECK(info.schedulers == 8 && info.dirty_cpu_schedulers == 4);
             CHECK(info.schedulers_online >= 4 && info.schedulers_online <= 8);
             CHECK(info.dirty_cpu_schedulers_online >= 1 &&
                   info.dirty_cpu_schedulers_online <= 4 &&
                   info.dirty_cpu_schedulers_online <= info.schedulers_online);
+            beam_scheduler_snapshot observed={0};
+            OK(beam_scheduler_inspect_all(vm,&observed));
+            CHECK(!selected_policy_consistent(&observed));
+            CHECK(observed.info.schedulers==8 && observed.info.dirty_cpu_schedulers==4 &&
+                  observed.info.schedulers_online>=4 && observed.info.schedulers_online<=8);
+            beam_scheduler_snapshot_release(&observed);
         }
 
         CHECK(!call_ok(vm, "stop"));
         deadline = seconds() + 5;
         do {
             struct timespec delay = {0, 1000000};
-            status = beam_vm_set_schedulers_online(vm, 4, 3, &error);
+            status = beam_scheduler_set_online(vm, 4, 3, &error);
             if (status != BEAM_BUSY)
                 break;
             CHECK(seconds() < deadline);

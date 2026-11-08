@@ -31,6 +31,7 @@
 #include "erl_process.h"
 #include "error.h"
 #include "bif.h"
+#include "beam_builtin_catalog.h"
 #include "big.h"
 #include "beam_code.h"
 #include "erl_binary.h"
@@ -628,13 +629,12 @@ void process_main(ErtsSchedulerData *esdp)
 /*
  * Enter all BIFs into the export table.
  *
- * Note that they will all call the error_handler until their modules have been
- * loaded, which may prevent the system from booting if BIFs from non-preloaded
- * modules are apply/3'd while loading code. Ordinary BIF calls will work fine
- * however since they won't go through export entries.
+ * Host-bound optional implementations are callable before ordinary module code
+ * is supplied. Mandatory BIFs retain their existing module-loading policy.
  */
 static void install_bifs(void) {
     int i;
+    beam_builtin_init_private_exports();
 
     for (i = 0; i < BIF_SIZE; i++) {
         BifEntry *entry;
@@ -642,8 +642,15 @@ static void install_bifs(void) {
         int j;
 
         entry = &bif_table[i];
+        if (!is_atom(entry->module))
+            continue;
 
         ERTS_ASSERT(entry->arity <= MAX_BIF_ARITY);
+
+        /* Native-only exports still participate in module tracing/loading
+         * accounting. A metadata record does not load ordinary code. */
+        if (*bif_descriptors[i].implementation)
+            erts_put_module(entry->module);
 
         ep = erts_export_put(entry->module, entry->name, entry->arity);
 
@@ -665,7 +672,31 @@ static void install_bifs(void) {
         erts_init_trap_export(BIF_TRAP_EXPORT(i),
                               entry->module, entry->name, entry->arity,
                               entry->f);
+        if (*bif_descriptors[i].implementation) {
+            for (j = 0; j < ERTS_NUM_CODE_IX; j++)
+                ep->dispatch.addresses[j] = (ErtsCodePtr)beam_builtin_export_address(i);
+        }
     }
+    /* Direct instruction entries use the same opcodes as their existing
+     * erlang bodies, with the host-selected MFA in their code metadata. */
+    static struct {
+        ErtsCodeInfo info;
+        BeamInstr code[2];
+    } instructions[BEAM_NATIVE_INSTRUCTION_COUNT];
+    memset(instructions,0,sizeof instructions);
+#define BEAM_NATIVE_INSTRUCTION(id,f,a,entry,ret) do { \
+    int slot = BEAM_INSTRUCTION_##id; \
+    instructions[slot].info.u.op = BeamOpCodeAddr(op_i_func_info_IaaI); \
+    instructions[slot].info.mfa = *(const ErtsCodeMFA *)beam_builtin_instruction_mfa(slot); \
+    instructions[slot].code[0] = BeamOpCodeAddr(op_##entry); \
+    if (ret) instructions[slot].code[1] = BeamOpCodeAddr(op_return); \
+    beam_builtin_set_instruction_address(slot,instructions[slot].code); \
+    beam_builtin_set_instruction_bounds(slot,&instructions[slot].info, \
+                                         instructions[slot].code + 1 + (ret)); \
+} while (0);
+#include "beam_native_instructions.def"
+#undef BEAM_NATIVE_INSTRUCTION
+    beam_builtin_install_instruction_exports();
 }
 
 /*

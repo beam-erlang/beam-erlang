@@ -22,7 +22,7 @@ files(Path) ->
     {ok, <<"abc">>} = beam_file:read(H, 100, infinity),
     eof = beam_file:read(H, 100, infinity),
     Parent = self(),
-    {Pid, Mon} = spawn_monitor(fun() ->
+    {Pid, Mon} = erlang:spawn_monitor(fun() ->
         Parent ! {self(), beam_file:read(H#{owner => self()}, 0, Expired)},
         Parent ! {self(), beam_file:close(H#{owner => self()}, Expired)}
     end),
@@ -64,7 +64,7 @@ sockets(Path) ->
     {error, #{kind := busy, native := #{code := eaddrinuse}}} = beam_socket:listen(Address, D),
     {error, #{kind := timeout}} = beam_socket:accept(L, beam_time:deadline_after(5)),
     Parent = self(),
-    {Pid, Mon} = spawn_monitor(fun() ->
+    {Pid, Mon} = erlang:spawn_monitor(fun() ->
         {error, #{kind := not_owner}} = beam_socket:recv(L#{owner => self()}, 0, E),
         {ok, C} = beam_socket:connect(Address, D),
         ok = beam_socket:send(C, <<"a">>, D),
@@ -93,6 +93,7 @@ sockets(Path) ->
     {error, #{kind := closed}} = beam_socket:recv(S, 0, E),
     ok = beam_socket:close(L, E),
     {error, #{kind := io, native := #{code := econnrefused}}} = beam_socket:connect(Address, D),
+    local_socket_unicode(),
     partial_send(),
     sendfile_cleanup(Path),
     42.
@@ -115,7 +116,7 @@ sendfile_cleanup(File,Size,Mode) ->
     ok = socket:listen(Listener),
     {ok,Address} = socket:sockname(Listener),
     Parent = self(),
-    {Pid,Monitor} = spawn_monitor(fun() ->
+    {Pid,Monitor} = erlang:spawn_monitor(fun() ->
         {ok,Client} = socket:open(inet,stream,tcp),
         ok = socket:setopt(Client,socket,sndbuf,4096),
         ok = socket:connect(Client,Address,5000),
@@ -164,7 +165,7 @@ partial_send() ->
     {ok, Address} = beam_socket:sockname(L),
     Parent = self(),
     Size = 8 * 1024 * 1024,
-    {Pid, Mon} = spawn_monitor(fun() ->
+    {Pid, Mon} = erlang:spawn_monitor(fun() ->
         {ok, C} = beam_socket:connect(Address, D),
         Parent ! {self(), ready},
         receive drain -> ok after 5000 -> error(drain_wait) end,
@@ -175,13 +176,13 @@ partial_send() ->
     receive {Pid, ready} -> ok after 5000 -> error(partial_ready) end,
     {ok, S} = beam_socket:accept(L, D),
     %% Bound kernel buffering without changing the public service options.
-    ok = socket:setopt(maps:get(socket, S), socket, sndbuf, 4096),
-    Data = binary:copy(<<"x">>, Size),
+    ok = socket:setopt(beam:map_get(socket, S), socket, sndbuf, 4096),
+    Data = beam_binary:copy(<<"x">>, Size),
     {error, #{kind := timeout, bytes_written := Count, progress_unknown := false}} =
         beam_socket:send(S, Data, beam_time:deadline_after(20)),
     true = Count > 0 andalso Count < Size,
     Pid ! drain,
-    ok = beam_socket:send(S, binary:part(Data, Count, Size - Count), D),
+    ok = beam_socket:send(S, beam:binary_part(Data, Count, Size - Count), D),
     ok = beam_socket:close(S, infinity),
     receive {Pid, drained} -> ok after 10000 -> error(drain_count) end,
     receive {'DOWN', Mon, process, Pid, normal} -> ok after 5000 -> error(drain_down) end,
@@ -190,7 +191,7 @@ partial_send() ->
 drain(Socket, Count, Deadline) ->
     case beam_socket:recv(Socket, 65536, Deadline) of
         {ok, Bytes} ->
-            true = Bytes =:= binary:copy(<<"x">>, byte_size(Bytes)),
+            true = Bytes =:= beam_binary:copy(<<"x">>, byte_size(Bytes)),
             drain(Socket, Count + byte_size(Bytes), Deadline);
         eof -> Count;
         Other -> error({partial_drain, Count, Other})
@@ -207,7 +208,7 @@ callbacks(_) ->
               native := #{domain := host, code := io}}} = beam_output:write(fail, <<"x">>, infinity),
     {ok, <<"not bytecode">>} = beam_code:fetch(slow, arbitrary, beam_time:deadline_after(10)),
     {error, #{kind := invalid_data}} = beam_code:load(arbitrary, <<"not bytecode">>, memory),
-    false = erlang:module_loaded(arbitrary),
+    false = beam:module_loaded(arbitrary),
     42.
 
 native_faults(Path) ->
@@ -222,7 +223,7 @@ native_faults(Path) ->
     {ok, <<"bc">>} = beam_file:read(R, 100, infinity),
     ok = beam_file:close(R, infinity),
     {ok, W} = beam_file:open(Path, infinity, #{mode => write}),
-    Data = binary:copy(<<"x">>, 200000),
+    Data = beam_binary:copy(<<"x">>, 200000),
     ok = prim_file:beam_test_io({write_before,0,1}),
     {error, #{kind := io, bytes_written := 65536, progress_unknown := false,
               native := #{code := enospc}}} = beam_file:write(W, Data, infinity),
@@ -244,7 +245,7 @@ queued(Path) ->
     %% settles late; the second request expires while waiting in that queue.
     ok = prim_file:beam_test_io({read_after,100,0}),
     Parent = self(),
-    {Pid, Mon} = spawn_monitor(fun() ->
+    {Pid, Mon} = erlang:spawn_monitor(fun() ->
         {ok, R} = beam_file:open(Path, infinity, #{mode => read}),
         Parent ! {self(), ready},
         {ok, _} = beam_file:read(R, 1, infinity),
@@ -266,7 +267,7 @@ await_native() ->
 
 abandon(Path) ->
     {ok, H} = beam_file:open(Path, infinity, #{mode => read}),
-    persistent_term:put(contract_abandoned, H),
+    beam_persistent_term:put(contract_abandoned, H),
     42.
 badarg(Fun) ->
     try Fun() of Result -> error({expected_badarg, Result})
@@ -275,9 +276,9 @@ badarg(Fun) ->
 
 busy(Path) ->
     ok = prim_file:beam_test_io({write_after,100,0}),
-    spawn(fun() ->
+    erlang:spawn(fun() ->
         {ok, H} = beam_file:open(Path, infinity, #{mode => write}),
-        beam_file:write(H, binary:copy(<<"x">>, 200000), infinity)
+        beam_file:write(H, beam_binary:copy(<<"x">>, 200000), infinity)
     end),
     await_native(),
     42.
@@ -286,10 +287,10 @@ cleanup_fail(_) -> prim_file:beam_test_io({close_before,0,0}), 42.
 owner_cancel(Path) ->
     Parent = self(),
     ok = prim_file:beam_test_io({write_after,100,0}),
-    {Pid, Mon} = spawn_monitor(fun() ->
+    {Pid, Mon} = erlang:spawn_monitor(fun() ->
         {ok, W} = beam_file:open(Path, infinity, #{mode => write}),
         Parent ! {self(), ready},
-        beam_file:write(W, binary:copy(<<"x">>, 200000), infinity)
+        beam_file:write(W, beam_binary:copy(<<"x">>, 200000), infinity)
     end),
     receive {Pid, ready} -> ok after 5000 -> error(cancel_ready) end,
     await_native(),
@@ -319,3 +320,33 @@ unrepresentable_entry(Path) ->
     {ok, []} = beam_file:list_directory(<<Path/binary,".invalid-dir">>, infinity),
     ok.
 -endif.
+
+
+local_socket_unicode() ->
+    false = beam:module_loaded(unicode),
+    Path = <<"component socket λ"/utf8>>,
+    Chars = [C || <<C/utf8>> <= Path],
+    {ok,L} = socket:open(local, stream, default),
+    {ok,C} = socket:open(local, stream, default),
+    try
+        ok = socket:bind(L, #{family=>local,path=>Chars}),
+        ok = socket:listen(L),
+        ok = socket:connect(C, #{family=>local,path=>Path}, 5000),
+        {ok,S} = socket:accept(L, 5000),
+        try
+            ok = socket:send(C, <<"ping">>, 5000),
+            {ok,<<"ping">>} = socket:recv(S, 4, 5000),
+            ok = socket:send(S, <<"pong">>, 5000),
+            {ok,<<"pong">>} = socket:recv(C, 4, 5000)
+        after ok = socket:close(S) end,
+        case socket:bind(C, #{family=>local,path=>[<<128>>]}) of
+            {error,{invalid,{path,[<<128>>]}}} -> ok;
+            Other -> error({accepted_invalid_local_path,Other})
+        end,
+        false = beam:module_loaded(unicode)
+    after
+        ok = socket:close(C),
+        ok = socket:close(L),
+        ok = prim_file:delete(Path)
+    end,
+    ok.

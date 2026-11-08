@@ -3,7 +3,7 @@
 -export([start/0, add/1, snapshot/0, stop/0]).
 
 start() ->
-    true = register(bare_counter, spawn(fun() -> counter(0) end)),
+    true = register(bare_counter, erlang:spawn(fun() -> counter(0) end)),
     ok.
 
 add(Amount) -> request({add, Amount}).
@@ -35,9 +35,9 @@ snapshot() ->
                 Info -> {present, Info}
             end
     end,
-    {Reductions, _SinceLastCall} = erlang:statistics(reductions),
-    {snapshot, erlang:system_info(process_count),
-     erlang:system_info(schedulers_online), erlang:statistics(run_queue),
+    {Reductions, _SinceLastCall} = beam:statistics(reductions),
+    {snapshot, beam:system_info(process_count),
+     beam:system_info(schedulers_online), beam:statistics(run_queue),
      Reductions, erlang:memory(), Worker}.
 
 stop() ->
