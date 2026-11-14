@@ -1,0 +1,1796 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "550d7b7898706c7822362c42e7b93120c1d1f29a",
+  "default": "reject",
+  "automatic_skips": "reject",
+  "description": "Accept only unchanged pinned upstream optional-feature, historical-runtime, platform, resource, or explicit upstream limitation guards. Missing core preparation inputs and unexplained skips fail.",
+  "condition_contract": {
+    "missing_or_unsupported": "reject; inequality never accepts an absent fact",
+    "always": "only an exact explicit pinned upstream skip or a project functional-scope exclusion, with exact suite/case/group scope",
+    "runtime_equals": "runtime-facts.json field equals value (booleans may be native JSON or atom strings)",
+    "runtime_not_equals": "existing runtime-facts.json field differs from value",
+    "tool_absent": "tool is absent from the exact isolated controller PATH; do not infer from source alone",
+    "modules_absent": "every listed optional module absent in the candidate image; property_tools must be known empty",
+    "memory_below": "candidate memsup available_memory, then total_memory, then system_total_memory in bytes divided by 2**30 is below minimum_gb (sanitizer_minimum_gb for asan/valgrind; debug_scale multiplies minimum_gb when debug_compiled is true); prefer event resource_memory; undefined or missing memsup rejects; an optional inclusive flag permits equality only where the source uses a strict greater-than run guard",
+    "old_release_absent": "the supplied optional_releases inventory contains no historical runtime matching release_regex; no implicit PATH lookup or fallback",
+    "paths_absent": "on the specified platform every listed upstream probe path is absent",
+    "platform_equals": "the configured native platform matches value",
+    "runtime_one_of": "existing runtime-facts.json/event guard_facts field is one of the declared values",
+    "event_guard_facts": "overlay event.guard_facts on startup runtime facts; these are measured from the candidate at each user skip and do not alter test state",
+    "memory_components_below": "require actual event resource_memory without resource_memory_error, every required_components key present, and the sum of listed components (optional missing keys zero) below threshold_gb * 2**30; matches distribution free_memory/0",
+    "all": "every nested condition matches; used where one upstream guard tests more than one runtime fact"
+  },
+  "event_scope_contract": "case/group/callback, when present, are exact event selectors; guard_callback documents the source origin. A suite/group guard may justify downstream user skips only with its matching observed guard origin; never reinterpret tc_auto_skip as accepted user skip.",
+  "class_contract": "scope rules are explicit functional exclusions and are reported separately from runtime skips. A scope rule uses condition always and matches one emulator_scope.json exclusion.",
+  "rules": [
+    {
+      "id": "upstream-hash-benchmark",
+      "class": "scope",
+      "suite": "hash_SUITE",
+      "reason_regex": "^Benchmark only$",
+      "source": "erts/emulator/test/emulator.spec",
+      "source_sha256": "4f8e002f90f9caff89399b99ee693b5c7e9ba23e10b9ba14b93d72f5df766ec3",
+      "guard": "{enable_builtin_hooks, false}.\n{suites,\"../emulator_test\",all}.\n{skip_groups,\"../emulator_test\",hash_SUITE,[phash2_benchmark],\"Benchmark only\"}.\n",
+      "guard_lines": [
+        1,
+        3
+      ],
+      "condition": {
+        "kind": "always"
+      },
+      "group": "phash2_benchmark"
+    },
+    {
+      "id": "jit-on-interpreter",
+      "suite": "jit_SUITE",
+      "reason_regex": "^No point in running JIT tests on non-JIT emulator$",
+      "source": "erts/emulator/test/jit_SUITE.erl",
+      "source_sha256": "180150d67a0a31ba933dd8232c78735b56142cc9b09b67459cacd4b1996b9308",
+      "guard": "init_per_suite(Config) ->\n    case erlang:system_info(emu_flavor) of\n        jit ->\n            Config;\n        _ ->\n            {skip, \"No point in running JIT tests on non-JIT emulator\"}\n    end.\n",
+      "guard_lines": [
+        40,
+        46
+      ],
+      "condition": {
+        "kind": "runtime_not_equals",
+        "field": "flavor",
+        "value": "jit"
+      },
+      "guard_callback": "init_per_suite"
+    },
+    {
+      "id": "scope-jit-perf",
+      "class": "scope",
+      "suite": "jit_SUITE",
+      "reason_regex": "^Specialized profiler integration excluded from functional scope$",
+      "source": "tests/emulator/emulator_scope.json",
+      "source_sha256": "9499fd8b57d80c43359be0ac8a57a182f72dc3ab82fd29d11e2ac46b76c47421",
+      "guard": "\"id\": \"scope-jit-perf\"",
+      "condition": {
+        "kind": "always"
+      },
+      "group": "perf"
+    },
+    {
+      "id": "scope-estone",
+      "class": "scope",
+      "suite": "estone_SUITE",
+      "reason_regex": "^Scoring benchmark excluded from functional scope$",
+      "source": "tests/emulator/emulator_scope.json",
+      "source_sha256": "9499fd8b57d80c43359be0ac8a57a182f72dc3ab82fd29d11e2ac46b76c47421",
+      "guard": "\"id\": \"scope-estone\"",
+      "condition": {
+        "kind": "always"
+      },
+      "case": "estone"
+    },
+    {
+      "id": "scope-map-benchmarks",
+      "class": "scope",
+      "suite": "map_SUITE",
+      "reason_regex": "^Timed throughput benchmark excluded from functional scope$",
+      "source": "tests/emulator/emulator_scope.json",
+      "source_sha256": "9499fd8b57d80c43359be0ac8a57a182f72dc3ab82fd29d11e2ac46b76c47421",
+      "guard": "\"id\": \"scope-map-benchmarks\"",
+      "condition": {
+        "kind": "always"
+      },
+      "case": "benchmarks"
+    },
+    {
+      "id": "scope-map-no-opt-benchmarks",
+      "class": "scope",
+      "suite": "map_no_opt_SUITE",
+      "reason_regex": "^Timed throughput benchmark excluded from functional scope$",
+      "source": "tests/emulator/emulator_scope.json",
+      "source_sha256": "9499fd8b57d80c43359be0ac8a57a182f72dc3ab82fd29d11e2ac46b76c47421",
+      "guard": "\"id\": \"scope-map-no-opt-benchmarks\"",
+      "condition": {
+        "kind": "always"
+      },
+      "case": "benchmarks"
+    },
+    {
+      "id": "lttng-feature-disabled",
+      "suite": "lttng_SUITE",
+      "reason_regex": "^No LTTng configured on system\\.$",
+      "source": "erts/emulator/test/lttng_SUITE.erl",
+      "source_sha256": "d2c27b884b2279173daf248f3f684b630d37ec4335ca954ce6493ac41cd8861d",
+      "guard": "init_per_suite(Config) ->\n    case erlang:system_info(dynamic_trace) of\n        lttng ->\n            ensure_lttng_stopped(\"--all\"),\n            Config;\n        _ ->\n            {skip, \"No LTTng configured on system.\"}\n    end.\n",
+      "guard_lines": [
+        58,
+        65
+      ],
+      "condition": {
+        "kind": "runtime_not_equals",
+        "field": "dynamic_trace",
+        "value": "lttng"
+      },
+      "guard_callback": "init_per_suite"
+    },
+    {
+      "id": "lock-counting-disabled",
+      "suite": "lcnt_SUITE",
+      "reason_regex": "^Lock counting is not enabled$",
+      "source": "erts/emulator/test/lcnt_SUITE.erl",
+      "source_sha256": "a77b65028706df07b69548dd059c97356ef7dba27e82f24b89cd26ae1728fae4",
+      "guard": "    case erlang:system_info(lock_counting) of\n        true ->\n            %% The tests will run straight over these properties, so we have to\n            %% preserve them to avoid tainting the other tests.\n            OldCopySave = erts_debug:lcnt_control(copy_save),\n            OldMask = erts_debug:lcnt_control(mask),\n            [{lcnt_SUITE, {OldCopySave, OldMask}} | Config];\n        _ ->\n            {skip, \"Lock counting is not enabled\"}\n    end.\n",
+      "guard_lines": [
+        44,
+        53
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "lock_counting",
+        "value": "false"
+      },
+      "guard_callback": "init_per_suite"
+    },
+    {
+      "id": "optional-property-tool-absent",
+      "suite": "hash_property_test_SUITE",
+      "reason_regex": "^No property testing tool found$",
+      "source": "tests/emulator/support/lib/common_test/src/ct_property_test.erl",
+      "source_sha256": "fa9659d8fa61b85edb95874be2737d10c83c15b609fa348b1425f5cd007697ee",
+      "guard": "            end\n    end.\n\n-doc false.\ninit_tool(Config) ->\n    ToolsToCheck = proplists:get_value(prop_tools, Config, [eqc,proper,triq]),\n    case which_module_exists(ToolsToCheck) of\n\t{ok,ToolModule} ->\n            case code:where_is_file(lists:concat([ToolModule,\".beam\"])) of\n                non_existing ->\n                    ct:log(\"Found ~p, but ~ts was not found\",\n                           [ToolModule, lists:concat([ToolModule,\".beam\"])]),\n                    {skip, \"Strange Property testing tool installation\"};\n                ToolPath ->\n                    ct:log(\"Found property tester ~p at ~ts\",\n                           [ToolModule, ToolPath]),\n                    init_tool_extensions(ToolModule),\n                    [{property_test_tool, ToolModule} | Config]\n            end;\n        not_found ->\n            ct:log(\"No property tester found\",[]),\n            {skip, \"No property testing tool found\"}\n    end.\n",
+      "guard_lines": [
+        185,
+        207
+      ],
+      "condition": {
+        "kind": "modules_absent",
+        "modules": [
+          "eqc",
+          "proper",
+          "triq"
+        ]
+      },
+      "guard_callback": "init_per_suite"
+    },
+    {
+      "id": "upstream-debugger-inline-todo",
+      "suite": "erl_debugger_SUITE",
+      "reason_regex": "^\\+beam_debug_info is currently blocking inline annotations$",
+      "source": "erts/emulator/test/erl_debugger_SUITE.erl",
+      "source_sha256": "629628e980e46b3a6f6e993aff0ac5ed4bc6ba99e4075050f7b4f91dd67a19b4",
+      "guard": "init_per_testcase(test_bps_work_with_inlined_functions, _Config) ->\n    % TODO(T202887216) unskip once this is fixed\n    {skip, \"+beam_debug_info is currently blocking inline annotations\"};\n",
+      "guard_lines": [
+        152,
+        154
+      ],
+      "condition": {
+        "kind": "always"
+      },
+      "case": "test_bps_work_with_inlined_functions"
+    },
+    {
+      "id": "upstream-debugger-interpreter-yregs",
+      "suite": "erl_debugger_SUITE",
+      "reason_regex": "^code:get_debug_info\\(\\) doesn't currently work on emu$",
+      "source": "erts/emulator/test/erl_debugger_SUITE.erl",
+      "source_sha256": "629628e980e46b3a6f6e993aff0ac5ed4bc6ba99e4075050f7b4f91dd67a19b4",
+      "guard": "init_per_testcase(test_stack_frames_returns_y_regs_controlled_by_size, Config) ->\n    case erlang:system_info(emu_flavor) of\n        emu ->\n            compile_and_load_module(Config, call_stacks, [beam_debug_info]),\n            try code:get_debug_info(call_stacks) of\n                _ -> {fail, \"code:get_debug_info() now works on emu, testcase needs updating\"}\n            catch error:badarg ->\n                {skip, \"code:get_debug_info() doesn't currently work on emu\"}\n            end;\n        _ ->\n",
+      "guard_lines": [
+        155,
+        164
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "flavor",
+        "value": "emu"
+      },
+      "case": "test_stack_frames_returns_y_regs_controlled_by_size"
+    },
+    {
+      "id": "binary-32bit-case-on-64bit",
+      "suite": "binary_SUITE",
+      "reason_regex": "^This is not a 32-bit machine$",
+      "source": "erts/emulator/test/binary_SUITE.erl",
+      "source_sha256": "526dd5e3772fc776b3b2a365e298805a8b77500932f7af204e36cbeb391cd89c",
+      "guard": "%% Test binary_to_term(_, [used]) returning a big Used integer.\nb2t_used_big(_Config) ->\n    case erlang:system_info(wordsize) of\n        8 ->\n            {skipped, \"This is not a 32-bit machine\"};\n        4 ->\n            %% Use a long utf8 atom for large external format but compact on heap.\n",
+      "guard_lines": [
+        659,
+        665
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "wordsize",
+        "value": 8
+      },
+      "case": "b2t_used_big"
+    },
+    {
+      "id": "binary-resource-guard",
+      "suite": "binary_SUITE",
+      "reason_regex": "^Not enough resources \\(System Memory >= [0-9]+, Word Size = [0-9]+\\)$",
+      "source": "erts/emulator/test/binary_SUITE.erl",
+      "source_sha256": "526dd5e3772fc776b3b2a365e298805a8b77500932f7af204e36cbeb391cd89c",
+      "guard": "run_when_enough_resources(Fun) ->\n    DemandGb = case erlang:system_info(build_type) of\n                   Gb when Gb =:= valgrind; Gb =:= asan ->\n                       30;\n                   _ ->\n                       15\n               end,\n    case {total_memory(), erlang:system_info(wordsize)} of\n        {Mem, 8} when is_integer(Mem) andalso Mem >= DemandGb ->\n            Fun();\n        {Mem, WordSize} ->\n            {skipped, \n             io_lib:format(\"Not enough resources (System Memory >= ~p, Word Size = ~p)\",\n                           [Mem, WordSize])}\n    end.\n    \n",
+      "guard_lines": [
+        1119,
+        1134
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 15,
+        "sanitizer_minimum_gb": 30
+      }
+    },
+    {
+      "id": "binary-huge-term-resource-guard",
+      "suite": "binary_SUITE",
+      "reason_regex": "^Not enough memory on this machine$",
+      "source": "erts/emulator/test/binary_SUITE.erl",
+      "source_sha256": "526dd5e3772fc776b3b2a365e298805a8b77500932f7af204e36cbeb391cd89c",
+      "guard": "t2b_system_limit(Config) when is_list(Config) ->\n    case erlang:system_info(wordsize) of\n        8 ->\n            case total_memory() of\n                Memory when is_integer(Memory), Memory > 6 ->\n                    do_t2b_system_limit();\n                _ ->\n                    {skipped, \"Not enough memory on this machine\"}\n            end;\n        4 ->\n            {skipped, \"Only interesting on 64-bit builds\"}\n    end.\n",
+      "guard_lines": [
+        490,
+        501
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 7
+      },
+      "case": "t2b_system_limit"
+    },
+    {
+      "id": "map-resource-guard-map_SUITE",
+      "suite": "map_SUITE",
+      "reason_regex": "^Not enough resources \\(System Memory >= [0-9]+, Word Size = [0-9]+\\)$",
+      "source": "erts/emulator/test/map_SUITE.erl",
+      "source_sha256": "ee5c9c18aa65c5b5a0ea9df6a36e86414b63364b0aefe806ad87674f46aba9d5",
+      "guard": "run_when_enough_resources(Fun) ->\n    case {total_memory(), erlang:system_info(wordsize)} of\n        {Mem, 8} when is_integer(Mem) andalso Mem >= 31 ->\n            Fun();\n        {Mem, WordSize} ->\n            {skipped, \n             io_lib:format(\"Not enough resources (System Memory >= ~p, Word Size = ~p)\",\n                           [Mem, WordSize])}\n    end.\n",
+      "guard_lines": [
+        3865,
+        3873
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 31
+      }
+    },
+    {
+      "id": "map-resource-guard-map_no_opt_SUITE",
+      "suite": "map_no_opt_SUITE",
+      "reason_regex": "^Not enough resources \\(System Memory >= [0-9]+, Word Size = [0-9]+\\)$",
+      "source": "erts/emulator/test/map_SUITE.erl",
+      "source_sha256": "ee5c9c18aa65c5b5a0ea9df6a36e86414b63364b0aefe806ad87674f46aba9d5",
+      "guard": "run_when_enough_resources(Fun) ->\n    case {total_memory(), erlang:system_info(wordsize)} of\n        {Mem, 8} when is_integer(Mem) andalso Mem >= 31 ->\n            Fun();\n        {Mem, WordSize} ->\n            {skipped, \n             io_lib:format(\"Not enough resources (System Memory >= ~p, Word Size = ~p)\",\n                           [Mem, WordSize])}\n    end.\n",
+      "guard_lines": [
+        3865,
+        3873
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 31
+      }
+    },
+    {
+      "id": "hash-resource-guard",
+      "suite": "hash_SUITE",
+      "reason_regex": "^Not enough resources \\(System Memory = [0-9]+, Bits = 64, Build = (opt|debug)\\)$",
+      "source": "erts/emulator/test/hash_SUITE.erl",
+      "source_sha256": "0a2f6788da86e4618f26f3ea8fef4f01a962d9b54cf0f06a6014a44f9e441b15",
+      "guard": "run_when_enough_resources(Fun) ->\n    Bits = 8 * erlang:system_info({wordsize,external}),\n    Mem = total_memory(),\n    Build = erlang:system_info(build_type),\n\n    if Bits =:= 64, is_integer(Mem), Mem >= 16,\n       Build =/= valgrind, Build =/= asan ->\n            Fun();\n\n       true ->\n            {skipped,\n             io_lib:format(\"Not enough resources (System Memory = ~p, Bits = ~p, Build = ~p)\",\n                           [Mem, Bits, Build])}\n    end.\n\n",
+      "guard_lines": [
+        716,
+        730
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 16
+      }
+    },
+    {
+      "id": "binary-previous-release-absent",
+      "suite": "binary_SUITE",
+      "reason_regex": "^No OTP [0-9]+ available$",
+      "source": "erts/emulator/test/binary_SUITE.erl",
+      "source_sha256": "526dd5e3772fc776b3b2a365e298805a8b77500932f7af204e36cbeb391cd89c",
+      "guard": "\t    \ncmp_old_impl(Config) when is_list(Config) ->\n    %% This test was originally a comparison with the non yielding\n    %% implementation in R16B. Since OTP 22 we can't talk distribution with such\n    %% old nodes (< 19). The test case it kept but compares with previous major\n    %% version for semantic regression test.\n    Rel = integer_to_list(list_to_integer(erlang:system_info(otp_release)) - 1),\n    case ?CT_PEER_REL([], Rel, proplists:get_value(priv_dir, Config)) of\n\tnot_available ->\n\t    {skipped, \"No OTP \"++Rel++\" available\"};\n        {ok, Peer, Node}  ->\n",
+      "guard_lines": [
+        2081,
+        2091
+      ],
+      "condition": {
+        "kind": "old_release_absent",
+        "release_regex": "^[0-9]+$"
+      },
+      "case": "cmp_old_impl"
+    },
+    {
+      "id": "spawn-historical-release-absent",
+      "suite": "process_SUITE",
+      "reason_regex": "^No OTP [0-9]+ available$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "    end.\n\nspawn_against_old_node(Config) when is_list(Config) ->\n    %% Same spawn tests against a two releases old node as against\n    %% ei node above\n    OldRel = integer_to_list(list_to_integer(erlang:system_info(otp_release))-2),\n    OldRelName = OldRel ++ \"_latest\",\n    %% We clear all ERL_FLAGS for the old node as all options may not\n    %% be supported.\n    ClearEnv = lists:foldl(\n                 fun({Key,_Value}, Acc) ->\n                         case re:run(Key,\"^ERL_.*FLAGS$\") of\n                             {match,_} ->\n                                 [{Key,\"\"}|Acc];\n                             nomatch ->\n                                 Acc\n                         end\n                 end, [], os:env()),\n    case ?CT_PEER_REL(#{connection => 0, env => ClearEnv },\n                      OldRelName,\n                      proplists:get_value(priv_dir, Config)) of\n\tnot_available ->\n            {skipped, \"No OTP \"++OldRel++\" available\"};\n        {ok, Peer, OldNode} ->\n",
+      "guard_lines": [
+        4213,
+        4236
+      ],
+      "condition": {
+        "kind": "old_release_absent",
+        "release_regex": "^[0-9]+(_latest)?$"
+      },
+      "case": "spawn_against_old_node"
+    },
+    {
+      "id": "hash-historical-release-absent",
+      "suite": "hash_property_test_SUITE",
+      "reason_regex": "^Release [0-9]+_latest not available\\s*$",
+      "source": "erts/emulator/test/hash_property_test_SUITE.erl",
+      "source_sha256": "00c9b81ee28448239fd29422c8986d1aaeb70f2d3ee81f5423bd94962bac5cff",
+      "guard": "        {ok, Peer, Node} ->\n            true = ct_property_test:quickcheck(\n                     phash2_properties:prop_phash2_same_in_different_versions(Node),\n                     Config),\n            true = ct_property_test:quickcheck(\n                     phash2_properties:prop_phash2_same_in_different_versions_with_long_input(Node),\n                     Config),\n            peer:stop(Peer);\n        not_available ->\n            {skip, io_lib:format(\"Release ~s not available~n\", [R])}\n    end.\n",
+      "guard_lines": [
+        93,
+        104
+      ],
+      "condition": {
+        "kind": "old_release_absent",
+        "release_regex": "^[0-9]+_latest$"
+      },
+      "case": "test_phash2_no_diff_between_versions"
+    },
+    {
+      "id": "macos-no-linux-proc-files",
+      "suite": "efile_SUITE",
+      "reason_regex": "^Failed to find any known zero-sized files$",
+      "source": "erts/emulator/test/efile_SUITE.erl",
+      "source_sha256": "b743a9685088519367f53e17b0c7494af6c38f991298bdcfc5195da6920d6b84",
+      "guard": "%% ensuring that response isn't empty << >>\nproc_zero_sized_files(Config) when is_list(Config) ->\n    TestFiles0 = [%% Some files which exist on Linux but might be missing on\n                  %% other systems\n                  \"/proc/cpuinfo\",\n                  \"/proc/meminfo\",\n                  \"/proc/partitions\",\n                  \"/proc/swaps\",\n                  \"/proc/version\",\n                  \"/proc/uptime\",\n                  %% curproc is present on FreeBSD\n                  \"/proc/curproc/cmdline\"],\n\n    TestFiles = [F || F <- TestFiles0, filelib:is_file(F)],\n\n    case TestFiles of\n        [_|_] ->\n            %% For 6 inputs and 500 attempts each this do run anywhere\n            %% between 500 and 3000 function calls.\n            [do_proc_zero_sized(F, 500) || F <- TestFiles],\n            ok;\n        [] ->\n            {skip, \"Failed to find any known zero-sized files\"}\n    end.\n\n",
+      "guard_lines": [
+        113,
+        137
+      ],
+      "condition": {
+        "kind": "paths_absent",
+        "platform": "Darwin",
+        "paths": [
+          "/proc/cpuinfo",
+          "/proc/meminfo",
+          "/proc/partitions",
+          "/proc/swaps",
+          "/proc/version",
+          "/proc/uptime",
+          "/proc/curproc/cmdline"
+        ]
+      },
+      "case": "proc_zero_sized_files"
+    },
+    {
+      "id": "optional-taskset-absent",
+      "suite": "scheduler_SUITE",
+      "reason_regex": "^Could not find 'taskset' in path$",
+      "source": "erts/emulator/test/scheduler_SUITE.erl",
+      "source_sha256": "b6ea5e50928fcb9d1b75e8ccf2e508319e2995e13dc480171b115ed837d81ff1",
+      "guard": "\ninit_per_testcase(update_cpu_info, Config) ->\n    case os:find_executable(\"taskset\") of\n\tfalse ->\n\t    {skip,\"Could not find 'taskset' in path\"};\n\t_ ->\n\t    init_per_tc(update_cpu_info, Config)\n    end;\n",
+      "guard_lines": [
+        104,
+        111
+      ],
+      "condition": {
+        "kind": "tool_absent",
+        "tool": "taskset"
+      },
+      "case": "update_cpu_info"
+    },
+    {
+      "id": "windows-massive-port-case-on-macos",
+      "suite": "port_SUITE",
+      "reason_regex": "^Only on Windows\\.$",
+      "source": "erts/emulator/test/port_SUITE.erl",
+      "source_sha256": "0e7f45000f98e0f7a0ecdc07d968b2b54992c8d41216ed794b5b2cf1d78ba078",
+      "guard": "%% on a Windows machine given the correct environment.\nwin_massive(Config) when is_list(Config) ->\n    case os:type() of\n        {win32,_} ->\n            do_win_massive();\n        _ ->\n            {skip,\"Only on Windows.\"}\n    end.\n\n",
+      "guard_lines": [
+        241,
+        249
+      ],
+      "condition": {
+        "kind": "platform_equals",
+        "value": "Darwin"
+      },
+      "case": "win_massive"
+    },
+    {
+      "id": "bs-append-overflow-64bit-bs_construct_SUITE",
+      "suite": "bs_construct_SUITE",
+      "reason_regex": "^64-bit architecture$",
+      "source": "erts/emulator/test/bs_construct_SUITE.erl",
+      "source_sha256": "e218e4a3b98fdd5986f7eeb05f2e969efd076e61eec8cfce8d22d866d09ce1be",
+      "guard": "bs_append_overflow(_Config) ->\n    Memsize = memsize(),\n    io:format(\"Memsize = ~w Bytes~n\", [Memsize]),\n    case erlang:system_info(wordsize) of\n\t8 ->\n            %% Not possible to test on a 64-bit computer.\n\t    {skip, \"64-bit architecture\"};\n        _ when Memsize < (2 bsl 30) ->\n\t    {skip, \"Less than 2 GB of memory\"};\n\t4 ->\n            {'EXIT', {system_limit, _}} = (catch bs_append_overflow_signed()),\n            erlang:garbage_collect(),\n            {'EXIT', {system_limit, _}} = (catch bs_append_overflow_unsigned()),\n            erlang:garbage_collect(),\n\t    ok\n",
+      "guard_lines": [
+        1026,
+        1040
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "wordsize",
+        "value": 8
+      },
+      "case": "bs_append_overflow"
+    },
+    {
+      "id": "bs-append-overflow-64bit-bs_construct_no_opt_SUITE",
+      "suite": "bs_construct_no_opt_SUITE",
+      "reason_regex": "^64-bit architecture$",
+      "source": "erts/emulator/test/bs_construct_SUITE.erl",
+      "source_sha256": "e218e4a3b98fdd5986f7eeb05f2e969efd076e61eec8cfce8d22d866d09ce1be",
+      "guard": "bs_append_overflow(_Config) ->\n    Memsize = memsize(),\n    io:format(\"Memsize = ~w Bytes~n\", [Memsize]),\n    case erlang:system_info(wordsize) of\n\t8 ->\n            %% Not possible to test on a 64-bit computer.\n\t    {skip, \"64-bit architecture\"};\n        _ when Memsize < (2 bsl 30) ->\n\t    {skip, \"Less than 2 GB of memory\"};\n\t4 ->\n            {'EXIT', {system_limit, _}} = (catch bs_append_overflow_signed()),\n            erlang:garbage_collect(),\n            {'EXIT', {system_limit, _}} = (catch bs_append_overflow_unsigned()),\n            erlang:garbage_collect(),\n\t    ok\n",
+      "guard_lines": [
+        1026,
+        1040
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "wordsize",
+        "value": 8
+      },
+      "case": "bs_append_overflow"
+    },
+    {
+      "id": "bs-append-overflow-64bit-bs_construct_stripped_types_SUITE",
+      "suite": "bs_construct_stripped_types_SUITE",
+      "reason_regex": "^64-bit architecture$",
+      "source": "erts/emulator/test/bs_construct_SUITE.erl",
+      "source_sha256": "e218e4a3b98fdd5986f7eeb05f2e969efd076e61eec8cfce8d22d866d09ce1be",
+      "guard": "bs_append_overflow(_Config) ->\n    Memsize = memsize(),\n    io:format(\"Memsize = ~w Bytes~n\", [Memsize]),\n    case erlang:system_info(wordsize) of\n\t8 ->\n            %% Not possible to test on a 64-bit computer.\n\t    {skip, \"64-bit architecture\"};\n        _ when Memsize < (2 bsl 30) ->\n\t    {skip, \"Less than 2 GB of memory\"};\n\t4 ->\n            {'EXIT', {system_limit, _}} = (catch bs_append_overflow_signed()),\n            erlang:garbage_collect(),\n            {'EXIT', {system_limit, _}} = (catch bs_append_overflow_unsigned()),\n            erlang:garbage_collect(),\n\t    ok\n",
+      "guard_lines": [
+        1026,
+        1040
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "wordsize",
+        "value": 8
+      },
+      "case": "bs_append_overflow"
+    },
+    {
+      "id": "unoptimized-huge-int-explicit-upstream-limit",
+      "suite": "bs_match_int_no_opt_SUITE",
+      "reason_regex": "^unoptimized code would use too much memory$",
+      "source": "erts/emulator/test/bs_match_int_SUITE.erl",
+      "source_sha256": "5bc5348bf7e47bc467b921c5a83c15a4bb7085468f920c98ee27b415fcd27c55",
+      "guard": "match_huge_int(Config) when is_list(Config) ->\n    case ?MODULE of\n        bs_match_int_no_opt_SUITE ->\n            %% This test case is written with the assumption that\n            %% bs_skip2 instructions are used when the value of the\n            %% extracted segment will not be used. In OTP 21 and earlier, that\n            %% assumption was always true, because the bs_skip optimization\n            %% was included in v3_codegen and could not be disabled.\n            %% In OTP 22, the bs_skip optimization is done by beam_ssa_opt\n            %% and is disabled.\n            %%\n            %% On memory-constrained computers, using bs_get_integer2\n            %% instructions may cause the runtime system to terminate\n            %% because of insufficient memory.\n            {skip, \"unoptimized code would use too much memory\"};\n        bs_match_int_SUITE ->\n            do_match_huge_int();\n        bs_match_int_stripped_types_SUITE ->\n            do_match_huge_int()\n    end.\n",
+      "guard_lines": [
+        917,
+        936
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "suite",
+        "value": "bs_match_int_no_opt_SUITE"
+      },
+      "case": "match_huge_int"
+    },
+    {
+      "id": "nif-linux-select-case-on-macos",
+      "suite": "nif_SUITE",
+      "reason_regex": "^not Linux$",
+      "source": "erts/emulator/test/nif_SUITE.erl",
+      "source_sha256": "389539c96b2034c9b18af8973ee8145f962f1a1262859d716b8599665a5dccc6",
+      "guard": "\nselect_error(Config) when is_list(Config) ->\n    ensure_lib_loaded(Config),\n\n    case os:type() of\n\t{unix,linux} ->\n\t    select_error_do();\n\t_ ->\n\t    {skipped, \"not Linux\"}\n    end.\n\n",
+      "guard_lines": [
+        1223,
+        1233
+      ],
+      "condition": {
+        "kind": "platform_equals",
+        "value": "Darwin"
+      },
+      "case": "select_error"
+    },
+    {
+      "id": "trace-extreme-testing-not-enabled",
+      "suite": "trace_SUITE",
+      "reason_regex": "^Takes too long time for normal testing$",
+      "source": "erts/emulator/test/trace_SUITE.erl",
+      "source_sha256": "1a22cb910df276be58cdcf51f222ba9e5e4832612a46651ba4dcb7921215893c",
+      "guard": "\nsuspend_system_limit(Config) when is_list(Config) ->\n    case os:getenv(\"ERL_EXTREME_TESTING\") of\n        \"true\" ->\n            ct:timetrap({minutes, 3*60}),\n            P = spawn_link(fun () -> receive after infinity -> ok end end),\n            suspend_until_system_limit(P),\n            unlink(P),\n            exit(P, bye),\n            ok;\n        _ ->\n            {skip, \"Takes too long time for normal testing\"}\n    end.\n\n",
+      "guard_lines": [
+        1663,
+        1676
+      ],
+      "condition": {
+        "kind": "runtime_not_equals",
+        "field": "extreme_testing",
+        "value": "true"
+      },
+      "case": "suspend_system_limit"
+    },
+    {
+      "id": "distribution-message-latency-free-memory",
+      "suite": "distribution_SUITE",
+      "reason_regex": "^Not enough memory$",
+      "source": "erts/emulator/test/distribution_SUITE.erl",
+      "source_sha256": "e85aaac1b14d8f69aefc5d3cfe9f3092341456a6678e37143c7f15ef02609f2c",
+      "guard": "\ninit_per_group(message_latency, Config) ->\n    Free = free_memory(),\n    if Free < 2048 ->\n            {skip, \"Not enough memory\"};\n       true ->\n            Config\n    end;\n",
+      "guard_lines": [
+        161,
+        168
+      ],
+      "condition": {
+        "kind": "memory_components_below",
+        "components": [
+          "free_memory",
+          "cached_memory",
+          "buffered_memory"
+        ],
+        "required_components": [
+          "free_memory"
+        ],
+        "threshold_gb": 2
+      },
+      "group": "message_latency",
+      "guard_callback": "init_per_group"
+    },
+    {
+      "id": "distribution-system-limit-memory",
+      "suite": "distribution_SUITE",
+      "reason_regex": "^Not enough memory on this machine$",
+      "source": "erts/emulator/test/distribution_SUITE.erl",
+      "source_sha256": "e85aaac1b14d8f69aefc5d3cfe9f3092341456a6678e37143c7f15ef02609f2c",
+      "guard": "system_limit(Config) when is_list(Config) ->\n    case erlang:system_info(wordsize) of\n        8 ->\n            SMD = memsup:get_system_memory_data(),\n            case proplists:get_value(\n                   available_memory, SMD,\n                   proplists:get_value(system_total_memory, SMD)) of\n                Memory when is_integer(Memory),\n                            Memory > 6*1024*1024*1024 ->\n                    test_system_limit(Config),\n                    garbage_collect(),\n                    ok;\n                _ ->\n                    {skipped, \"Not enough memory on this machine\"}\n            end;\n        4 ->\n            {skipped, \"Only interesting on 64-bit builds\"}\n    end.\n\n",
+      "guard_lines": [
+        1809,
+        1827
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 6,
+        "inclusive": true
+      },
+      "case": "system_limit"
+    },
+    {
+      "id": "tuple-2gb-resource-t_list_to_upper_boundry_tuple",
+      "suite": "tuple_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/tuple_SUITE.erl",
+      "source_sha256": "7801d2deb984d82f3ba84502813880cd390ed241af2a18713f8be6ec72e5b2f1",
+      "guard": "t_list_to_upper_boundry_tuple(Config) when is_list(Config) ->\n    sys_mem_cond_run(2048,\n\t\t    fun () ->\n\t\t\t    %% test upper boundary, 16777215 elements\n\t\t\t    MaxSize  = 1 bsl 24 - 1,\n\t\t\t    MaxTuple = list_to_tuple(lists:seq(1, MaxSize)),\n\t\t\t    MaxSize  = size(MaxTuple),\n\t\t\t    ok\n\t\t    end).\n\n%% Tests tuple_to_list/1.\n",
+      "guard_lines": [
+        413,
+        423
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 2
+      },
+      "case": "t_list_to_upper_boundry_tuple"
+    },
+    {
+      "id": "tuple-2gb-resource-t_make_upper_boundry_tuple_2",
+      "suite": "tuple_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/tuple_SUITE.erl",
+      "source_sha256": "7801d2deb984d82f3ba84502813880cd390ed241af2a18713f8be6ec72e5b2f1",
+      "guard": "t_make_upper_boundry_tuple_2(Config) when is_list(Config) ->\n    sys_mem_cond_run(2048,\n\t\t     fun () ->\n\t\t\t     %% test upper boundary, 16777215 elements\n\t\t\t     t_make_tuple(1 bsl 24 - 1, a)\n\t\t     end).\n\n",
+      "guard_lines": [
+        462,
+        468
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 2
+      },
+      "case": "t_make_upper_boundry_tuple_2"
+    },
+    {
+      "id": "tuple-2gb-resource-t_append_element_upper_boundry",
+      "suite": "tuple_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/tuple_SUITE.erl",
+      "source_sha256": "7801d2deb984d82f3ba84502813880cd390ed241af2a18713f8be6ec72e5b2f1",
+      "guard": "t_append_element_upper_boundry(Config) when is_list(Config) ->\n    sys_mem_cond_run(2048,\n\t\t     fun () ->\n\t\t\t     %% test upper boundary, 16777215 elements\n\t\t\t     MaxSize  = 1 bsl 24 - 1,\n\t\t\t     MaxTuple = list_to_tuple(lists:seq(1, MaxSize)),\n\t\t\t     {'EXIT',{badarg,_}} = (catch erlang:append_element(MaxTuple, a)),\n\t\t\t     ok\n\t\t     end).\n\nt_append_element(_Tuple, 0, _High) -> ok;\nt_append_element(Tuple, N, High) ->\n    NewTuple = erlang:append_element(Tuple, N),\n",
+      "guard_lines": [
+        555,
+        567
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 2
+      },
+      "case": "t_append_element_upper_boundry"
+    },
+    {
+      "id": "process-resource-processes_large_tab",
+      "suite": "process_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "processes_large_tab(Config) when is_list(Config) ->\n    sys_mem_cond_run(2048, fun () -> processes_large_tab_test() end).\n\n",
+      "guard_lines": [
+        2625,
+        2627
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 2,
+        "debug_scale": 2
+      },
+      "case": "processes_large_tab"
+    },
+    {
+      "id": "process-resource-processes_default_tab",
+      "suite": "process_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "processes_default_tab(Config) when is_list(Config) ->\n    sys_mem_cond_run(1024, fun () -> processes_default_tab_test() end).\n\n",
+      "guard_lines": [
+        2675,
+        2677
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 1
+      },
+      "case": "processes_default_tab"
+    },
+    {
+      "id": "process-resource-processes_this_tab",
+      "suite": "process_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "\nprocesses_this_tab(Config) when is_list(Config) ->\n    Mem = case {erlang:system_info(build_type),\n                erlang:system_info(allocator)} of\n              {lcnt, {_, _Vsn, [sys_alloc], _Opts}} ->\n                  %% When running +Mea min + lcnt we may need more memory\n                  1024 * 4;\n              _ ->\n                  1024\n          end,\n    sys_mem_cond_run(Mem, fun () -> chk_processes_bif_test_res(processes_bif_test()) end).\n\n",
+      "guard_lines": [
+        2691,
+        2702
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 1
+      },
+      "case": "processes_this_tab"
+    },
+    {
+      "id": "process-resource-otp_7738_waiting",
+      "suite": "process_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "otp_7738_waiting(Config) when is_list(Config) ->\n    otp_7738_test(waiting).\n\notp_7738_suspended(Config) when is_list(Config) ->\n    otp_7738_test(suspended).\n\notp_7738_resume(Config) when is_list(Config) ->\n    otp_7738_test(resume).\n\notp_7738_test(Type) ->\n    sys_mem_cond_run(3072, fun () -> do_otp_7738_test(Type) end).\n\n",
+      "guard_lines": [
+        4807,
+        4818
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 3,
+        "debug_scale": 2
+      },
+      "case": "otp_7738_waiting"
+    },
+    {
+      "id": "process-resource-otp_7738_suspended",
+      "suite": "process_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "otp_7738_suspended(Config) when is_list(Config) ->\n    otp_7738_test(suspended).\n\notp_7738_resume(Config) when is_list(Config) ->\n    otp_7738_test(resume).\n\notp_7738_test(Type) ->\n    sys_mem_cond_run(3072, fun () -> do_otp_7738_test(Type) end).\n\n",
+      "guard_lines": [
+        4810,
+        4818
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 3,
+        "debug_scale": 2
+      },
+      "case": "otp_7738_suspended"
+    },
+    {
+      "id": "process-resource-otp_7738_resume",
+      "suite": "process_SUITE",
+      "reason_regex": "^Not enough memory \\([0-9]+ MB\\)$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "otp_7738_resume(Config) when is_list(Config) ->\n    otp_7738_test(resume).\n\notp_7738_test(Type) ->\n    sys_mem_cond_run(3072, fun () -> do_otp_7738_test(Type) end).\n\n",
+      "guard_lines": [
+        4813,
+        4818
+      ],
+      "condition": {
+        "kind": "memory_below",
+        "minimum_gb": 3,
+        "debug_scale": 2
+      },
+      "case": "otp_7738_resume"
+    },
+    {
+      "id": "debug-time-now-update",
+      "suite": "time_SUITE",
+      "reason_regex": "^Unreliable in DEBUG build$",
+      "source": "erts/emulator/test/time_SUITE.erl",
+      "source_sha256": "bf94c6efb0ff5f8d5dc691e11e4578b9eec6e169e32976f2ec17d66852de41c6",
+      "guard": "now_update(Config) when is_list(Config) ->\n    case test_server:is_debug() of\n\tfalse -> now_update1(10);\n\ttrue -> {skip,\"Unreliable in DEBUG build\"}\n    end.\n",
+      "guard_lines": [
+        420,
+        424
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "debug_compiled",
+        "value": "true"
+      },
+      "case": "now_update"
+    },
+    {
+      "id": "debug-process-processes_default_tab",
+      "suite": "process_SUITE",
+      "reason_regex": "^Don't run in debug/valgrind$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "init_per_testcase(Func, Config)\n  when Func =:= processes_default_tab;\n       Func =:= processes_this_tab ->\n    case erlang:system_info(build_type) of\n        BT when BT =:= debug; BT =:= valgrind ->\n            {skip, \"Don't run in debug/valgrind\"};\n        _ ->\n            [{testcase, Func} | Config]\n    end;\n",
+      "guard_lines": [
+        243,
+        251
+      ],
+      "condition": {
+        "kind": "runtime_one_of",
+        "field": "build_type",
+        "values": [
+          "debug",
+          "valgrind"
+        ]
+      },
+      "case": "processes_default_tab"
+    },
+    {
+      "id": "debug-process-processes_this_tab",
+      "suite": "process_SUITE",
+      "reason_regex": "^Don't run in debug/valgrind$",
+      "source": "erts/emulator/test/process_SUITE.erl",
+      "source_sha256": "e384de3e98a8d7e39560386eb0022deb47c64ab773519f67ddfd8c08fcf5721c",
+      "guard": "init_per_testcase(Func, Config)\n  when Func =:= processes_default_tab;\n       Func =:= processes_this_tab ->\n    case erlang:system_info(build_type) of\n        BT when BT =:= debug; BT =:= valgrind ->\n            {skip, \"Don't run in debug/valgrind\"};\n        _ ->\n            [{testcase, Func} | Config]\n    end;\n",
+      "guard_lines": [
+        243,
+        251
+      ],
+      "condition": {
+        "kind": "runtime_one_of",
+        "field": "build_type",
+        "values": [
+          "debug",
+          "valgrind"
+        ]
+      },
+      "case": "processes_this_tab"
+    },
+    {
+      "id": "debug-nif-consume-timeslice-lock-checking",
+      "suite": "nif_SUITE",
+      "reason_regex": "^Lock checking enabled$",
+      "source": "erts/emulator/test/nif_SUITE.erl",
+      "source_sha256": "389539c96b2034c9b18af8973ee8145f962f1a1262859d716b8599665a5dccc6",
+      "guard": "consume_timeslice(Config) when is_list(Config) ->\n    case {erlang:system_info(debug_compiled),\n\t  erlang:system_info(lock_checking)} of\n\t{false, false} ->\n\t    consume_timeslice_test(Config);\n\t{false, true} ->\n\t    {skipped, \"Lock checking enabled\"};\n\t_ ->\n\t    {skipped, \"Debug compiled\"}\n    end.\n",
+      "guard_lines": [
+        3364,
+        3373
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "runtime_equals",
+            "field": "debug_compiled",
+            "value": "false"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "lock_checking",
+            "value": "true"
+          }
+        ]
+      },
+      "case": "consume_timeslice"
+    },
+    {
+      "id": "debug-nif-consume-timeslice-debug-compiled",
+      "suite": "nif_SUITE",
+      "reason_regex": "^Debug compiled$",
+      "source": "erts/emulator/test/nif_SUITE.erl",
+      "source_sha256": "389539c96b2034c9b18af8973ee8145f962f1a1262859d716b8599665a5dccc6",
+      "guard": "consume_timeslice(Config) when is_list(Config) ->\n    case {erlang:system_info(debug_compiled),\n\t  erlang:system_info(lock_checking)} of\n\t{false, false} ->\n\t    consume_timeslice_test(Config);\n\t{false, true} ->\n\t    {skipped, \"Lock checking enabled\"};\n\t_ ->\n\t    {skipped, \"Debug compiled\"}\n    end.\n",
+      "guard_lines": [
+        3364,
+        3373
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "debug_compiled",
+        "value": "true"
+      },
+      "case": "consume_timeslice"
+    },
+    {
+      "id": "dump-scheduler-unsupported",
+      "suite": "dump_SUITE",
+      "reason_regex": "^the platform does not support scheduler dump$",
+      "source": "erts/emulator/test/dump_SUITE.erl",
+      "source_sha256": "be9089bb61c69c36e9c0a4795f097b9e4c86d087f685f58e39b3f10a486b647e",
+      "guard": "init_per_testcase(signal_abort, Config) ->\n    SO = erlang:system_info(schedulers_online),\n    erts_debug:set_internal_state(available_internal_state, true),\n    Dump = erts_debug:get_internal_state(scheduler_dump),\n    erts_debug:set_internal_state(available_internal_state, false),\n    if SO < 3 ->\n            {skip, \"not enough schedulers\"};\n       not Dump ->\n            {skip, \"the platform does not support scheduler dump\"};\n       Dump ->\n            Config\n    end;\n",
+      "guard_lines": [
+        43,
+        54
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "scheduler_dump",
+        "value": "false"
+      },
+      "case": "signal_abort"
+    },
+    {
+      "id": "scheduler-bind-not-supported",
+      "suite": "scheduler_SUITE",
+      "reason_regex": "^Scheduler binding not supported\\.$",
+      "source": "erts/emulator/test/scheduler_SUITE.erl",
+      "source_sha256": "b6ea5e50928fcb9d1b75e8ccf2e508319e2995e13dc480171b115ed837d81ff1",
+      "guard": "        try\n            OldVal = erlang:system_flag(scheduler_bind_type, default_bind),\n            erlang:system_flag(scheduler_bind_type, OldVal)\n        catch\n            error:notsup ->\n                throw({skipped, \"Scheduler binding not supported.\"});\n",
+      "guard_lines": [
+        1093,
+        1098
+      ],
+      "condition": {
+        "kind": "runtime_equals",
+        "field": "scheduler_bind",
+        "value": "false"
+      },
+      "case": "sbt_cmd"
+    },
+    {
+      "id": "windows-time-univ-to-local-stockholm",
+      "suite": "time_SUITE",
+      "case": "univ_to_local",
+      "reason_regex": "^This\\ test\\ is\\ only\\ valid\\ for\\ Stockholm\\ timezone$",
+      "source": "erts/emulator/test/time_SUITE.erl",
+      "source_sha256": "bf94c6efb0ff5f8d5dc691e11e4578b9eec6e169e32976f2ec17d66852de41c6",
+      "guard": "is_stockholm_time() ->\n    case os:type() of\n        {win32, _} -> case os:cmd(\"tzutil /g\") of\n                          \"W. Europe Standard Time\"++_ -> true;\n                          _ -> false\n                      end;\n        {unix, _} -> case os:cmd(\"date '+%Z'\") of\n                          \"ME\"++_ -> true; %% covers MET/MEST\n                          \"CE\"++_ -> true; %% covers CET/CEST\n                          _ -> false\n                      end\n    end.\n\nuniv_to_local(Config) when is_list(Config) ->\n    case is_stockholm_time() of\n        true -> test_univ_to_local(test_data());\n        false -> {skip, \"This test is only valid for Stockholm timezone\"}\n    end.",
+      "guard_lines": [
+        133,
+        150
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "timezone_probe",
+            "value": "native_win32_tzutil"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "timezone_probe_succeeded",
+            "value": "true"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "stockholm_timezone",
+            "value": "false"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-time-local-to-univ-stockholm",
+      "suite": "time_SUITE",
+      "case": "local_to_univ",
+      "reason_regex": "^This\\ test\\ is\\ only\\ valid\\ for\\ Stockholm\\ timezone$",
+      "source": "erts/emulator/test/time_SUITE.erl",
+      "source_sha256": "bf94c6efb0ff5f8d5dc691e11e4578b9eec6e169e32976f2ec17d66852de41c6",
+      "guard": "is_stockholm_time() ->\n    case os:type() of\n        {win32, _} -> case os:cmd(\"tzutil /g\") of\n                          \"W. Europe Standard Time\"++_ -> true;\n                          _ -> false\n                      end;\n        {unix, _} -> case os:cmd(\"date '+%Z'\") of\n                          \"ME\"++_ -> true; %% covers MET/MEST\n                          \"CE\"++_ -> true; %% covers CET/CEST\n                          _ -> false\n                      end\n    end.\n\nuniv_to_local(Config) when is_list(Config) ->\n    case is_stockholm_time() of\n        true -> test_univ_to_local(test_data());\n        false -> {skip, \"This test is only valid for Stockholm timezone\"}\n    end.\n\ntest_univ_to_local([{Utc, Local}|Rest]) ->\n    io:format(\"Testing ~p => ~p~n\", [Local, Utc]),\n    Local = erlang:universaltime_to_localtime(Utc),\n    test_univ_to_local(Rest);\ntest_univ_to_local([]) ->\n    ok.\n\n%% Tests conversion from local to universal time.\n\nlocal_to_univ(Config) when is_list(Config) ->\n    case is_stockholm_time() of\n        true -> test_local_to_univ(test_data());\n        false -> {skip, \"This test is only valid for Stockholm timezone\"}\n    end.",
+      "guard_lines": [
+        133,
+        165
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "timezone_probe",
+            "value": "native_win32_tzutil"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "timezone_probe_succeeded",
+            "value": "true"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "stockholm_timezone",
+            "value": "false"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-alloc-erts-mmap",
+      "suite": "alloc_SUITE",
+      "case": "erts_mmap",
+      "reason_regex": "^Not\\ run\\ on\\ win32$",
+      "source": "erts/emulator/test/alloc_SUITE.erl",
+      "source_sha256": "a7aaf08a8f57c4e53cddb3f420c7aa3b0fd6c56d974295fc2e071d81f87d57e5",
+      "guard": "erts_mmap(Config) when is_list(Config) ->\n    case {os:type(), mmsc_flags()} of\n\t{{unix,_}, false} ->\n\t    [erts_mmap_do(SCO, SCRPM, SCRFSD)\n\t     || SCO <-[true,false], SCRFSD <-[1234,0], SCRPM <- [true,false]];\n\t{{unix,_}, Flags} ->\n\t    {skipped, Flags};\n\t{{SkipOs,_},_} ->\n\t    {skipped,\n\t\t   lists:flatten([\"Not run on \"\n\t\t\t\t  | io_lib:format(\"~p\",[SkipOs])])}\n    end.",
+      "guard_lines": [
+        135,
+        146
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-smp-select",
+      "suite": "driver_SUITE",
+      "case": "smp_select",
+      "reason_regex": "^Test\\ not\\ implemented\\ for\\ this\\ OS$",
+      "source": "erts/emulator/test/driver_SUITE.erl",
+      "source_sha256": "5fc7f154930aec3babb7dee4b7086194591c06fffe7b7f59d49ee47a3cd23860",
+      "guard": "smp_select(Config) when is_list(Config) -> \n    case os:type() of\n        {win32,_} -> {skipped, \"Test not implemented for this OS\"};\n        _ -> rpc(Config, fun() -> smp_select0(Config) end)\n    end.",
+      "guard_lines": [
+        1794,
+        1798
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-driver-select-use",
+      "suite": "driver_SUITE",
+      "case": "driver_select_use",
+      "reason_regex": "^Test\\ not\\ implemented\\ for\\ this\\ OS$",
+      "source": "erts/emulator/test/driver_SUITE.erl",
+      "source_sha256": "5fc7f154930aec3babb7dee4b7086194591c06fffe7b7f59d49ee47a3cd23860",
+      "guard": "driver_select_use(Config) when is_list(Config) -> \n    case os:type() of\n        {win32,_} -> {skipped, \"Test not implemented for this OS\"};\n        _ -> rpc(Config, fun() -> driver_select_use0(Config) end)\n    end.",
+      "guard_lines": [
+        1868,
+        1872
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-lots-of-used-fds-on-boot",
+      "suite": "driver_SUITE",
+      "case": "lots_of_used_fds_on_boot",
+      "reason_regex": "^Unix\\ only\\ test$",
+      "source": "erts/emulator/test/driver_SUITE.erl",
+      "source_sha256": "5fc7f154930aec3babb7dee4b7086194591c06fffe7b7f59d49ee47a3cd23860",
+      "guard": "lots_of_used_fds_on_boot(Config) ->\n    case os:type() of\n        {unix, _} -> lots_of_used_fds_on_boot_test(Config);\n        _ -> {skipped, \"Unix only test\"}\n    end.",
+      "guard_lines": [
+        1888,
+        1892
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-poll-pipe",
+      "suite": "driver_SUITE",
+      "case": "poll_pipe",
+      "reason_regex": "^Unix\\-only\\ test$",
+      "source": "erts/emulator/test/driver_SUITE.erl",
+      "source_sha256": "5fc7f154930aec3babb7dee4b7086194591c06fffe7b7f59d49ee47a3cd23860",
+      "guard": "poll_pipe(Config) when is_list(Config) ->\n    %% ERL-647; we wouldn't see any events on EOF when polling a pipe using\n    %% kqueue(2).\n    case os:type() of\n        {unix, _} ->\n            Command = \"erl -noshell -eval \"\n                      \"'\\\"DATA\\n\\\" = io:get_line(\\\"\\\"),\"\n                      \"eof = io:get_line(\\\"\\\"),\"\n                      \"halt()' <<< 'DATA'\",\n            Ref = make_ref(),\n            Self = self(),\n            Pid = spawn(fun() -> os:cmd(Command), Self ! Ref end),\n            receive\n                Ref -> ok\n            after 5000 ->\n                exit(Pid, kill),\n                ct:fail(\"Stuck reading from stdin.\")\n            end;\n        _ ->\n            {skipped, \"Unix-only test\"}\n    end.",
+      "guard_lines": [
+        2784,
+        2804
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-efile-iter-max-files",
+      "suite": "efile_SUITE",
+      "case": "iter_max_files",
+      "reason_regex": "^Windows\\ lacks\\ a\\ hard\\ limit\\ on\\ file\\ handles$",
+      "source": "erts/emulator/test/efile_SUITE.erl",
+      "source_sha256": "b743a9685088519367f53e17b0c7494af6c38f991298bdcfc5195da6920d6b84",
+      "guard": "iter_max_files(Config) when is_list(Config) ->\n    case os:type() of\n        {win32, _} -> {skip, \"Windows lacks a hard limit on file handles\"};\n        _ -> iter_max_files_1(Config)\n    end.",
+      "guard_lines": [
+        48,
+        52
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-node-container-port-wrap",
+      "suite": "node_container_SUITE",
+      "case": "port_wrap",
+      "reason_regex": "^Only\\ run\\ on\\ unix$",
+      "source": "erts/emulator/test/node_container_SUITE.erl",
+      "source_sha256": "555e35537d1acf831ab7a5f4211ad32f9334417a1d091ed47807c67ec18e3f08",
+      "guard": "port_wrap(Config) when is_list(Config) ->\n    case os:type() of\n        {unix, _} ->\n            pp_wrap(port);\n        _ ->\n            {skip, \"Only run on unix\"}\n    end.",
+      "guard_lines": [
+        774,
+        780
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-port-bif-port-info-os-pid",
+      "suite": "port_bif_SUITE",
+      "case": "port_info_os_pid",
+      "reason_regex": "^Only\\ on\\ Unix\\.$",
+      "source": "erts/emulator/test/port_bif_SUITE.erl",
+      "source_sha256": "3a81257d9610267eaecb1ac9250e7e984ccdc857c614d2eada82beef57dcd62e",
+      "guard": "port_info_os_pid(Config) when is_list(Config) ->\n    case os:type() of\n\t{unix,_} ->\n\t    do_port_info_os_pid();\n\t_ ->\n\t    {skip,\"Only on Unix.\"}\n    end.",
+      "guard_lines": [
+        218,
+        224
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-port-count-fds",
+      "suite": "port_SUITE",
+      "case": "count_fds",
+      "reason_regex": "^Skipped\\ on\\ windows$",
+      "source": "erts/emulator/test/port_SUITE.erl",
+      "source_sha256": "0e7f45000f98e0f7a0ecdc07d968b2b54992c8d41216ed794b5b2cf1d78ba078",
+      "guard": "count_fds(Config) when is_list(Config) ->\n    case os:type() of\n        {unix, _} ->\n            PrivDir = proplists:get_value(priv_dir, Config),\n            Filename = filename:join(PrivDir, \"my_fd_counter\"),\n\n            RunTest = fun(PortOpts) ->\n                              PortTest = port_test(Config),\n                              Command = lists:concat([PortTest, \" -n -f -o\", Filename]),\n                              Port = open_port({spawn, Command}, PortOpts),\n                              Port ! {self(), close},\n                              receive\n                                  {Port, closed} -> ok\n                              end,\n                              test_server:sleep(500),\n                              {ok, Written} = file:read_file(Filename),\n                              Written\n                      end,\n            <<4:32/native>> = RunTest([out, nouse_stdio]),\n            <<4:32/native>> = RunTest([in, nouse_stdio]),\n            <<5:32/native>> = RunTest([in, out, nouse_stdio]),\n            <<3:32/native>> = RunTest([out, use_stdio]),\n            <<3:32/native>> = RunTest([in, use_stdio]),\n            <<3:32/native>> = RunTest([in, out, use_stdio]),\n            <<3:32/native>> = RunTest([in, out, use_stdio, stderr_to_stdout]),\n            <<3:32/native>> = RunTest([out, use_stdio, stderr_to_stdout]);\n        _ ->\n            {skip, \"Skipped on windows\"}\n    end.",
+      "guard_lines": [
+        678,
+        706
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-port-otp-3906",
+      "suite": "port_SUITE",
+      "case": "otp_3906",
+      "reason_regex": "^Only\\ run\\ on\\ Unix\\ systems$",
+      "source": "erts/emulator/test/port_SUITE.erl",
+      "source_sha256": "0e7f45000f98e0f7a0ecdc07d968b2b54992c8d41216ed794b5b2cf1d78ba078",
+      "guard": "otp_3906(Config)  when is_list(Config) ->\n    case os:type() of\n        {unix, OSName} ->\n            otp_3906(Config, OSName);\n        _ ->\n            {skipped, \"Only run on Unix systems\"}\n    end.",
+      "guard_lines": [
+        1258,
+        1264
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-port-otp-4389",
+      "suite": "port_SUITE",
+      "case": "otp_4389",
+      "reason_regex": "^Only\\ run\\ on\\ Unix$",
+      "source": "erts/emulator/test/port_SUITE.erl",
+      "source_sha256": "0e7f45000f98e0f7a0ecdc07d968b2b54992c8d41216ed794b5b2cf1d78ba078",
+      "guard": "otp_4389(Config)  when is_list(Config) ->\n    case os:type() of\n        {unix, _} ->\n            ct:timetrap({minutes, 4}),\n            TCR = self(),\n            %% On MacOS Catalina libc can return enoent instead of emfile for cwd\n            BrokenCWD = (os:type() =:= {unix,darwin}) andalso element(1,os:version()) == 19,\n            case get_true_cmd() of\n                True when is_list(True) ->\n                    lists:foreach(\n                      fun (P) ->\n                              receive\n                                  {P, ok} ->  ok;\n                                  {P, Err} -> ct:fail(Err)\n                              end\n                      end,\n                      lists:map(\n                        fun(_) ->\n                                spawn_link(\n                                  fun() ->\n                                          process_flag(trap_exit, true),\n                                          case catch open_port({spawn, True},\n                                                               [stream,exit_status]) of\n                                              P when is_port(P) ->\n                                                  receive\n                                                      {P,{exit_status,_}} ->\n                                                          TCR ! {self(),ok};\n                                                      {'EXIT',_,{R2,_}}\n                                                        when R2 == emfile;\n                                                             R2 == eagain;\n                                                             R2 == enomem;\n                                                             R2 == enoent andalso BrokenCWD ->\n                                                          TCR ! {self(),ok};\n                                                      Err2 ->\n                                                          TCR ! {self(),{msg,Err2}}\n                                                  end;\n                                              {'EXIT',{R1,_}}\n                                                when R1 == emfile;\n                                                     R1 == eagain;\n                                                     R1 == enomem;\n                                                     R1 == enoent andalso BrokenCWD ->\n                                                  TCR ! {self(),ok};\n                                              Err1 ->\n                                                  TCR ! {self(), {open_port,Err1}}\n                                          end\n                                  end)\n                        end,\n                        lists:duplicate(1000,[]))),\n                    {comment,\n                     \"This test case doesn't always fail when the bug that \"\n                     \"it tests for is present (it is most likely to fail on\"\n                     \" a multi processor machine). If the test case fails it\"\n                     \" will fail by deadlocking the emulator.\"};\n                _ ->\n                    {skipped, \"\\\"true\\\" command not found\"}\n            end;\n        _ ->\n            {skip,\"Only run on Unix\"}\n    end.",
+      "guard_lines": [
+        1450,
+        1508
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-port-exit-status-multi-scheduling-block",
+      "suite": "port_SUITE",
+      "case": "exit_status_multi_scheduling_block",
+      "reason_regex": "^Not\\ implemented\\ for\\ this\\ OS$",
+      "source": "erts/emulator/test/port_SUITE.erl",
+      "source_sha256": "0e7f45000f98e0f7a0ecdc07d968b2b54992c8d41216ed794b5b2cf1d78ba078",
+      "guard": "exit_status_multi_scheduling_block(Config) when is_list(Config) ->\n    Repeat = 3,\n    case os:type() of\n        {unix, _} ->\n            ct:timetrap({minutes, 2*Repeat}),\n            SleepSecs = 6,\n            try\n                lists:foreach(fun (_) ->\n                                      exit_status_msb_test(Config,\n                                                           SleepSecs)\n                              end,\n                              lists:seq(1, Repeat))\n            after\n                %% Wait for the system to recover (regardless\n                %% of success or not) otherwise later testcases\n                %% may unnecessarily fail.\n                receive after SleepSecs+500 -> ok end\n            end;\n        _ -> {skip, \"Not implemented for this OS\"}\n    end.",
+      "guard_lines": [
+        1999,
+        2018
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-nif-select-error",
+      "suite": "nif_SUITE",
+      "case": "select_error",
+      "reason_regex": "^not\\ Linux$",
+      "source": "erts/emulator/test/nif_SUITE.erl",
+      "source_sha256": "389539c96b2034c9b18af8973ee8145f962f1a1262859d716b8599665a5dccc6",
+      "guard": "select_error(Config) when is_list(Config) ->\n    ensure_lib_loaded(Config),\n\n    case os:type() of\n\t{unix,linux} ->\n\t    select_error_do();\n\t_ ->\n\t    {skipped, \"not Linux\"}\n    end.",
+      "guard_lines": [
+        1224,
+        1232
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-nif-select",
+      "suite": "nif_SUITE",
+      "case": "select",
+      "reason_regex": "^Test\\ not\\ yet\\ implemented\\ for\\ windows$",
+      "source": "erts/emulator/test/nif_SUITE.erl",
+      "source_sha256": "389539c96b2034c9b18af8973ee8145f962f1a1262859d716b8599665a5dccc6",
+      "guard": "init_per_testcase(Select, Config) when Select =:= select;\n                                       Select =:= select_steal;\n                                       Select =:= select_scheduler ->\n    case os:type() of\n        {win32,_} ->\n            {skip, \"Test not yet implemented for windows\"};\n        _ ->\n            Config\n    end;",
+      "guard_lines": [
+        311,
+        319
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-nif-select-steal",
+      "suite": "nif_SUITE",
+      "case": "select_steal",
+      "reason_regex": "^Test\\ not\\ yet\\ implemented\\ for\\ windows$",
+      "source": "erts/emulator/test/nif_SUITE.erl",
+      "source_sha256": "389539c96b2034c9b18af8973ee8145f962f1a1262859d716b8599665a5dccc6",
+      "guard": "init_per_testcase(Select, Config) when Select =:= select;\n                                       Select =:= select_steal;\n                                       Select =:= select_scheduler ->\n    case os:type() of\n        {win32,_} ->\n            {skip, \"Test not yet implemented for windows\"};\n        _ ->\n            Config\n    end;",
+      "guard_lines": [
+        311,
+        319
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-nif-select-scheduler",
+      "suite": "nif_SUITE",
+      "case": "select_scheduler",
+      "reason_regex": "^Test\\ not\\ yet\\ implemented\\ for\\ windows$",
+      "source": "erts/emulator/test/nif_SUITE.erl",
+      "source_sha256": "389539c96b2034c9b18af8973ee8145f962f1a1262859d716b8599665a5dccc6",
+      "guard": "init_per_testcase(Select, Config) when Select =:= select;\n                                       Select =:= select_steal;\n                                       Select =:= select_scheduler ->\n    case os:type() of\n        {win32,_} ->\n            {skip, \"Test not yet implemented for windows\"};\n        _ ->\n            Config\n    end;",
+      "guard_lines": [
+        311,
+        319
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-nif-api-2-0",
+      "suite": "nif_SUITE",
+      "case": "*",
+      "reason_regex": "^API\\ 2\\.0\\ buggy\\ on\\ Windows\\ 64\\-bit$",
+      "source": "erts/emulator/test/nif_SUITE.erl",
+      "source_sha256": "389539c96b2034c9b18af8973ee8145f962f1a1262859d716b8599665a5dccc6",
+      "guard": "init_per_group(api_2_0, Config) ->\n    case {os:type(),erlang:system_info({wordsize, internal})} of\n        {{win32,_}, 8} ->\n            %% ERL_NIF_TERM was declared as 32-bit 'long' until 2.3\n            {skip, \"API 2.0 buggy on Windows 64-bit\"};\n        _ ->\n            [{nif_api_version, \".2_0\"} | Config]\n    end;",
+      "guard_lines": [
+        291,
+        298
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "wordsize",
+            "value": 8
+          }
+        ]
+      },
+      "group": "api_2_0",
+      "guard_callback": "init_per_group"
+    },
+    {
+      "id": "windows-no-linux-proc-files",
+      "suite": "efile_SUITE",
+      "reason_regex": "^Failed to find any known zero-sized files$",
+      "source": "erts/emulator/test/efile_SUITE.erl",
+      "source_sha256": "b743a9685088519367f53e17b0c7494af6c38f991298bdcfc5195da6920d6b84",
+      "guard": "%% ensuring that response isn't empty << >>\nproc_zero_sized_files(Config) when is_list(Config) ->\n    TestFiles0 = [%% Some files which exist on Linux but might be missing on\n                  %% other systems\n                  \"/proc/cpuinfo\",\n                  \"/proc/meminfo\",\n                  \"/proc/partitions\",\n                  \"/proc/swaps\",\n                  \"/proc/version\",\n                  \"/proc/uptime\",\n                  %% curproc is present on FreeBSD\n                  \"/proc/curproc/cmdline\"],\n\n    TestFiles = [F || F <- TestFiles0, filelib:is_file(F)],\n\n    case TestFiles of\n        [_|_] ->\n            %% For 6 inputs and 500 attempts each this do run anywhere\n            %% between 500 and 3000 function calls.\n            [do_proc_zero_sized(F, 500) || F <- TestFiles],\n            ok;\n        [] ->\n            {skip, \"Failed to find any known zero-sized files\"}\n    end.\n\n",
+      "guard_lines": [
+        113,
+        137
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "known_proc_files",
+            "value": []
+          }
+        ]
+      },
+      "case": "proc_zero_sized_files"
+    },
+    {
+      "id": "windows-alloc-mseg-clear-cache-unavailable",
+      "suite": "alloc_SUITE",
+      "case": "mseg_clear_cache",
+      "reason_regex": "^No mseg_alloc; nothing to test$",
+      "source": "erts/emulator/test/alloc_SUITE_data/mseg_clear_cache.c",
+      "source_sha256": "d25223a83a4ff064eb5aa6cc539d65b62c91bcda23e2faaac078cb46ba4538f6",
+      "guard": "    if (!HAVE_MSEG())\n\ttestcase_skipped(tcs, \"No mseg_alloc; nothing to test\");\n",
+      "guard_lines": [
+        43,
+        44
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "mseg_alloc_probe",
+            "value": "ok"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "mseg_alloc",
+            "value": "false"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-io-ready-exit",
+      "suite": "driver_SUITE",
+      "case": "io_ready_exit",
+      "reason_regex": "^Not\\ yet\\ implemented\\ for\\ this\\ OS$",
+      "source": "erts/emulator/test/driver_SUITE_data/io_ready_exit_drv.c",
+      "source_sha256": "07c71175e710a8735164989e5d7030adecd070c1b152defd1e0e73830e3f8938",
+      "guard": "#ifndef UNIX\n    res_str = \"nyiftos\";\n#else\n",
+      "guard_lines": [
+        134,
+        137
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-ioq-exit-ready-input",
+      "suite": "driver_SUITE",
+      "case": "ioq_exit_ready_input",
+      "reason_regex": "^Not\\ yet\\ implemented\\ for\\ this\\ OS$",
+      "source": "erts/emulator/test/driver_SUITE_data/ioq_exit_drv.c",
+      "source_sha256": "3cb94bf78005f0f042f6a5d4e369ee8f63e0e0bbc88a4b39d83020dbfd0c501d",
+      "guard": "    char *res_str = \"nyiftos\";\n\n    PRINTF((\"control(%p, %d, ...) called\\r\\n\", drv_data, command));\n\n    switch (command) {\n    case IOQ_EXIT_READY_INPUT:\n    case IOQ_EXIT_READY_INPUT_ASYNC:\n#ifdef UNIX\n\tddp->ifd = open(\"/dev/zero\", O_RDONLY);\n\tif (ddp->ifd < 0) {\n\t    driver_failure_posix(ddp->port, errno);\n\t    return 0;\n\t}\n\tbreak;\n#else\n\tgoto done;\n#endif\n    case IOQ_EXIT_READY_OUTPUT:\n    case IOQ_EXIT_READY_OUTPUT_ASYNC:\n#ifdef UNIX\n\tddp->ofd = open(\"/dev/null\", O_WRONLY);\n\tif (ddp->ofd < 0) {\n\t    driver_failure_posix(ddp->port, errno);\n\t    return 0;\n\t}\n\tbreak;\n#else\n\tgoto done;\n#endif\n",
+      "guard_lines": [
+        156,
+        185
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-ioq-exit-ready-output",
+      "suite": "driver_SUITE",
+      "case": "ioq_exit_ready_output",
+      "reason_regex": "^Not\\ yet\\ implemented\\ for\\ this\\ OS$",
+      "source": "erts/emulator/test/driver_SUITE_data/ioq_exit_drv.c",
+      "source_sha256": "3cb94bf78005f0f042f6a5d4e369ee8f63e0e0bbc88a4b39d83020dbfd0c501d",
+      "guard": "    char *res_str = \"nyiftos\";\n\n    PRINTF((\"control(%p, %d, ...) called\\r\\n\", drv_data, command));\n\n    switch (command) {\n    case IOQ_EXIT_READY_INPUT:\n    case IOQ_EXIT_READY_INPUT_ASYNC:\n#ifdef UNIX\n\tddp->ifd = open(\"/dev/zero\", O_RDONLY);\n\tif (ddp->ifd < 0) {\n\t    driver_failure_posix(ddp->port, errno);\n\t    return 0;\n\t}\n\tbreak;\n#else\n\tgoto done;\n#endif\n    case IOQ_EXIT_READY_OUTPUT:\n    case IOQ_EXIT_READY_OUTPUT_ASYNC:\n#ifdef UNIX\n\tddp->ofd = open(\"/dev/null\", O_WRONLY);\n\tif (ddp->ofd < 0) {\n\t    driver_failure_posix(ddp->port, errno);\n\t    return 0;\n\t}\n\tbreak;\n#else\n\tgoto done;\n#endif\n",
+      "guard_lines": [
+        156,
+        185
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-ioq-exit-ready-input-async",
+      "suite": "driver_SUITE",
+      "case": "ioq_exit_ready_input_async",
+      "reason_regex": "^Not\\ yet\\ implemented\\ for\\ this\\ OS$",
+      "source": "erts/emulator/test/driver_SUITE_data/ioq_exit_drv.c",
+      "source_sha256": "3cb94bf78005f0f042f6a5d4e369ee8f63e0e0bbc88a4b39d83020dbfd0c501d",
+      "guard": "    char *res_str = \"nyiftos\";\n\n    PRINTF((\"control(%p, %d, ...) called\\r\\n\", drv_data, command));\n\n    switch (command) {\n    case IOQ_EXIT_READY_INPUT:\n    case IOQ_EXIT_READY_INPUT_ASYNC:\n#ifdef UNIX\n\tddp->ifd = open(\"/dev/zero\", O_RDONLY);\n\tif (ddp->ifd < 0) {\n\t    driver_failure_posix(ddp->port, errno);\n\t    return 0;\n\t}\n\tbreak;\n#else\n\tgoto done;\n#endif\n    case IOQ_EXIT_READY_OUTPUT:\n    case IOQ_EXIT_READY_OUTPUT_ASYNC:\n#ifdef UNIX\n\tddp->ofd = open(\"/dev/null\", O_WRONLY);\n\tif (ddp->ofd < 0) {\n\t    driver_failure_posix(ddp->port, errno);\n\t    return 0;\n\t}\n\tbreak;\n#else\n\tgoto done;\n#endif\n",
+      "guard_lines": [
+        156,
+        185
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-ioq-exit-ready-output-async",
+      "suite": "driver_SUITE",
+      "case": "ioq_exit_ready_output_async",
+      "reason_regex": "^Not\\ yet\\ implemented\\ for\\ this\\ OS$",
+      "source": "erts/emulator/test/driver_SUITE_data/ioq_exit_drv.c",
+      "source_sha256": "3cb94bf78005f0f042f6a5d4e369ee8f63e0e0bbc88a4b39d83020dbfd0c501d",
+      "guard": "    char *res_str = \"nyiftos\";\n\n    PRINTF((\"control(%p, %d, ...) called\\r\\n\", drv_data, command));\n\n    switch (command) {\n    case IOQ_EXIT_READY_INPUT:\n    case IOQ_EXIT_READY_INPUT_ASYNC:\n#ifdef UNIX\n\tddp->ifd = open(\"/dev/zero\", O_RDONLY);\n\tif (ddp->ifd < 0) {\n\t    driver_failure_posix(ddp->port, errno);\n\t    return 0;\n\t}\n\tbreak;\n#else\n\tgoto done;\n#endif\n    case IOQ_EXIT_READY_OUTPUT:\n    case IOQ_EXIT_READY_OUTPUT_ASYNC:\n#ifdef UNIX\n\tddp->ofd = open(\"/dev/null\", O_WRONLY);\n\tif (ddp->ofd < 0) {\n\t    driver_failure_posix(ddp->port, errno);\n\t    return 0;\n\t}\n\tbreak;\n#else\n\tgoto done;\n#endif\n",
+      "guard_lines": [
+        156,
+        185
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-use-fallback-pollset",
+      "suite": "driver_SUITE",
+      "case": "use_fallback_pollset",
+      "reason_regex": "^windows_different$",
+      "source": "erts/emulator/test/driver_SUITE_data/chkio_drv.c",
+      "source_sha256": "b782442304640d30a07319569f8fdbff8b5cb355003dbd9143338c135826a200",
+      "guard": "#ifndef UNIX\n#ifdef __WIN32__\n    res_str = \"skip: windows_different\";\n#else\n    res_str = \"nyiftos\";\n#endif\n#else\n",
+      "guard_lines": [
+        649,
+        656
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-bad-fd-in-pollset",
+      "suite": "driver_SUITE",
+      "case": "bad_fd_in_pollset",
+      "reason_regex": "^windows_different$",
+      "source": "erts/emulator/test/driver_SUITE_data/chkio_drv.c",
+      "source_sha256": "b782442304640d30a07319569f8fdbff8b5cb355003dbd9143338c135826a200",
+      "guard": "#ifndef UNIX\n#ifdef __WIN32__\n    res_str = \"skip: windows_different\";\n#else\n    res_str = \"nyiftos\";\n#endif\n#else\n",
+      "guard_lines": [
+        649,
+        656
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-fd-change",
+      "suite": "driver_SUITE",
+      "case": "fd_change",
+      "reason_regex": "^windows_different$",
+      "source": "erts/emulator/test/driver_SUITE_data/chkio_drv.c",
+      "source_sha256": "b782442304640d30a07319569f8fdbff8b5cb355003dbd9143338c135826a200",
+      "guard": "#ifndef UNIX\n#ifdef __WIN32__\n    res_str = \"skip: windows_different\";\n#else\n    res_str = \"nyiftos\";\n#endif\n#else\n",
+      "guard_lines": [
+        649,
+        656
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-steal-control",
+      "suite": "driver_SUITE",
+      "case": "steal_control",
+      "reason_regex": "^windows_different$",
+      "source": "erts/emulator/test/driver_SUITE_data/chkio_drv.c",
+      "source_sha256": "b782442304640d30a07319569f8fdbff8b5cb355003dbd9143338c135826a200",
+      "guard": "#ifndef UNIX\n#ifdef __WIN32__\n    res_str = \"skip: windows_different\";\n#else\n    res_str = \"nyiftos\";\n#endif\n#else\n",
+      "guard_lines": [
+        649,
+        656
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      }
+    },
+    {
+      "id": "windows-driver-native-thread-mseg-alloc-cache-clean",
+      "suite": "driver_SUITE",
+      "case": "thread_mseg_alloc_cache_clean",
+      "reason_regex": "^No\\ mseg_alloc$",
+      "source": "erts/emulator/test/driver_SUITE.erl",
+      "source_sha256": "5fc7f154930aec3babb7dee4b7086194591c06fffe7b7f59d49ee47a3cd23860",
+      "guard": "thread_mseg_alloc_cache_clean(Config) when is_list(Config) ->\n    case {erlang:system_info(threads),\n          erlang:system_info({allocator,mseg_alloc}),\n          driver_alloc_sbct()} of\n        {_, false, _} ->\n            {skipped, \"No mseg_alloc\"};\n",
+      "guard_lines": [
+        1930,
+        1936
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "mseg_alloc_probe",
+            "value": "ok"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "mseg_alloc",
+            "value": "false"
+          }
+        ]
+      }
+    }
+  ],
+  "empty_suite_rules": [
+    {
+      "id": "windows-os-signal-empty",
+      "suite": "os_signal_SUITE",
+      "source": "erts/emulator/test/os_signal_SUITE.erl",
+      "source_sha256": "5a0a9dfcc56de313aaa71857a4994d98a86f3708261da2ac452ed78d4d1e1b76",
+      "guard": "all() ->\n    case os:type() of\n        {win32, _} -> [];\n        _ -> [t_sighup,\n              t_sigusr1,\n              t_sigusr2,\n              t_sigterm,\n              t_sigalrm,\n              t_sigchld,\n              t_sigchld_fork,\n              t_sigwinch,\n              t_siginfo,\n              set_unset]\n    end.",
+      "guard_lines": [
+        57,
+        70
+      ],
+      "condition": {
+        "kind": "all",
+        "all": [
+          {
+            "kind": "platform_equals",
+            "value": "Windows"
+          },
+          {
+            "kind": "runtime_equals",
+            "field": "os_family",
+            "value": "win32"
+          }
+        ]
+      },
+      "inventory_function": "all",
+      "inventory_result": []
+    }
+  ],
+  "source_identity_contract": "source_sha256 binds pinned LF source bytes. Accept raw checkout bytes or exactly CRLF-to-LF canonical bytes only; retain actual checkout hashes in execution fingerprints and record both source identities in audits. No other source transformations qualify.",
+  "empty_suite_contract": "empty_suite_rules account only for an exact source-hashed upstream all/0 native guard that returns []; require candidate suite_all_empty, matching full-suite inventory, zero terminal cases and complete Common Test/journal/cleanup evidence. This is not a user skip and never accepts missing suites or partial selections."
+}

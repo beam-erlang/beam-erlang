@@ -1,0 +1,504 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "linux-x86_64-emu",
+      "displayName": "Linux x86_64 (emu, Release)",
+      "description": "Native Linux x86_64, emu flavor, Release.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "ERTS_BUILD_FLAVOR": "emu"
+      }
+    },
+    {
+      "name": "linux-x86_64-jit",
+      "displayName": "Linux x86_64 (jit, Release)",
+      "description": "Native Linux x86_64, jit flavor, Release.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "ERTS_BUILD_FLAVOR": "jit"
+      }
+    },
+    {
+      "name": "linux-aarch64-emu",
+      "displayName": "Linux aarch64 (emu, Release)",
+      "description": "Native Linux aarch64, emu flavor, Release.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "ERTS_BUILD_FLAVOR": "emu"
+      }
+    },
+    {
+      "name": "linux-aarch64-jit",
+      "displayName": "Linux aarch64 (jit, Release)",
+      "description": "Native Linux aarch64, jit flavor, Release.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "ERTS_BUILD_FLAVOR": "jit"
+      }
+    },
+    {
+      "name": "macos-arm64-emu",
+      "displayName": "macOS arm64 (emu, Release)",
+      "description": "Native macOS arm64, emu flavor, Release.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "ERTS_BUILD_FLAVOR": "emu",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
+        "CMAKE_OSX_SYSROOT": "macosx"
+      }
+    },
+    {
+      "name": "macos-arm64-jit",
+      "displayName": "macOS arm64 (jit, Release)",
+      "description": "Native macOS arm64, jit flavor, Release.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "ERTS_BUILD_FLAVOR": "jit",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
+        "CMAKE_OSX_SYSROOT": "macosx"
+      }
+    },
+    {
+      "name": "windows-x86_64-emu",
+      "displayName": "Windows x86_64 (emu, Release)",
+      "description": "Native Windows x64, MSVC, emu flavor, Release.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "ERTS_BUILD_FLAVOR": "emu"
+      }
+    },
+    {
+      "name": "windows-x86_64-jit",
+      "displayName": "Windows x86_64 (jit, Release)",
+      "description": "Native Windows x64, MSVC, jit flavor, Release.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
+        "ERTS_BUILD_FLAVOR": "jit"
+      }
+    },
+    {
+      "name": "linux-x86_64-emu-debug",
+      "inherits": "linux-x86_64-emu",
+      "displayName": "Linux x86_64 (emu, Debug)",
+      "description": "Native Linux x86_64, emu flavor, Debug.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-x86_64-jit-debug",
+      "inherits": "linux-x86_64-jit",
+      "displayName": "Linux x86_64 (jit, Debug)",
+      "description": "Native Linux x86_64, jit flavor, Debug.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-aarch64-emu-debug",
+      "inherits": "linux-aarch64-emu",
+      "displayName": "Linux aarch64 (emu, Debug)",
+      "description": "Native Linux aarch64, emu flavor, Debug.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-aarch64-jit-debug",
+      "inherits": "linux-aarch64-jit",
+      "displayName": "Linux aarch64 (jit, Debug)",
+      "description": "Native Linux aarch64, jit flavor, Debug.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "macos-arm64-emu-debug",
+      "inherits": "macos-arm64-emu",
+      "displayName": "macOS arm64 (emu, Debug)",
+      "description": "Native macOS arm64, emu flavor, Debug.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "macos-arm64-jit-debug",
+      "inherits": "macos-arm64-jit",
+      "displayName": "macOS arm64 (jit, Debug)",
+      "description": "Native macOS arm64, jit flavor, Debug.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-x86_64-emu-debug",
+      "inherits": "windows-x86_64-emu",
+      "displayName": "Windows x86_64 (emu, Debug)",
+      "description": "Native Windows x64, MSVC, emu flavor, Debug.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-x86_64-jit-debug",
+      "inherits": "windows-x86_64-jit",
+      "displayName": "Windows x86_64 (jit, Debug)",
+      "description": "Native Windows x64, MSVC, jit flavor, Debug.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-x86_64-emu",
+      "configurePreset": "linux-x86_64-emu",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-x86_64-jit",
+      "configurePreset": "linux-x86_64-jit",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-aarch64-emu",
+      "configurePreset": "linux-aarch64-emu",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-aarch64-jit",
+      "configurePreset": "linux-aarch64-jit",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "macos-arm64-emu",
+      "configurePreset": "macos-arm64-emu",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "macos-arm64-jit",
+      "configurePreset": "macos-arm64-jit",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "windows-x86_64-emu",
+      "configurePreset": "windows-x86_64-emu",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-x86_64-jit",
+      "configurePreset": "windows-x86_64-jit",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-x86_64-emu-debug",
+      "inherits": "linux-x86_64-emu",
+      "configurePreset": "linux-x86_64-emu-debug"
+    },
+    {
+      "name": "linux-x86_64-jit-debug",
+      "inherits": "linux-x86_64-jit",
+      "configurePreset": "linux-x86_64-jit-debug"
+    },
+    {
+      "name": "linux-aarch64-emu-debug",
+      "inherits": "linux-aarch64-emu",
+      "configurePreset": "linux-aarch64-emu-debug"
+    },
+    {
+      "name": "linux-aarch64-jit-debug",
+      "inherits": "linux-aarch64-jit",
+      "configurePreset": "linux-aarch64-jit-debug"
+    },
+    {
+      "name": "macos-arm64-emu-debug",
+      "inherits": "macos-arm64-emu",
+      "configurePreset": "macos-arm64-emu-debug"
+    },
+    {
+      "name": "macos-arm64-jit-debug",
+      "inherits": "macos-arm64-jit",
+      "configurePreset": "macos-arm64-jit-debug"
+    },
+    {
+      "name": "windows-x86_64-emu-debug",
+      "inherits": "windows-x86_64-emu",
+      "configurePreset": "windows-x86_64-emu-debug"
+    },
+    {
+      "name": "windows-x86_64-jit-debug",
+      "inherits": "windows-x86_64-jit",
+      "configurePreset": "windows-x86_64-jit-debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-x86_64-emu",
+      "configurePreset": "linux-x86_64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-x86_64-jit",
+      "configurePreset": "linux-x86_64-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-aarch64-emu",
+      "configurePreset": "linux-aarch64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-aarch64-jit",
+      "configurePreset": "linux-aarch64-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "macos-arm64-emu",
+      "configurePreset": "macos-arm64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "macos-arm64-jit",
+      "configurePreset": "macos-arm64-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "windows-x86_64-emu",
+      "configurePreset": "windows-x86_64-emu",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-x86_64-jit",
+      "configurePreset": "windows-x86_64-jit",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-x86_64-emu-debug",
+      "inherits": "linux-x86_64-emu",
+      "configurePreset": "linux-x86_64-emu-debug"
+    },
+    {
+      "name": "linux-x86_64-jit-debug",
+      "inherits": "linux-x86_64-jit",
+      "configurePreset": "linux-x86_64-jit-debug"
+    },
+    {
+      "name": "linux-aarch64-emu-debug",
+      "inherits": "linux-aarch64-emu",
+      "configurePreset": "linux-aarch64-emu-debug"
+    },
+    {
+      "name": "linux-aarch64-jit-debug",
+      "inherits": "linux-aarch64-jit",
+      "configurePreset": "linux-aarch64-jit-debug"
+    },
+    {
+      "name": "macos-arm64-emu-debug",
+      "inherits": "macos-arm64-emu",
+      "configurePreset": "macos-arm64-emu-debug"
+    },
+    {
+      "name": "macos-arm64-jit-debug",
+      "inherits": "macos-arm64-jit",
+      "configurePreset": "macos-arm64-jit-debug"
+    },
+    {
+      "name": "windows-x86_64-emu-debug",
+      "inherits": "windows-x86_64-emu",
+      "configurePreset": "windows-x86_64-emu-debug"
+    },
+    {
+      "name": "windows-x86_64-jit-debug",
+      "inherits": "windows-x86_64-jit",
+      "configurePreset": "windows-x86_64-jit-debug"
+    }
+  ]
+}

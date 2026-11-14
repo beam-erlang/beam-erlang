@@ -1,0 +1,115 @@
+# Native Windows x64 runtime and selected emulator checks, Release and Debug.
+
+name: Windows
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.preset }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: windows-x86_64-emu
+          - preset: windows-x86_64-jit
+          - preset: windows-x86_64-emu-debug
+          - preset: windows-x86_64-jit-debug
+
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CMAKE_PRESET: ${{ matrix.preset }}
+      BUILD_DIR: ../tmp/${{ matrix.preset }}
+      INSTALL_DIR: ../tmp/${{ matrix.preset }}/install
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load the x64 MSVC environment
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $install) { throw "Visual Studio with the MSVC x64 toolset was not found." }
+          $vcvars = Join-Path $install "VC\Auxiliary\Build\vcvarsall.bat"
+          cmd /c "call `"$vcvars`" x64 >nul && set" | ForEach-Object {
+            if ($_ -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
+              $name = $Matches[1]
+              if ($name -eq 'PROMPT') { return }
+              $marker = "BEAM_VCVARS_$name"
+              Add-Content -Path $env:GITHUB_ENV -Value "$name<<$marker"
+              Add-Content -Path $env:GITHUB_ENV -Value $Matches[2]
+              Add-Content -Path $env:GITHUB_ENV -Value $marker
+            }
+          }
+
+      - name: Record source and available toolchain
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
+            throw 'A native Windows x64 runner is required.'
+          }
+          "preset=$env:CMAKE_PRESET"
+          "runner_image=$env:ImageOS $env:ImageVersion"
+          "source_commit=$(git rev-parse HEAD)"
+          "upstream_commit=$(Get-Content UPSTREAM_COMMIT -Raw)"
+          Get-ComputerInfo -Property WindowsProductName, WindowsVersion, OsVersion, OsArchitecture
+          foreach ($command in Get-Command cl.exe, clang.exe, clang++.exe, gcc.exe, g++.exe -ErrorAction SilentlyContinue) {
+            Get-Item $command.Source | Select-Object FullName, @{Name='Version'; Expression={$_.VersionInfo.FileVersion}}
+          }
+          cmake --version
+          ninja --version
+          perl -v
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free, Root
+
+      - name: Configure runtime and selected emulator suites
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $installDir = [System.IO.Path]::GetFullPath($env:INSTALL_DIR)
+          cmake --preset $env:CMAKE_PRESET -B $env:BUILD_DIR `
+            "-DCMAKE_INSTALL_PREFIX=$installDir" `
+            -DBUILD_TESTING=ON -DBEAM_BUILD_EMULATOR_TESTS=ON `
+            -DBEAM_BUILD_FULL_EMULATOR_TESTS=OFF
+
+      - name: Build runtime and private test support
+        id: build
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake --build $env:BUILD_DIR --parallel 3
+
+      - name: Test build, installation, staging, and relocation
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          ctest --test-dir $env:BUILD_DIR -L '^runtime$' `
+            --output-on-failure --no-tests=error -j1
+
+      - name: Test selected emulator suites (24 cases, zero skips)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          ctest --test-dir $env:BUILD_DIR -L '^emulator$' `
+            --output-on-failure --no-tests=error -j1
+
+      - name: Install
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake --install $env:BUILD_DIR

@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "description": "Functional-scope exclusions. Companion directives are rendered into the private functional-scope.spec. The retained emulator.spec stays unchanged.",
+  "directory": "../emulator_test",
+  "exclusions": [
+    {
+      "id": "upstream-hash-benchmark",
+      "origin": "base-spec",
+      "directive": "skip_groups",
+      "suite": "hash_SUITE",
+      "group": "phash2_benchmark",
+      "reason": "Benchmark only",
+      "required": true
+    },
+    {
+      "id": "scope-estone",
+      "origin": "companion-spec",
+      "directive": "skip_cases",
+      "suite": "estone_SUITE",
+      "case": "estone",
+      "reason": "Scoring benchmark excluded from functional scope",
+      "required": true
+    },
+    {
+      "id": "scope-map-benchmarks",
+      "origin": "companion-spec",
+      "directive": "skip_cases",
+      "suite": "map_SUITE",
+      "case": "benchmarks",
+      "reason": "Timed throughput benchmark excluded from functional scope",
+      "required": true
+    },
+    {
+      "id": "scope-map-no-opt-benchmarks",
+      "origin": "companion-spec",
+      "directive": "skip_cases",
+      "suite": "map_no_opt_SUITE",
+      "case": "benchmarks",
+      "reason": "Timed throughput benchmark excluded from functional scope",
+      "required": true
+    },
+    {
+      "id": "scope-jit-perf",
+      "origin": "companion-spec",
+      "directive": "skip_groups",
+      "suite": "jit_SUITE",
+      "group": "perf",
+      "reason": "Specialized profiler integration excluded from functional scope",
+      "required_flavor": "jit"
+    }
+  ]
+}

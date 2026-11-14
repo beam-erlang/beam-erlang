@@ -1,0 +1,93 @@
+# Native macOS runtime and selected emulator checks, in Release and Debug.
+
+name: macOS
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-arm64-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.preset }}
+    strategy:
+      fail-fast: false
+      matrix:
+        preset:
+          - macos-arm64-emu
+          - macos-arm64-jit
+          - macos-arm64-emu-debug
+          - macos-arm64-jit-debug
+
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CMAKE_PRESET: ${{ matrix.preset }}
+      BUILD_DIR: ../tmp/${{ matrix.preset }}
+      INSTALL_DIR: ../tmp/${{ matrix.preset }}/install
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record source and toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-path
+          xcrun --sdk macosx --show-sdk-version
+          /usr/bin/clang --version
+          /usr/bin/clang++ --version
+          cmake --version
+          ninja --version
+          perl -v
+          git rev-parse HEAD
+          git status --short
+          cat UPSTREAM_COMMIT
+          printf 'cmake_preset=%s\nrunner_image=%s\nrunner_image_version=%s\n' \
+            "$CMAKE_PRESET" "$ImageOS" "$ImageVersion"
+          df -h .
+
+      # Optional test configurations belong in workspace tmp/, not build/<preset>.
+      - name: Configure
+        run: |
+          cmake --preset "$CMAKE_PRESET" -B "$BUILD_DIR" \
+            "-DCMAKE_INSTALL_PREFIX=$PWD/$INSTALL_DIR" \
+            -DBUILD_TESTING=ON \
+            -DBEAM_BUILD_EMULATOR_TESTS=ON \
+            -DBEAM_BUILD_FULL_EMULATOR_TESTS=OFF
+
+      # The default build also prepares private Common Test support on this VM.
+      - name: Build VM and selected emulator test support
+        id: build
+        run: |
+          cmake --build "$BUILD_DIR" --parallel 3
+
+      - name: Test build, install, staging, and relocation
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ctest --test-dir "$BUILD_DIR" -L '^runtime$' \
+            --output-on-failure --no-tests=error -j1
+
+      - name: Test five emulator suites (24 cases, zero skips)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ctest --test-dir "$BUILD_DIR" -L '^emulator$' \
+            --output-on-failure --no-tests=error -j1
+
+      - name: Install
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: cmake --install "$BUILD_DIR"
