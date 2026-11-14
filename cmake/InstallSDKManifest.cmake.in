@@ -1,0 +1,10 @@
+# Generated build-tree installation driver, after all owned artifacts install.
+include("@CMAKE_SOURCE_DIR@/cmake/SDKManifest.cmake")
+include("@CMAKE_SOURCE_DIR@/erts/emulator/cmake/StageDestDir.cmake")
+erts_staged_path("$ENV{DESTDIR}" "${CMAKE_INSTALL_PREFIX}" _beam_physical_prefix)
+beam_sdk_resolve_path("${_beam_physical_prefix}" _beam_physical_prefix)
+set(_beam_manifest [==[@BEAM_SDK_MANIFEST@]==])
+beam_sdk_finalize_manifest("${_beam_physical_prefix}" "${_beam_manifest}" _beam_manifest)
+file(WRITE "${_beam_physical_prefix}/manifest.json" "${_beam_manifest}\n")
+erts_install_manifest_path("${CMAKE_INSTALL_PREFIX}/manifest.json" _beam_manifest_path)
+list(APPEND CMAKE_INSTALL_MANIFEST_FILES "${_beam_manifest_path}")
