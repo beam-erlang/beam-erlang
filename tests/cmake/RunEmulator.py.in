@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Run one prepared emulator suite, group, or set of cases for this build."""
+import argparse
+import os
+import sys
+
+
+def nonempty(value):
+    value = value.strip()
+    if not value:
+        raise argparse.ArgumentTypeError("selection must not be empty")
+    return value
+
+
+def suite(value):
+    value = nonempty(value)
+    if value == "full":
+        raise argparse.ArgumentTypeError("choose a suite; use check-emulator-full for the full corpus")
+    return value
+
+
+def cases(value):
+    values = [nonempty(case) for case in value.split(",")]
+    return ",".join(values)
+
+
+def timeout(value):
+    seconds = int(value)
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("timeout must be a positive number of seconds")
+    return seconds
+
+
+parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+parser.add_argument("--suite", type=suite, required=True)
+parser.add_argument("--group", type=nonempty)
+parser.add_argument("--cases", type=cases)
+parser.add_argument("--timeout", type=timeout, default=21600)
+args = parser.parse_args()
+
+python = @BEAM_FULL_LAUNCHER_PYTHON@
+driver = @BEAM_FULL_LAUNCHER_DRIVER@
+fixed = [
+@BEAM_FULL_LAUNCHER_ARGUMENTS@]
+selection = ["--suite", args.suite, "--timeout", str(args.timeout)]
+if args.group is not None:
+    selection += ["--group", args.group]
+if args.cases is not None:
+    selection += ["--cases", args.cases]
+command = [python, "-B", driver, "run", *fixed, *selection]
+if os.name == "nt":
+    # Keep the driver in this process so terminating the launcher also closes
+    # the private Job's ownership pipe and cleans its native descendants.
+    import runpy
+    sys.argv = [driver, "run", *fixed, *selection]
+    runpy.run_path(driver, run_name="__main__")
+else:
+    os.execv(python, command)
