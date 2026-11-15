@@ -1,0 +1,12 @@
+# Keep installed SDK provenance and upstream fixture inputs platform independent.
+* text=auto eol=lf
+*.beam -text
+*.png -text
+*.jpg -text
+*.gif -text
+*.ico -text
+*.zip -text
+*.gz -text
+*.bz2 -text
+*.xz -text
+*.pdf -text
