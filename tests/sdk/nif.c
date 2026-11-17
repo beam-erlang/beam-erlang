@@ -26,11 +26,14 @@ static ERL_NIF_TERM symbol_visibility(ErlNifEnv *env, int argc, const ERL_NIF_TE
      * rather than importing another runtime or exporting every VM symbol. */
     const char *private_symbols[] = {"erl_start", "erts_alloc", "pcre2_compile_8",
         "ZSTD_compress", "deflate", "d2s_buffered_n"};
-    HMODULE host = GetModuleHandle(NULL);
+    HMODULE host = NULL;
     size_t i;
     (void)argc;
     (void)argv;
-    if (!GetProcAddress(host, "beam_main"))
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCWSTR) (const void *) enif_make_int, &host) ||
+        !GetProcAddress(host, "beam_main"))
         return enif_make_atom(env, "missing_process_entry_export");
     for (i = 0; i < sizeof(private_symbols) / sizeof(private_symbols[0]); i++) {
         if (GetProcAddress(host, private_symbols[i]))

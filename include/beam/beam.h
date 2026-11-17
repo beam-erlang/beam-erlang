@@ -22,6 +22,15 @@ __attribute__((visibility("default")))
 #endif
 int beam_main(int argc, char **argv);
 
+#if defined(_WIN32)
+/* Read a key through the initialized VM console input owner. Windows launchers
+ * use this from their exit handler for -keep_window. Call only after entering
+ * beam_main, on its original thread; this is not a pre-start console API.
+ */
+__declspec(dllexport)
+int beam_windows_wait_for_console_key(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

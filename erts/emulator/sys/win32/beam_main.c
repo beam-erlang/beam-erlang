@@ -4,14 +4,26 @@
 
 void erl_start(int argc, char **argv);
 void sys_primitive_init(HMODULE beam);
+int sys_get_key(int fd);
 
-/* Every static host embeds the preload resources in its own executable.
- * Match the standalone console VM initialization without the upstream DLL
- * entry or its separate launcher. Arguments are already encoded as UTF-8.
+/* The installed runtime can be linked into an executable or a DLL. Canonical
+ * preload resources belong to that module, which need not be the process EXE.
+ * Arguments are already encoded as UTF-8.
  */
 int beam_main(int argc, char **argv)
 {
-    sys_primitive_init(GetModuleHandle(NULL));
+    HMODULE module = NULL;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCWSTR) (const void *) &beam_main, &module)) {
+        return 1;
+    }
+    sys_primitive_init(module);
     erl_start(argc, argv);
     return 0;
+}
+
+int beam_windows_wait_for_console_key(void)
+{
+    return sys_get_key(0);
 }

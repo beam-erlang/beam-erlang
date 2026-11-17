@@ -148,6 +148,17 @@ The integer signature does not promise a return to the caller. Windows hosts
 must supply UTF-8 arguments; use a `wmain` wrapper that converts UTF-16 arguments
 before calling `beam_main()`, as in the [Windows host fixture](tests/sdk/host_main.h).
 
+A Windows process host can place the SDK-linked VM in its executable or in a
+DLL loaded by its native launcher. `beam_main()` obtains the module that
+contains its code, so the preload resources supplied by `BEAM::Runtime` belong
+in that same executable or DLL. Enter the VM once on the process's original
+thread in either arrangement.
+
+The Windows-only `beam_windows_wait_for_console_key()` supports a launcher's
+`-keep_window` exit handling through the initialized VM console input owner.
+Call it only after entering `beam_main()`, on that same original thread during
+shutdown. It is not a console operation available before VM startup.
+
 Save the host as `main.c` in its own project, with this `CMakeLists.txt`:
 
 ```cmake
